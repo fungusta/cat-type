@@ -1,0 +1,12 @@
+{
+  "image": "bongo-cat-sprite-sheet.png",
+  "frameWidth": 160,
+  "frameHeight": 160,
+  "layout": "horizontal",
+  "frames": [
+    { "name": "idle", "x": 0, "y": 0, "width": 160, "height": 160 },
+    { "name": "tap-left", "x": 160, "y": 0, "width": 160, "height": 160 },
+    { "name": "tap-right", "x": 320, "y": 0, "width": 160, "height": 160 },
+    { "name": "excited", "x": 480, "y": 0, "width": 160, "height": 160 }
+  ]
+}

@@ -1,0 +1,37 @@
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-build.txt
+
+      - name: Run behavior and settings tests
+        run: python -m unittest tests.test_behavior tests.test_settings -v
+
+      - name: Build portable app
+        run: |
+          python scripts/build_icon.py
+          python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cat-type-windows
+          path: dist/Cat Type.exe
+          if-no-files-found: error
