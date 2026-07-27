@@ -4,10 +4,14 @@ Cat Type is a Windows desktop companion that makes a tiny animated cat appear
 beside the active text caret while you type. It alternates paws with each key
 press, becomes excited during fast typing, and fades away after you stop.
 
-This is deliberately different from Bongo Cat on Steam: the companion is
-attached to the place where text is being inserted rather than to the taskbar.
-The project alternates between newly created four-frame gray and ginger tabby
-sprite sheets; it does not extract or redistribute Steam game assets.
+Cat Type was inspired by [Bongo Cat on Steam](https://store.steampowered.com/app/3419430/Bongo_Cat/).
+I loved the idea of a tiny companion that reacts as you type and wanted to
+create my own take on it.
+
+Cat Type puts the companion beside the place where text is being inserted
+rather than on the taskbar. Its four-frame gray and ginger tabby sprite sheets
+are original artwork created for this project; it does not extract or
+redistribute Bongo Cat's game assets.
 
 ## Install
 
