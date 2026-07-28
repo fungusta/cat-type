@@ -1,11 +1,21 @@
 from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
 
 project_root = Path(SPECPATH)
-icon_path = project_root / "assets" / "cat-type.ico"
+is_windows = sys.platform == "win32"
+is_macos = sys.platform == "darwin"
+icon_path = project_root / "assets" / (
+    "cat-type.ico" if is_windows else "cat-type.icns" if is_macos else "cat-type.png"
+)
 version_path = project_root / "packaging" / "version_info.txt"
+hidden_imports = (
+    collect_submodules("comtypes.gen")
+    if is_windows
+    else collect_submodules("pynput") + collect_submodules("pystray")
+)
 
 a = Analysis(
     ["cat_type.py"],
@@ -18,7 +28,7 @@ a = Analysis(
         ),
         (str(icon_path), "assets"),
     ],
-    hiddenimports=collect_submodules("comtypes.gen"),
+    hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -46,6 +56,19 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=[str(icon_path)],
-    version=str(version_path),
+    version=str(version_path) if is_windows else None,
     uac_admin=False,
 )
+
+if is_macos:
+    app = BUNDLE(
+        exe,
+        name="Cat Type.app",
+        icon=str(icon_path),
+        bundle_identifier="com.fungusta.cat-type",
+        version="1.0.2",
+        info_plist={
+            "LSUIElement": True,
+            "NSHighResolutionCapable": True,
+        },
+    )

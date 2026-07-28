@@ -1,31 +1,143 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
+from tkinter import font as tkfont
 from tkinter import ttk
 from typing import Callable
+
+from PIL import Image, ImageDraw, ImageTk
 
 from cat_settings import AppSettings
 
 
 CAT_STYLE_LABELS = {
-    "Alternate gray and ginger": "alternate",
+    "Mix it up": "alternate",
     "Gray tabby": "gray",
     "Ginger tabby": "ginger",
 }
 PLACEMENT_LABELS = {
-    "Above and to the right": "above-right",
-    "Above and to the left": "above-left",
-    "Below and to the right": "below-right",
-    "Below and to the left": "below-left",
+    "Above · right": "above-right",
+    "Above · left": "above-left",
+    "Below · right": "below-right",
+    "Below · left": "below-left",
 }
 
 
+class Toggle(tk.Frame):
+    """A small, friendly switch with a full-row click target."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        variable: tk.BooleanVar,
+        title: str,
+        description: str,
+        background: str,
+        accent: str,
+        ink: str,
+        muted: str,
+        title_font: tkfont.Font,
+        description_font: tkfont.Font,
+    ) -> None:
+        super().__init__(parent, background=background, cursor="hand2")
+        self.variable = variable
+        self.accent = accent
+
+        copy = tk.Frame(self, background=background, cursor="hand2")
+        copy.pack(side="left", fill="x", expand=True)
+        tk.Label(
+            copy,
+            text=title,
+            background=background,
+            foreground=ink,
+            font=title_font,
+            cursor="hand2",
+        ).pack(anchor="w")
+        tk.Label(
+            copy,
+            text=description,
+            background=background,
+            foreground=muted,
+            font=description_font,
+            cursor="hand2",
+        ).pack(anchor="w", pady=(2, 0))
+
+        self.switch = tk.Canvas(
+            self,
+            width=52,
+            height=30,
+            background=background,
+            highlightthickness=0,
+            cursor="hand2",
+        )
+        self.switch.pack(side="right", padx=(12, 0))
+
+        for widget in (self, copy, *copy.winfo_children(), self.switch):
+            widget.bind("<Button-1>", self._toggle)
+        self.variable.trace_add("write", lambda *_args: self._draw())
+        self._draw()
+
+    def _toggle(self, _event: tk.Event[tk.Misc]) -> None:
+        self.variable.set(not self.variable.get())
+
+    def _draw(self) -> None:
+        on = self.variable.get()
+        track = self.accent if on else "#D9D1C8"
+        scale = 4
+        width = 52
+        height = 30
+        image = Image.new(
+            "RGBA",
+            (width * scale, height * scale),
+            (0, 0, 0, 0),
+        )
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle(
+            (1 * scale, 2 * scale, 51 * scale, 28 * scale),
+            radius=13 * scale,
+            fill=track,
+        )
+        knob_left = 27 if on else 4
+        knob_box = (
+            knob_left * scale,
+            4 * scale,
+            (knob_left + 22) * scale,
+            26 * scale,
+        )
+        shadow_box = (
+            knob_box[0],
+            knob_box[1] + scale,
+            knob_box[2],
+            knob_box[3] + scale,
+        )
+        draw.ellipse(shadow_box, fill=(78, 55, 48, 35))
+        draw.ellipse(
+            knob_box,
+            fill="#FFFFFF",
+            outline=(235, 225, 219, 255),
+            width=scale,
+        )
+        image = image.resize(
+            (width, height),
+            getattr(Image, "Resampling", Image).LANCZOS,
+        )
+        self._switch_image = ImageTk.PhotoImage(image, master=self.switch)
+        self.switch.delete("all")
+        self.switch.create_image(0, 0, anchor="nw", image=self._switch_image)
+
+
 class SettingsWindow:
-    BACKGROUND = "#f6f4ef"
-    CARD = "#ffffff"
-    INK = "#25221f"
-    MUTED = "#716b64"
-    ACCENT = "#d75c37"
+    BACKGROUND = "#FFF8F2"
+    CARD = "#FFFFFF"
+    INK = "#342B2A"
+    MUTED = "#85716C"
+    ACCENT = "#E86F51"
+    ACCENT_DARK = "#C95238"
+    PEACH = "#FFE4D8"
+    BLUSH = "#FFF0E9"
+    BORDER = "#F0DCD2"
 
     def __init__(
         self,
@@ -35,12 +147,19 @@ class SettingsWindow:
         icon_path: str | None = None,
     ) -> None:
         self._on_save = on_save
+        self._after_id: str | None = None
+        self._preview_step = 0
+        self._preview_variant = "gray"
+        self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
+
         self.window = tk.Toplevel(parent)
         self.window.title("Cat Type Settings")
-        self.window.geometry("570x690")
-        self.window.minsize(530, 640)
+        self.window.geometry("920x800")
+        self.window.minsize(840, 800)
+        self.window.resizable(True, False)
         self.window.configure(background=self.BACKGROUND)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self._configure_fonts()
         if icon_path:
             try:
                 self.window.iconbitmap(default=icon_path)
@@ -60,10 +179,85 @@ class SettingsWindow:
         self.launch_at_startup = tk.BooleanVar(value=settings.launch_at_startup)
 
         self._configure_styles()
+        self._load_preview_frames(icon_path)
         self._build()
         self._center()
         self.window.lift()
         self.window.focus_force()
+        self._animate_preview()
+
+    def _configure_fonts(self) -> None:
+        available = set(tkfont.families(self.window))
+
+        def pick(*families: str) -> str:
+            return next(
+                (family for family in families if family in available),
+                "TkDefaultFont",
+            )
+
+        display = pick(
+            "Cooper Black",
+            "Arial Rounded MT Bold",
+            "Comic Sans MS",
+            "TkDefaultFont",
+        )
+        heading = pick(
+            "Kristen ITC",
+            "Comic Sans MS",
+            "Segoe Print",
+            "TkDefaultFont",
+        )
+        body = pick(
+            "Comic Sans MS",
+            "Trebuchet MS",
+            "TkDefaultFont",
+        )
+        badge = pick("Trebuchet MS", body)
+
+        self.fonts = {
+            "display": tkfont.Font(
+                self.window,
+                family=display,
+                size=32,
+            ),
+            "section": tkfont.Font(
+                self.window,
+                family=heading,
+                size=12,
+            ),
+            "control": tkfont.Font(
+                self.window,
+                family=body,
+                size=10,
+                weight="bold",
+            ),
+            "body": tkfont.Font(
+                self.window,
+                family=body,
+                size=10,
+            ),
+            "small": tkfont.Font(
+                self.window,
+                family=body,
+                size=9,
+            ),
+            "tiny": tkfont.Font(
+                self.window,
+                family=body,
+                size=8,
+            ),
+            "badge": tkfont.Font(
+                self.window,
+                family=badge,
+                size=9,
+                weight="bold",
+            ),
+            "button": tkfont.Font(
+                self.window,
+                family=heading,
+                size=10,
+            ),
+        }
 
     @staticmethod
     def _label_for(mapping: dict[str, str], value: str) -> str:
@@ -79,197 +273,354 @@ class SettingsWindow:
         except tk.TclError:
             pass
         style.configure(
-            "Cat.TCheckbutton",
-            background=self.CARD,
+            "Cat.TCombobox",
+            padding=9,
+            fieldbackground=self.BLUSH,
+            background=self.BLUSH,
             foreground=self.INK,
-            font=("Segoe UI", 10),
+            bordercolor=self.BORDER,
+            lightcolor=self.BORDER,
+            darkcolor=self.BORDER,
+            arrowcolor=self.ACCENT_DARK,
+            font=self.fonts["body"],
         )
         style.map(
-            "Cat.TCheckbutton",
-            background=[("active", self.CARD)],
-        )
-        style.configure(
             "Cat.TCombobox",
-            padding=7,
-            fieldbackground="#fbfaf8",
-            background="#fbfaf8",
-            foreground=self.INK,
+            fieldbackground=[("readonly", self.BLUSH)],
+            selectbackground=[("readonly", self.BLUSH)],
+            selectforeground=[("readonly", self.INK)],
         )
         style.configure(
             "Cat.Horizontal.TScale",
             background=self.CARD,
-            troughcolor="#e7e1da",
+            troughcolor="#F1E3DC",
+            bordercolor=self.CARD,
+            lightcolor=self.CARD,
+            darkcolor=self.CARD,
+            sliderthickness=18,
+            gripcount=0,
         )
-        style.configure(
-            "Accent.TButton",
-            padding=(18, 9),
-            background=self.ACCENT,
-            foreground="#ffffff",
-            font=("Segoe UI Semibold", 10),
-        )
-        style.map(
-            "Accent.TButton",
-            background=[("active", "#bc4828"), ("pressed", "#a83e22")],
-        )
-        style.configure(
-            "Quiet.TButton",
-            padding=(18, 9),
-            background="#e9e4dd",
-            foreground=self.INK,
-            font=("Segoe UI", 10),
-        )
+
+    def _load_preview_frames(self, icon_path: str | None) -> None:
+        if not icon_path:
+            return
+        frames_root = Path(icon_path).parent / "tabby-frames"
+        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        for variant in ("gray", "ginger"):
+            variant_frames: dict[str, ImageTk.PhotoImage] = {}
+            for name in ("idle", "tap-left", "tap-right", "excited"):
+                path = frames_root / variant / f"{name}.png"
+                if not path.exists():
+                    continue
+                with Image.open(path) as image:
+                    scaled = image.convert("RGBA").resize((148, 148), resampling)
+                    variant_frames[name] = ImageTk.PhotoImage(
+                        scaled,
+                        master=self.window,
+                    )
+            if variant_frames:
+                self._preview_frames[variant] = variant_frames
 
     def _build(self) -> None:
-        canvas = tk.Canvas(
-            self.window,
-            background=self.BACKGROUND,
+        body = tk.Frame(self.window, background=self.BACKGROUND)
+        body.pack(fill="both", expand=True)
+
+        self._build_header(body)
+
+        columns = tk.Frame(body, background=self.BACKGROUND)
+        columns.pack(fill="x", padx=26)
+        columns.grid_columnconfigure(0, weight=3, uniform="settings")
+        columns.grid_columnconfigure(1, weight=2, uniform="settings")
+
+        left = tk.Frame(columns, background=self.BACKGROUND)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        right = tk.Frame(columns, background=self.BACKGROUND)
+        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+
+        self._build_companion_card(left)
+        self._build_appearance_card(left)
+        self._build_size_card(right)
+        self._build_timing_card(right)
+
+        self._build_footer(body)
+
+    def _build_header(self, body: tk.Frame) -> None:
+        hero = tk.Frame(
+            body,
+            background=self.PEACH,
+            highlightbackground="#F4C6B3",
+            highlightthickness=1,
+            height=174,
+        )
+        hero.pack(fill="x", padx=26, pady=(24, 16))
+        hero.pack_propagate(False)
+
+        copy = tk.Frame(hero, background=self.PEACH)
+        copy.pack(side="left", fill="both", expand=True, padx=(26, 10), pady=22)
+        badge = tk.Label(
+            copy,
+            text="  YOUR TINY TYPING PAL  ",
+            background="#FFFFFF",
+            foreground=self.ACCENT_DARK,
+            font=self.fonts["badge"],
+        )
+        badge.pack(anchor="w")
+        tk.Label(
+            copy,
+            text="Make it feel like yours.",
+            background=self.PEACH,
+            foreground=self.INK,
+            font=self.fonts["display"],
+        ).pack(anchor="w", pady=(10, 3))
+        tk.Label(
+            copy,
+            text="Choose your cat, its cozy corner, and how long it stays.",
+            background=self.PEACH,
+            foreground=self.MUTED,
+            font=self.fonts["body"],
+        ).pack(anchor="w")
+
+        self.preview_canvas = tk.Canvas(
+            hero,
+            width=250,
+            height=166,
+            background=self.PEACH,
             highlightthickness=0,
         )
-        scrollbar = ttk.Scrollbar(
-            self.window,
-            orient="vertical",
-            command=canvas.yview,
+        self.preview_canvas.pack(side="right", padx=(0, 18), pady=10)
+        self.preview_canvas.create_oval(
+            24,
+            132,
+            228,
+            160,
+            fill="#F4C7B5",
+            outline="",
         )
-        body = tk.Frame(canvas, background=self.BACKGROUND)
-        body.bind(
-            "<Configure>",
-            lambda _event: canvas.configure(scrollregion=canvas.bbox("all")),
+        self.preview_canvas.create_text(
+            218,
+            24,
+            text="✦",
+            fill=self.ACCENT,
+            font=("Segoe UI Symbol", 13),
         )
-        canvas_window = canvas.create_window((0, 0), window=body, anchor="nw")
-        canvas.bind(
-            "<Configure>",
-            lambda event: canvas.itemconfigure(canvas_window, width=event.width),
+        self.preview_canvas.create_text(
+            31,
+            45,
+            text="✦",
+            fill="#F3A486",
+            font=("Segoe UI Symbol", 8),
         )
-        canvas.configure(yscrollcommand=scrollbar.set)
-        self.window.bind(
-            "<MouseWheel>",
-            lambda event: canvas.yview_scroll(
-                -1 if event.delta > 0 else 1,
-                "units",
-            ),
-        )
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self._preview_image = self.preview_canvas.create_image(126, 84)
 
-        header = tk.Frame(body, background=self.BACKGROUND)
-        header.pack(fill="x", padx=30, pady=(28, 18))
-        tk.Label(
-            header,
-            text="Cat Type",
-            background=self.BACKGROUND,
-            foreground=self.INK,
-            font=("Segoe UI Semibold", 24),
-        ).pack(anchor="w")
-        tk.Label(
-            header,
-            text="Tune your tiny typing companion.",
-            background=self.BACKGROUND,
-            foreground=self.MUTED,
-            font=("Segoe UI", 10),
-        ).pack(anchor="w", pady=(3, 0))
-
-        general = self._card(body, "General")
-        ttk.Checkbutton(
-            general,
-            text="Show the cat while I type",
+    def _build_companion_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(
+            parent,
+            "Companion",
+            "The important purr-t",
+        )
+        Toggle(
+            content,
             variable=self.enabled,
-            style="Cat.TCheckbutton",
-        ).pack(anchor="w")
-        ttk.Checkbutton(
-            general,
-            text="Start Cat Type when I sign in to Windows",
+            title="Show my cat while I type",
+            description="Pause anytime without quitting Cat Type.",
+            background=self.CARD,
+            accent=self.ACCENT,
+            ink=self.INK,
+            muted=self.MUTED,
+            title_font=self.fonts["control"],
+            description_font=self.fonts["small"],
+        ).pack(fill="x")
+        self._divider(content).pack(fill="x", pady=13)
+        Toggle(
+            content,
             variable=self.launch_at_startup,
-            style="Cat.TCheckbutton",
-        ).pack(anchor="w", pady=(12, 0))
+            title="Start Cat Type when I sign in",
+            description="Your typing pal will be ready and waiting.",
+            background=self.CARD,
+            accent=self.ACCENT,
+            ink=self.INK,
+            muted=self.MUTED,
+            title_font=self.fonts["control"],
+            description_font=self.fonts["small"],
+        ).pack(fill="x")
+        self._divider(content).pack(fill="x", pady=13)
+        tk.Label(
+            content,
+            text="⌨  Wakes up when your keyboard does",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        ).pack(anchor="w")
+        card.pack(fill="x", pady=(0, 14))
 
-        appearance = self._card(body, "Appearance")
-        self._field_label(appearance, "Cat color").pack(anchor="w")
+    def _build_appearance_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(
+            parent,
+            "Cat style",
+            "Pick a favorite fluff",
+        )
+        choices = tk.Frame(content, background=self.CARD)
+        choices.pack(fill="x", pady=(0, 16))
+        for index, label in enumerate(CAT_STYLE_LABELS):
+            button = tk.Radiobutton(
+                choices,
+                text=label,
+                variable=self.cat_style,
+                value=label,
+                indicatoron=False,
+                relief="flat",
+                borderwidth=0,
+                highlightthickness=1,
+                highlightbackground=self.BORDER,
+                background=self.BLUSH,
+                selectcolor=self.PEACH,
+                activebackground=self.PEACH,
+                activeforeground=self.INK,
+                foreground=self.INK,
+                font=self.fonts["control"],
+                padx=8,
+                pady=8,
+                cursor="hand2",
+            )
+            button.grid(
+                row=0,
+                column=index,
+                sticky="ew",
+                padx=(0 if index == 0 else 4, 0),
+            )
+            choices.grid_columnconfigure(index, weight=1)
+
+        self._field_label(content, "Favorite spot").pack(anchor="w")
         ttk.Combobox(
-            appearance,
-            textvariable=self.cat_style,
-            values=list(CAT_STYLE_LABELS),
-            state="readonly",
-            style="Cat.TCombobox",
-        ).pack(fill="x", pady=(6, 14))
-        self._field_label(appearance, "Preferred position").pack(anchor="w")
-        ttk.Combobox(
-            appearance,
+            content,
             textvariable=self.placement,
             values=list(PLACEMENT_LABELS),
             state="readonly",
             style="Cat.TCombobox",
-        ).pack(fill="x", pady=(6, 16))
+        ).pack(fill="x", pady=(6, 0))
+        card.pack(fill="x")
+
+    def _build_size_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(parent, "Cat size", "Tiny bean or big floof")
         self._slider(
-            appearance,
-            "Cat size",
+            content,
+            "Preview scale",
             self.size_percent,
             60,
             175,
             lambda value: f"{round(float(value))}%",
         )
+        scale_labels = tk.Frame(content, background=self.CARD)
+        scale_labels.pack(fill="x", pady=(5, 0))
+        for side, label in (("left", "smol"), ("right", "chonky")):
+            tk.Label(
+                scale_labels,
+                text=label,
+                background=self.CARD,
+                foreground=self.MUTED,
+                font=self.fonts["tiny"],
+            ).pack(side=side)
+        card.pack(fill="x", pady=(0, 14))
 
-        timing = self._card(body, "Timing")
+    def _build_timing_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(parent, "Timing", "Settle in, then fade")
         self._slider(
-            timing,
-            "Stay visible after typing",
+            content,
+            "Hang around",
             self.hold_seconds,
             0.5,
             5.0,
             lambda value: f"{float(value):.1f}s",
         )
         self._slider(
-            timing,
-            "Fade duration",
+            content,
+            "Soft fade",
             self.fade_seconds,
             0.0,
             1.5,
             lambda value: f"{float(value):.1f}s",
-            top_padding=16,
+            top_padding=18,
         )
+        card.pack(fill="x", pady=(0, 14))
 
+    def _build_footer(self, body: tk.Frame) -> None:
+        footer = tk.Frame(body, background=self.BACKGROUND)
+        footer.pack(fill="x", padx=28, pady=(16, 14))
         tk.Label(
-            body,
-            text="Cat Type detects keyboard activity only—it never records what you type.\n"
-            "You can always quit with Ctrl+Alt+Q or from the tray icon.",
-            justify="left",
+            footer,
+            text="♡  Only keyboard activity is detected — never what you type.",
             background=self.BACKGROUND,
             foreground=self.MUTED,
-            font=("Segoe UI", 9),
-        ).pack(fill="x", padx=32, pady=(4, 18))
+            font=self.fonts["small"],
+        ).pack(side="left", anchor="center")
 
-        buttons = tk.Frame(body, background=self.BACKGROUND)
-        buttons.pack(fill="x", padx=30, pady=(0, 28))
-        ttk.Button(
+        buttons = tk.Frame(footer, background=self.BACKGROUND)
+        buttons.pack(side="right")
+        tk.Button(
             buttons,
-            text="Cancel",
+            text="Not now",
             command=self.close,
-            style="Quiet.TButton",
-        ).pack(side="right")
-        ttk.Button(
+            relief="flat",
+            borderwidth=0,
+            background="#F1E5DF",
+            activebackground="#E8D8D0",
+            foreground=self.INK,
+            activeforeground=self.INK,
+            font=self.fonts["button"],
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        ).pack(side="left")
+        tk.Button(
             buttons,
-            text="Save changes",
+            text="Save my setup  ♡",
             command=self._save,
-            style="Accent.TButton",
-        ).pack(side="right", padx=(0, 10))
+            relief="flat",
+            borderwidth=0,
+            background=self.ACCENT,
+            activebackground=self.ACCENT_DARK,
+            foreground="#FFFFFF",
+            activeforeground="#FFFFFF",
+            font=self.fonts["button"],
+            padx=18,
+            pady=9,
+            cursor="hand2",
+        ).pack(side="left", padx=(8, 0))
 
-    def _card(self, parent: tk.Misc, title: str) -> tk.Frame:
+    def _card(
+        self,
+        parent: tk.Misc,
+        title: str,
+        eyebrow: str,
+    ) -> tuple[tk.Frame, tk.Frame]:
         outer = tk.Frame(
             parent,
             background=self.CARD,
-            highlightbackground="#e7e1da",
+            highlightbackground=self.BORDER,
             highlightthickness=1,
         )
-        outer.pack(fill="x", padx=30, pady=(0, 16))
+        heading = tk.Frame(outer, background=self.CARD)
+        heading.pack(fill="x", padx=18, pady=(15, 11))
         tk.Label(
-            outer,
-            text=title.upper(),
+            heading,
+            text=title,
+            background=self.CARD,
+            foreground=self.INK,
+            font=self.fonts["section"],
+        ).pack(anchor="w")
+        tk.Label(
+            heading,
+            text=eyebrow,
             background=self.CARD,
             foreground=self.ACCENT,
-            font=("Segoe UI Semibold", 9),
-        ).pack(anchor="w", padx=20, pady=(17, 13))
+            font=self.fonts["small"],
+        ).pack(anchor="w", pady=(1, 0))
         content = tk.Frame(outer, background=self.CARD)
-        content.pack(fill="x", padx=20, pady=(0, 19))
-        return content
+        content.pack(fill="x", padx=18, pady=(0, 16))
+        return outer, content
+
+    def _divider(self, parent: tk.Misc) -> tk.Frame:
+        return tk.Frame(parent, background="#F3E8E2", height=1)
 
     def _field_label(self, parent: tk.Misc, text: str) -> tk.Label:
         return tk.Label(
@@ -277,7 +628,7 @@ class SettingsWindow:
             text=text,
             background=self.CARD,
             foreground=self.INK,
-            font=("Segoe UI", 10),
+            font=self.fonts["control"],
         )
 
     def _slider(
@@ -295,9 +646,11 @@ class SettingsWindow:
         self._field_label(row, label).pack(side="left")
         value_label = tk.Label(
             row,
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=("Segoe UI Semibold", 9),
+            background=self.PEACH,
+            foreground=self.ACCENT_DARK,
+            font=self.fonts["control"],
+            padx=7,
+            pady=2,
         )
         value_label.pack(side="right")
 
@@ -312,8 +665,25 @@ class SettingsWindow:
             command=update,
             style="Cat.Horizontal.TScale",
         )
-        scale.pack(fill="x", pady=(8, 0))
+        scale.pack(fill="x", pady=(9, 0))
         update(str(variable.get()))
+
+    def _animate_preview(self) -> None:
+        sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
+        if self._preview_frames:
+            selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
+            if selected in ("gray", "ginger"):
+                self._preview_variant = selected
+            elif self._preview_step % len(sequence) == 0:
+                self._preview_variant = (
+                    "ginger" if self._preview_variant == "gray" else "gray"
+                )
+            frames = self._preview_frames.get(self._preview_variant, {})
+            frame = frames.get(sequence[self._preview_step % len(sequence)])
+            if frame is not None:
+                self.preview_canvas.itemconfigure(self._preview_image, image=frame)
+        self._preview_step += 1
+        self._after_id = self.window.after(520, self._animate_preview)
 
     def _save(self) -> None:
         settings = AppSettings(
@@ -333,7 +703,7 @@ class SettingsWindow:
         width = self.window.winfo_width()
         height = self.window.winfo_height()
         x = (self.window.winfo_screenwidth() - width) // 2
-        y = max(20, (self.window.winfo_screenheight() - height) // 2)
+        y = max(4, (self.window.winfo_screenheight() - height - 32) // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
 
     def show(self) -> None:
@@ -343,6 +713,9 @@ class SettingsWindow:
 
     def close(self) -> None:
         try:
+            if self._after_id is not None:
+                self.window.after_cancel(self._after_id)
+                self._after_id = None
             self.window.destroy()
         except tk.TclError:
             pass

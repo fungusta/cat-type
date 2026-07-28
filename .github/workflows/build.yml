@@ -1,0 +1,57 @@
+name: Cross-platform build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            artifact: cat-type-windows-x64
+            output: dist/Cat Type.exe
+          - runner: macos-15-intel
+            artifact: cat-type-macos-x64
+            output: dist/Cat Type.app
+          - runner: ubuntu-22.04
+            artifact: cat-type-linux-x64
+            output: dist/Cat Type
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-tk libayatana-appindicator3-1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-build.txt
+
+      - name: Run behavior and settings tests
+        run: python -m unittest tests.test_behavior tests.test_settings -v
+
+      - name: Build application
+        run: |
+          python scripts/build_icon.py
+          python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.output }}
+          if-no-files-found: error

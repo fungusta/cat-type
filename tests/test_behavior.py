@@ -1,27 +1,42 @@
 import unittest
+from unittest.mock import patch
 
 from cat_type import (
     AnimationState,
     CaretLocator,
     ScreenRect,
+    choose_fallback_position,
     choose_overlay_position,
 )
 
 
 class FakeDegenerateTextRange:
-    def __init__(self, can_move_forward: bool) -> None:
+    def __init__(
+        self,
+        can_move_forward: bool,
+        forward_has_geometry: bool = True,
+    ) -> None:
         self.can_move_forward = can_move_forward
+        self.forward_has_geometry = forward_has_geometry
 
     def GetBoundingRectangles(self) -> tuple:
         return ()
 
     def Clone(self) -> "FakeTextRangeProbe":
-        return FakeTextRangeProbe(self.can_move_forward)
+        return FakeTextRangeProbe(
+            self.can_move_forward,
+            self.forward_has_geometry,
+        )
 
 
 class FakeTextRangeProbe:
-    def __init__(self, can_move_forward: bool) -> None:
+    def __init__(
+        self,
+        can_move_forward: bool,
+        forward_has_geometry: bool,
+    ) -> None:
         self.can_move_forward = can_move_forward
+        self.forward_has_geometry = forward_has_geometry
         self.rectangles: tuple = ()
 
     def MoveEndpointByUnit(
@@ -32,7 +47,8 @@ class FakeTextRangeProbe:
     ) -> int:
         del endpoint, unit
         if count == 1 and self.can_move_forward:
-            self.rectangles = (100.0, 200.0, 8.0, 18.0)
+            if self.forward_has_geometry:
+                self.rectangles = (100.0, 200.0, 8.0, 18.0)
             return 1
         if count == -1:
             self.rectangles = (100.0, 200.0, 8.0, 18.0)
@@ -57,6 +73,34 @@ class CaretRangeTests(unittest.TestCase):
         )
 
         self.assertEqual(caret, ScreenRect(108, 200, 110, 218))
+
+    def test_uses_previous_character_when_next_character_is_invisible(self) -> None:
+        caret = CaretLocator._rect_from_uia_range(
+            FakeDegenerateTextRange(
+                can_move_forward=True,
+                forward_has_geometry=False,
+            )
+        )
+
+        self.assertEqual(caret, ScreenRect(108, 200, 110, 218))
+
+
+class CaretFallbackTests(unittest.TestCase):
+    def test_allows_corner_fallback_for_verified_text_control(self) -> None:
+        locator = CaretLocator()
+
+        with (
+            patch.object(
+                locator,
+                "_locate_with_uia",
+                return_value=(None, False, True),
+            ),
+            patch.object(locator, "_locate_with_win32", return_value=None),
+        ):
+            snapshot = locator.locate()
+
+        self.assertTrue(snapshot.fallback_allowed)
+        self.assertEqual(snapshot.source, "uia-fallback")
 
 
 class OverlayPositionTests(unittest.TestCase):
@@ -92,6 +136,27 @@ class OverlayPositionTests(unittest.TestCase):
             choose_overlay_position(caret, 88, 88, work),
             (208, 126),
         )
+
+    def test_fallback_uses_preferred_work_area_corner(self) -> None:
+        work = ScreenRect(-1920, 40, 0, 1080)
+        expected = {
+            "above-left": (-1914, 46),
+            "above-right": (-94, 46),
+            "below-left": (-1914, 986),
+            "below-right": (-94, 986),
+        }
+
+        for placement, position in expected.items():
+            with self.subTest(placement=placement):
+                self.assertEqual(
+                    choose_fallback_position(
+                        88,
+                        88,
+                        work,
+                        placement=placement,
+                    ),
+                    position,
+                )
 
 
 class AnimationStateTests(unittest.TestCase):

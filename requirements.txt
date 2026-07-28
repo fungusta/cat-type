@@ -1,4 +1,5 @@
-comtypes==1.4.16
 Pillow==12.3.0
+pynput==1.8.2
 pystray==0.19.5
-pywin32==312
+comtypes==1.4.16; sys_platform == "win32"
+pywin32==312; sys_platform == "win32"

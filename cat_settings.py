@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import sys
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -50,8 +51,17 @@ class AppSettings:
 
 
 def default_settings_path() -> Path:
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+    if sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = (
+            Path(local_app_data)
+            if local_app_data
+            else Path.home() / "AppData" / "Local"
+        )
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    else:
+        base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / APP_NAME / "settings.json"
 
 
@@ -93,7 +103,51 @@ def startup_command() -> str:
 
 
 def set_launch_at_startup(enabled: bool) -> None:
+    if sys.platform == "darwin":
+        launch_agents = Path.home() / "Library" / "LaunchAgents"
+        launch_agent = launch_agents / "com.fungusta.cat-type.plist"
+        if not enabled:
+            launch_agent.unlink(missing_ok=True)
+            return
+        launch_agents.mkdir(parents=True, exist_ok=True)
+        command = (
+            [str(Path(sys.executable).resolve())]
+            if getattr(sys, "frozen", False)
+            else [
+                str(Path(sys.executable).resolve()),
+                str(Path(__file__).resolve().with_name("cat_type.py")),
+            ]
+        )
+        launch_agent.write_bytes(
+            plistlib.dumps(
+                {
+                    "Label": "com.fungusta.cat-type",
+                    "ProgramArguments": command,
+                    "RunAtLoad": True,
+                }
+            )
+        )
+        return
+
     if sys.platform != "win32":
+        autostart = (
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+            / "autostart"
+        )
+        desktop_file = autostart / "cat-type.desktop"
+        if not enabled:
+            desktop_file.unlink(missing_ok=True)
+            return
+        autostart.mkdir(parents=True, exist_ok=True)
+        desktop_file.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Cat Type\n"
+            f"Exec={startup_command()}\n"
+            "Terminal=false\n"
+            "X-GNOME-Autostart-enabled=true\n",
+            encoding="utf-8",
+        )
         return
 
     import winreg

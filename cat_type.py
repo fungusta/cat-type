@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import os
 import queue
 import sys
+import tempfile
 import threading
 import time
 import tkinter as tk
@@ -13,15 +15,15 @@ from pathlib import Path
 from typing import Callable
 from ctypes import wintypes
 
-import pystray
 from PIL import Image, ImageTk
 
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
 from settings_window import SettingsWindow
 
 
-if sys.platform != "win32":
-    raise SystemExit("This prototype currently supports Windows only.")
+IS_WINDOWS = sys.platform == "win32"
+IS_MACOS = sys.platform == "darwin"
+IS_LINUX = sys.platform.startswith("linux")
 
 
 APP_DIR = Path(
@@ -66,10 +68,6 @@ TEXT_UNIT_CHARACTER = 0
 LRESULT = ctypes.c_ssize_t
 ULONG_PTR = wintypes.WPARAM
 
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-
 class KBDLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [
         ("vkCode", wintypes.DWORD),
@@ -103,75 +101,89 @@ class MONITORINFO(ctypes.Structure):
     ]
 
 
-HOOKPROC = ctypes.WINFUNCTYPE(
-    LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
-)
+if IS_WINDOWS:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    HOOKPROC = ctypes.WINFUNCTYPE(
+        LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM
+    )
 
-user32.SetWindowsHookExW.argtypes = [
-    ctypes.c_int,
-    HOOKPROC,
-    wintypes.HINSTANCE,
-    wintypes.DWORD,
-]
-user32.SetWindowsHookExW.restype = wintypes.HHOOK
-user32.CallNextHookEx.argtypes = [
-    wintypes.HHOOK,
-    ctypes.c_int,
-    wintypes.WPARAM,
-    wintypes.LPARAM,
-]
-user32.CallNextHookEx.restype = LRESULT
-user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
-user32.UnhookWindowsHookEx.restype = wintypes.BOOL
-user32.GetGUIThreadInfo.argtypes = [
-    wintypes.DWORD,
-    ctypes.POINTER(GUITHREADINFO),
-]
-user32.GetGUIThreadInfo.restype = wintypes.BOOL
-user32.ClientToScreen.argtypes = [
-    wintypes.HWND,
-    ctypes.POINTER(wintypes.POINT),
-]
-user32.ClientToScreen.restype = wintypes.BOOL
-user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
-user32.MonitorFromPoint.restype = wintypes.HMONITOR
-user32.GetMonitorInfoW.argtypes = [
-    wintypes.HMONITOR,
-    ctypes.POINTER(MONITORINFO),
-]
-user32.GetMonitorInfoW.restype = wintypes.BOOL
-user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
-user32.GetWindowLongW.restype = ctypes.c_long
-user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
-user32.SetWindowLongW.restype = ctypes.c_long
-user32.SetWindowPos.argtypes = [
-    wintypes.HWND,
-    wintypes.HWND,
-    ctypes.c_int,
-    ctypes.c_int,
-    ctypes.c_int,
-    ctypes.c_int,
-    wintypes.UINT,
-]
-user32.SetWindowPos.restype = wintypes.BOOL
-user32.PostThreadMessageW.argtypes = [
-    wintypes.DWORD,
-    wintypes.UINT,
-    wintypes.WPARAM,
-    wintypes.LPARAM,
-]
-user32.PostThreadMessageW.restype = wintypes.BOOL
-kernel32.GetCurrentThreadId.restype = wintypes.DWORD
-kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
-kernel32.GetModuleHandleW.restype = wintypes.HMODULE
-kernel32.CreateMutexW.argtypes = [
-    ctypes.c_void_p,
-    wintypes.BOOL,
-    wintypes.LPCWSTR,
-]
-kernel32.CreateMutexW.restype = wintypes.HANDLE
+    user32.SetWindowsHookExW.argtypes = [
+        ctypes.c_int,
+        HOOKPROC,
+        wintypes.HINSTANCE,
+        wintypes.DWORD,
+    ]
+    user32.SetWindowsHookExW.restype = wintypes.HHOOK
+    user32.CallNextHookEx.argtypes = [
+        wintypes.HHOOK,
+        ctypes.c_int,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
+    user32.CallNextHookEx.restype = LRESULT
+    user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+    user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+    user32.GetGUIThreadInfo.argtypes = [
+        wintypes.DWORD,
+        ctypes.POINTER(GUITHREADINFO),
+    ]
+    user32.GetGUIThreadInfo.restype = wintypes.BOOL
+    user32.ClientToScreen.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.POINT),
+    ]
+    user32.ClientToScreen.restype = wintypes.BOOL
+    user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
+    user32.MonitorFromPoint.restype = wintypes.HMONITOR
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowRect.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.RECT),
+    ]
+    user32.GetWindowRect.restype = wintypes.BOOL
+    user32.GetMonitorInfoW.argtypes = [
+        wintypes.HMONITOR,
+        ctypes.POINTER(MONITORINFO),
+    ]
+    user32.GetMonitorInfoW.restype = wintypes.BOOL
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.GetWindowLongW.restype = ctypes.c_long
+    user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    user32.SetWindowLongW.restype = ctypes.c_long
+    user32.SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        wintypes.UINT,
+    ]
+    user32.SetWindowPos.restype = wintypes.BOOL
+    user32.PostThreadMessageW.argtypes = [
+        wintypes.DWORD,
+        wintypes.UINT,
+        wintypes.WPARAM,
+        wintypes.LPARAM,
+    ]
+    user32.PostThreadMessageW.restype = wintypes.BOOL
+    kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+    kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+    kernel32.GetModuleHandleW.restype = wintypes.HMODULE
+    kernel32.CreateMutexW.argtypes = [
+        ctypes.c_void_p,
+        wintypes.BOOL,
+        wintypes.LPCWSTR,
+    ]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+else:
+    user32 = None
+    kernel32 = None
+    HOOKPROC = Callable[..., int]
 
 _instance_mutex: int | None = None
+_instance_lock: object | None = None
 
 
 @dataclass(frozen=True)
@@ -196,10 +208,14 @@ class CaretSnapshot:
     rect: ScreenRect | None
     is_password: bool = False
     source: str = "none"
+    fallback_allowed: bool = False
 
 
 def set_per_monitor_dpi_awareness() -> None:
     """Keep caret and overlay coordinates in the same physical pixel space."""
+    if not IS_WINDOWS:
+        return
+    assert user32 is not None
     try:
         # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
@@ -211,16 +227,44 @@ def set_per_monitor_dpi_awareness() -> None:
 
 
 def acquire_single_instance() -> bool:
-    global _instance_mutex
-    _instance_mutex = kernel32.CreateMutexW(
-        None,
-        False,
-        "Local\\CatTypeDesktopApp",
-    )
-    return bool(_instance_mutex) and ctypes.get_last_error() != 183
+    global _instance_lock, _instance_mutex
+    if IS_WINDOWS:
+        assert kernel32 is not None
+        _instance_mutex = kernel32.CreateMutexW(
+            None,
+            False,
+            "Local\\CatTypeDesktopApp",
+        )
+        return bool(_instance_mutex) and ctypes.get_last_error() != 183
+
+    import fcntl
+
+    lock_path = Path(tempfile.gettempdir()) / f"cat-type-{os.getuid()}.lock"
+    _instance_lock = lock_path.open("w")
+    try:
+        fcntl.flock(_instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        _instance_lock.close()
+        _instance_lock = None
+        return False
+    return True
 
 
 def work_area_for(rect: ScreenRect) -> ScreenRect:
+    if not IS_WINDOWS:
+        root = tk._default_root
+        if root is not None:
+            left = root.winfo_vrootx()
+            top = root.winfo_vrooty()
+            return ScreenRect(
+                left,
+                top,
+                left + root.winfo_vrootwidth(),
+                top + root.winfo_vrootheight(),
+            )
+        return ScreenRect(0, 0, 1920, 1080)
+
+    assert user32 is not None
     point = wintypes.POINT(rect.left, rect.top)
     monitor = user32.MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST)
     info = MONITORINFO(cbSize=ctypes.sizeof(MONITORINFO))
@@ -228,6 +272,19 @@ def work_area_for(rect: ScreenRect) -> ScreenRect:
         work = info.rcWork
         return ScreenRect(work.left, work.top, work.right, work.bottom)
     return ScreenRect(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))
+
+
+def active_work_area() -> ScreenRect:
+    """Return the work area containing the currently focused application."""
+    if IS_WINDOWS:
+        assert user32 is not None
+        hwnd = user32.GetForegroundWindow()
+        rect = wintypes.RECT()
+        if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return work_area_for(
+                ScreenRect(rect.left, rect.top, rect.right, rect.bottom)
+            )
+    return work_area_for(ScreenRect(0, 0, 1, 1))
 
 
 def choose_overlay_position(
@@ -271,8 +328,34 @@ def choose_overlay_position(
     return x, y
 
 
+def choose_fallback_position(
+    overlay_width: int,
+    overlay_height: int,
+    work_area: ScreenRect,
+    gap: int = 6,
+    placement: str = "above-right",
+) -> tuple[int, int]:
+    """Place the overlay in the preferred corner when no caret is available."""
+    prefer_left = placement.endswith("left")
+    prefer_below = placement.startswith("below")
+    x = (
+        work_area.left + gap
+        if prefer_left
+        else work_area.right - overlay_width - gap
+    )
+    y = (
+        work_area.bottom - overlay_height - gap
+        if prefer_below
+        else work_area.top + gap
+    )
+    return x, y
+
+
 def make_window_non_interactive(hwnd: int) -> None:
     """Keep the overlay topmost without taking focus or pointer input."""
+    if not IS_WINDOWS:
+        return
+    assert user32 is not None
     style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
     style |= (
         WS_EX_TRANSPARENT
@@ -340,6 +423,7 @@ class KeyboardMonitor:
         self._thread_id = 0
         self._hook = None
         self._callback = None
+        self._listener = None
         self._ctrl_down = False
         self._alt_down = False
 
@@ -350,12 +434,20 @@ class KeyboardMonitor:
         self._thread.start()
 
     def stop(self) -> None:
-        if self._thread_id:
+        if IS_WINDOWS and self._thread_id:
+            assert user32 is not None
             user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+        if self._listener is not None:
+            self._listener.stop()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
 
     def _run(self) -> None:
+        if not IS_WINDOWS:
+            self._run_portable()
+            return
+
+        assert kernel32 is not None and user32 is not None
         self._thread_id = kernel32.GetCurrentThreadId()
 
         @HOOKPROC
@@ -402,6 +494,42 @@ class KeyboardMonitor:
         user32.UnhookWindowsHookEx(self._hook)
         self._hook = None
 
+    def _run_portable(self) -> None:
+        try:
+            from pynput import keyboard
+
+            ctrl_keys = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
+            alt_keys = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r}
+
+            def on_press(key: object, *_injected: object) -> None:
+                if key in ctrl_keys:
+                    self._ctrl_down = True
+                    return
+                if key in alt_keys:
+                    self._alt_down = True
+                    return
+                char = getattr(key, "char", None)
+                if char and char.lower() == "q" and self._ctrl_down and self._alt_down:
+                    self.event_queue.put(("quit", time.monotonic()))
+                else:
+                    self.event_queue.put(("key", time.monotonic()))
+
+            def on_release(key: object, *_injected: object) -> None:
+                if key in ctrl_keys:
+                    self._ctrl_down = False
+                elif key in alt_keys:
+                    self._alt_down = False
+
+            self._listener = keyboard.Listener(
+                on_press=on_press,
+                on_release=on_release,
+            )
+            self._listener.run()
+        except Exception as exc:
+            if os.environ.get("CAT_TYPE_DEBUG"):
+                print(f"Keyboard listener unavailable: {exc}", file=sys.stderr)
+            self.event_queue.put(("hook-error", time.monotonic()))
+
 
 class CaretLocator:
     def __init__(self, debug: bool = False) -> None:
@@ -429,7 +557,27 @@ class CaretLocator:
 
     def locate(self) -> CaretSnapshot:
         now = time.monotonic()
-        uia_rect, is_password = self._locate_with_uia()
+        if not IS_WINDOWS:
+            # Accessibility APIs differ considerably between desktop
+            # environments. Until a provider returns a usable caret rectangle,
+            # anchor the companion at the pointer so typing feedback remains
+            # available everywhere.
+            try:
+                from pynput.mouse import Controller
+
+                left, top = Controller().position
+                return CaretSnapshot(
+                    now,
+                    ScreenRect(round(left), round(top), round(left) + 2, round(top) + 20),
+                    False,
+                    "pointer-fallback",
+                )
+            except Exception as exc:
+                if self.debug:
+                    print(f"Pointer lookup failed: {exc}", file=sys.stderr)
+                return CaretSnapshot(now, None)
+
+        uia_rect, is_password, fallback_allowed = self._locate_with_uia()
         if is_password:
             return CaretSnapshot(now, None, True, "uia-password")
         if uia_rect:
@@ -438,9 +586,18 @@ class CaretLocator:
         win32_rect = self._locate_with_win32()
         if win32_rect:
             return CaretSnapshot(now, win32_rect, False, "win32")
+        if fallback_allowed:
+            return CaretSnapshot(
+                now,
+                None,
+                False,
+                "uia-fallback",
+                fallback_allowed=True,
+            )
         return CaretSnapshot(now, None)
 
     def _locate_with_win32(self) -> ScreenRect | None:
+        assert user32 is not None
         info = GUITHREADINFO(cbSize=ctypes.sizeof(GUITHREADINFO))
         if not user32.GetGUIThreadInfo(0, ctypes.byref(info)) or not info.hwndCaret:
             return None
@@ -460,19 +617,21 @@ class CaretLocator:
             right = top_left.x + 2
         return ScreenRect(top_left.x, top_left.y, right, bottom)
 
-    def _locate_with_uia(self) -> tuple[ScreenRect | None, bool]:
+    def _locate_with_uia(self) -> tuple[ScreenRect | None, bool, bool]:
         if self._automation is None or self._uia is None:
-            return None, False
+            return None, False, False
 
         try:
             element = self._automation.GetFocusedElement()
             if not element:
-                return None, False
+                return None, False, False
             if bool(element.CurrentIsPassword):
-                return None, True
+                return None, True, False
 
+            has_text_pattern = False
             unknown = element.GetCurrentPattern(self._uia.UIA_TextPattern2Id)
             if unknown:
+                has_text_pattern = True
                 pattern = unknown.QueryInterface(
                     self._uia.IUIAutomationTextPattern2
                 )
@@ -480,11 +639,12 @@ class CaretLocator:
                 if is_active and text_range:
                     rect = self._rect_from_uia_range(text_range)
                     if rect:
-                        return rect, False
+                        return rect, False, True
 
             # Older providers often expose TextPattern but not TextPattern2.
             unknown = element.GetCurrentPattern(self._uia.UIA_TextPatternId)
             if unknown:
+                has_text_pattern = True
                 pattern = unknown.QueryInterface(
                     self._uia.IUIAutomationTextPattern
                 )
@@ -492,11 +652,12 @@ class CaretLocator:
                 if ranges and ranges.Length:
                     rect = self._rect_from_uia_range(ranges.GetElement(0))
                     if rect:
-                        return rect, False
+                        return rect, False, True
         except Exception as exc:
             if self.debug:
                 print(f"UI Automation lookup failed: {exc}", file=sys.stderr)
-        return None, False
+            return None, False, False
+        return None, False, has_text_pattern
 
     @staticmethod
     def _rect_from_uia_range(text_range: object) -> ScreenRect | None:
@@ -505,38 +666,47 @@ class CaretLocator:
         used_character_probe = False
         use_trailing_edge = False
 
+        def has_usable_rectangle(rectangles: tuple) -> bool:
+            if len(rectangles) < 4:
+                return False
+            _, _, width, height = rectangles[-4:]
+            return width >= 0 and height > 0
+
         # UI Automation permits a provider to return no rectangles for a
         # degenerate (zero-length) caret range. Terminals commonly do this.
         # Temporarily include the next character to obtain the caret cell's
-        # geometry. At the end of a document, include the previous character
-        # and use its trailing edge instead.
-        if len(coords) < 4:
+        # geometry. If the next character is absent or invisible, include the
+        # previous character and use its trailing edge instead.
+        if not has_usable_rectangle(coords):
             probe = text_range.Clone()
             moved = probe.MoveEndpointByUnit(
                 TEXT_PATTERN_RANGE_ENDPOINT_END,
                 TEXT_UNIT_CHARACTER,
                 1,
             )
-            if not moved:
+            if moved:
+                values = probe.GetBoundingRectangles()
+                coords = tuple(values) if values is not None else ()
+                used_character_probe = True
+
+            if not has_usable_rectangle(coords):
                 probe = text_range.Clone()
                 moved = probe.MoveEndpointByUnit(
                     TEXT_PATTERN_RANGE_ENDPOINT_START,
                     TEXT_UNIT_CHARACTER,
                     -1,
                 )
-                use_trailing_edge = bool(moved)
-            if moved:
-                values = probe.GetBoundingRectangles()
-                coords = tuple(values) if values is not None else ()
-                used_character_probe = True
+                if moved:
+                    values = probe.GetBoundingRectangles()
+                    coords = tuple(values) if values is not None else ()
+                    used_character_probe = True
+                    use_trailing_edge = has_usable_rectangle(coords)
 
-        if len(coords) < 4:
+        if not has_usable_rectangle(coords):
             return None
 
         # Use the final rectangle for a collapsed selection/caret at line end.
         left, top, width, height = coords[-4:]
-        if width < 0 or height <= 0:
-            return None
         if use_trailing_edge:
             left += width
         right = left + (2.0 if used_character_probe else max(width, 2.0))
@@ -577,11 +747,15 @@ class CaretTracker:
             return self._snapshot
 
     def _run(self) -> None:
-        import comtypes
+        comtypes_module = None
+        if IS_WINDOWS:
+            import comtypes
 
-        comtypes.CoInitialize()
+            comtypes_module = comtypes
+            comtypes_module.CoInitialize()
         try:
-            self._locator.initialize_uia()
+            if IS_WINDOWS:
+                self._locator.initialize_uia()
             while not self._stop.is_set():
                 self._wake.wait(timeout=self._poll_interval())
                 self._wake.clear()
@@ -591,7 +765,8 @@ class CaretTracker:
                 with self._snapshot_lock:
                     self._snapshot = snapshot
         finally:
-            comtypes.CoUninitialize()
+            if comtypes_module is not None:
+                comtypes_module.CoUninitialize()
 
     def _poll_interval(self) -> float:
         with self._activity_lock:
@@ -639,6 +814,7 @@ class CatTypeApp:
         self._settings_window: SettingsWindow | None = None
         self._tray_icon: pystray.Icon | None = None
         self._tray_thread: threading.Thread | None = None
+        self._x_display = None
         self._shutting_down = False
 
         self.root = tk.Tk()
@@ -650,9 +826,20 @@ class CatTypeApp:
                 pass
         self.root.withdraw()
         self.root.overrideredirect(True)
-        self.root.configure(background=self.TRANSPARENT_COLOR)
         self.root.wm_attributes("-topmost", True)
-        self.root.wm_attributes("-transparentcolor", self.TRANSPARENT_COLOR)
+        self._window_background = (
+            "systemTransparent" if IS_MACOS else self.TRANSPARENT_COLOR
+        )
+        self.root.configure(background=self._window_background)
+        if IS_WINDOWS:
+            self.root.wm_attributes("-transparentcolor", self.TRANSPARENT_COLOR)
+        elif IS_MACOS:
+            self.root.wm_attributes("-transparent", True)
+        else:
+            try:
+                self.root.wm_attributes("-type", "splash")
+            except tk.TclError:
+                pass
 
         self.frames = self._load_frames(self.settings.size_percent)
         self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
@@ -662,7 +849,7 @@ class CatTypeApp:
             image=self.frames[CAT_VARIANTS[0]]["idle"],
             borderwidth=0,
             highlightthickness=0,
-            background=self.TRANSPARENT_COLOR,
+            background=self._window_background,
         )
         self.label.pack()
         self.root.update_idletasks()
@@ -731,7 +918,8 @@ class CatTypeApp:
         if self._hook_failed:
             self._hook_failed = False
             print(
-                "Could not install the Windows keyboard activity hook.",
+                "Could not install the keyboard activity listener. "
+                "Check the operating system's input-monitoring permissions.",
                 file=sys.stderr,
             )
             self.shutdown()
@@ -746,7 +934,7 @@ class CatTypeApp:
             and
             self.animation.is_visible(now)
             and snapshot_is_current
-            and snapshot.rect is not None
+            and (snapshot.rect is not None or snapshot.fallback_allowed)
             and not snapshot.is_password
         ):
             self._show(snapshot, now)
@@ -759,19 +947,27 @@ class CatTypeApp:
         self.root.after(16, self._tick)
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
-        assert snapshot.rect is not None
+        assert snapshot.rect is not None or snapshot.fallback_allowed
         self.root.wm_attributes("-alpha", self.animation.opacity(now))
         frame_name = self.animation.frame_name(now)
 
         if self._anchor_position is None:
-            area = work_area_for(snapshot.rect)
-            self._anchor_position = choose_overlay_position(
-                snapshot.rect,
-                self.frame_width,
-                self.frame_height,
-                area,
-                placement=self.settings.placement,
-            )
+            if snapshot.rect is not None:
+                area = work_area_for(snapshot.rect)
+                self._anchor_position = choose_overlay_position(
+                    snapshot.rect,
+                    self.frame_width,
+                    self.frame_height,
+                    area,
+                    placement=self.settings.placement,
+                )
+            else:
+                self._anchor_position = choose_fallback_position(
+                    self.frame_width,
+                    self.frame_height,
+                    active_work_area(),
+                    placement=self.settings.placement,
+                )
             if self.settings.cat_style == "alternate":
                 self._active_variant = CAT_VARIANTS[self._next_variant_index]
                 self._next_variant_index = (
@@ -785,6 +981,7 @@ class CatTypeApp:
             self.label.configure(
                 image=self.frames[self._active_variant][frame_name]
             )
+            self._shape_linux_overlay(self._active_variant, frame_name)
             self._last_rendered_frame = rendered_frame
 
         x, y = self._anchor_position
@@ -819,6 +1016,64 @@ class CatTypeApp:
 
     def _make_overlay_non_interactive(self) -> None:
         make_window_non_interactive(self.root.winfo_id())
+        if IS_LINUX:
+            self._shape_linux_overlay(self._active_variant, "idle")
+
+    def _shape_linux_overlay(self, variant: str, frame_name: str) -> None:
+        """Use X Shape for a transparent, click-through overlay on X11."""
+        if not IS_LINUX:
+            return
+        try:
+            from Xlib import X, display
+            from Xlib.ext import shape
+
+            if self._x_display is None:
+                self._x_display = display.Display()
+            window = self._x_display.create_resource_object(
+                "window",
+                self.root.winfo_id(),
+            )
+            with Image.open(
+                FRAME_ROOT / variant / f"{frame_name}.png"
+            ) as source:
+                alpha = source.convert("RGBA").getchannel("A")
+                if self.settings.size_percent != 100:
+                    alpha = alpha.resize(
+                        (self.frame_width, self.frame_height),
+                        Image.Resampling.NEAREST,
+                    )
+                rectangles = []
+                pixels = alpha.load()
+                for y in range(alpha.height):
+                    start = None
+                    for x in range(alpha.width + 1):
+                        opaque = x < alpha.width and pixels[x, y] > 0
+                        if opaque and start is None:
+                            start = x
+                        elif not opaque and start is not None:
+                            rectangles.append((start, y, x - start, 1))
+                            start = None
+
+            window.shape_rectangles(
+                shape.SO.Set,
+                shape.SK.Bounding,
+                X.YXBanded,
+                0,
+                0,
+                rectangles,
+            )
+            window.shape_rectangles(
+                shape.SO.Set,
+                shape.SK.Input,
+                X.YXBanded,
+                0,
+                0,
+                [],
+            )
+            self._x_display.sync()
+        except Exception as exc:
+            if self.debug:
+                print(f"X11 window shaping unavailable: {exc}", file=sys.stderr)
 
     def _load_frames(
         self,
@@ -853,6 +1108,8 @@ class CatTypeApp:
         return frames
 
     def _start_tray(self) -> None:
+        import pystray
+
         with Image.open(APP_ICON) as source:
             tray_image = source.convert("RGBA").copy()
         menu = pystray.Menu(
@@ -884,6 +1141,9 @@ class CatTypeApp:
             "Cat Type",
             menu,
         )
+        if IS_MACOS:
+            self._tray_icon.run_detached()
+            return
         self._tray_thread = threading.Thread(
             target=self._tray_icon.run,
             name="system-tray",
@@ -960,13 +1220,20 @@ def main() -> None:
     args = parse_args()
     set_per_monitor_dpi_awareness()
     if not acquire_single_instance():
-        user32.MessageBoxW(
-            None,
+        message = (
             "Cat Type is already running. Use its cat icon in the system tray "
-            "to open Settings or quit.",
-            "Cat Type",
-            0x00000040,
+            "to open Settings or quit."
         )
+        if IS_WINDOWS:
+            assert user32 is not None
+            user32.MessageBoxW(None, message, "Cat Type", 0x00000040)
+        else:
+            from tkinter import messagebox
+
+            duplicate_root = tk.Tk()
+            duplicate_root.withdraw()
+            messagebox.showinfo("Cat Type", message, parent=duplicate_root)
+            duplicate_root.destroy()
         return
     missing = [
         str(FRAME_ROOT / variant / f"{name}.png")

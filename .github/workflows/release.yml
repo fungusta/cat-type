@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            asset: Cat-Type-Windows-x64.exe
+            source: dist/Cat-Type-Windows-x64.exe
+            package_arch: x64
+          - runner: macos-15-intel
+            asset: Cat-Type-macOS-x64.dmg
+            source: dist/Cat-Type-macOS-x64.dmg
+            package_arch: x64
+          - runner: macos-15
+            asset: Cat-Type-macOS-arm64.dmg
+            source: dist/Cat-Type-macOS-arm64.dmg
+            package_arch: arm64
+          - runner: ubuntu-22.04
+            asset: Cat-Type-Linux-x64.tar.gz
+            source: dist/Cat-Type-Linux-x64.tar.gz
+            package_arch: x64
+          - runner: ubuntu-22.04-arm
+            asset: Cat-Type-Linux-arm64.tar.gz
+            source: dist/Cat-Type-Linux-arm64.tar.gz
+            package_arch: arm64
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python scripts/check_release_version.py "${{ github.ref_name }}"
+
+      - name: Install Linux desktop libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes python3-tk libayatana-appindicator3-1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-build.txt
+
+      - name: Run behavior and settings tests
+        run: python -m unittest tests.test_behavior tests.test_settings -v
+
+      - name: Build application
+        run: |
+          python scripts/build_icon.py
+          python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - name: Install Inno Setup
+        if: runner.os == 'Windows'
+        run: choco install innosetup --no-progress --yes
+
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\CatType.iss
+          Move-Item -LiteralPath "dist\Cat Type Setup.exe" -Destination "dist\Cat-Type-Windows-x64.exe"
+
+      - name: Build macOS disk image
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          hdiutil create \
+            -volname "Cat Type" \
+            -srcfolder "dist/Cat Type.app" \
+            -ov \
+            -format UDZO \
+            "dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg"
+
+      - name: Build Linux archive
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          tar -C dist -czf \
+            "dist/Cat-Type-Linux-${{ matrix.package_arch }}.tar.gz" \
+            "Cat Type"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.source }}
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd release-assets
+          sha256sum Cat-Type-* > SHA256SUMS.txt
+          gh release create "${GITHUB_REF_NAME}" ./* --generate-notes
