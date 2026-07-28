@@ -2,9 +2,61 @@ import unittest
 
 from cat_type import (
     AnimationState,
+    CaretLocator,
     ScreenRect,
     choose_overlay_position,
 )
+
+
+class FakeDegenerateTextRange:
+    def __init__(self, can_move_forward: bool) -> None:
+        self.can_move_forward = can_move_forward
+
+    def GetBoundingRectangles(self) -> tuple:
+        return ()
+
+    def Clone(self) -> "FakeTextRangeProbe":
+        return FakeTextRangeProbe(self.can_move_forward)
+
+
+class FakeTextRangeProbe:
+    def __init__(self, can_move_forward: bool) -> None:
+        self.can_move_forward = can_move_forward
+        self.rectangles: tuple = ()
+
+    def MoveEndpointByUnit(
+        self,
+        endpoint: int,
+        unit: int,
+        count: int,
+    ) -> int:
+        del endpoint, unit
+        if count == 1 and self.can_move_forward:
+            self.rectangles = (100.0, 200.0, 8.0, 18.0)
+            return 1
+        if count == -1:
+            self.rectangles = (100.0, 200.0, 8.0, 18.0)
+            return -1
+        return 0
+
+    def GetBoundingRectangles(self) -> tuple:
+        return self.rectangles
+
+
+class CaretRangeTests(unittest.TestCase):
+    def test_uses_next_character_geometry_for_degenerate_uia_caret(self) -> None:
+        caret = CaretLocator._rect_from_uia_range(
+            FakeDegenerateTextRange(can_move_forward=True)
+        )
+
+        self.assertEqual(caret, ScreenRect(100, 200, 102, 218))
+
+    def test_uses_previous_character_right_edge_at_document_end(self) -> None:
+        caret = CaretLocator._rect_from_uia_range(
+            FakeDegenerateTextRange(can_move_forward=False)
+        )
+
+        self.assertEqual(caret, ScreenRect(108, 200, 110, 218))
 
 
 class OverlayPositionTests(unittest.TestCase):

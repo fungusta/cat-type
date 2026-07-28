@@ -59,6 +59,9 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 MONITOR_DEFAULTTONEAREST = 0x00000002
+TEXT_PATTERN_RANGE_ENDPOINT_START = 0
+TEXT_PATTERN_RANGE_ENDPOINT_END = 1
+TEXT_UNIT_CHARACTER = 0
 
 LRESULT = ctypes.c_ssize_t
 ULONG_PTR = wintypes.WPARAM
@@ -498,9 +501,35 @@ class CaretLocator:
     @staticmethod
     def _rect_from_uia_range(text_range: object) -> ScreenRect | None:
         values = text_range.GetBoundingRectangles()
-        if values is None:
-            return None
-        coords = tuple(values)
+        coords = tuple(values) if values is not None else ()
+        used_character_probe = False
+        use_trailing_edge = False
+
+        # UI Automation permits a provider to return no rectangles for a
+        # degenerate (zero-length) caret range. Terminals commonly do this.
+        # Temporarily include the next character to obtain the caret cell's
+        # geometry. At the end of a document, include the previous character
+        # and use its trailing edge instead.
+        if len(coords) < 4:
+            probe = text_range.Clone()
+            moved = probe.MoveEndpointByUnit(
+                TEXT_PATTERN_RANGE_ENDPOINT_END,
+                TEXT_UNIT_CHARACTER,
+                1,
+            )
+            if not moved:
+                probe = text_range.Clone()
+                moved = probe.MoveEndpointByUnit(
+                    TEXT_PATTERN_RANGE_ENDPOINT_START,
+                    TEXT_UNIT_CHARACTER,
+                    -1,
+                )
+                use_trailing_edge = bool(moved)
+            if moved:
+                values = probe.GetBoundingRectangles()
+                coords = tuple(values) if values is not None else ()
+                used_character_probe = True
+
         if len(coords) < 4:
             return None
 
@@ -508,7 +537,9 @@ class CaretLocator:
         left, top, width, height = coords[-4:]
         if width < 0 or height <= 0:
             return None
-        right = left + max(width, 2.0)
+        if use_trailing_edge:
+            left += width
+        right = left + (2.0 if used_character_probe else max(width, 2.0))
         return ScreenRect(
             round(left), round(top), round(right), round(top + height)
         )
