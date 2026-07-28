@@ -90,6 +90,7 @@ class CaretFallbackTests(unittest.TestCase):
         locator = CaretLocator()
 
         with (
+            patch("cat_type.IS_WINDOWS", True),
             patch.object(
                 locator,
                 "_locate_with_uia",
