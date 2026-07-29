@@ -330,12 +330,71 @@ class SettingsWindow:
                 self._preview_frames[variant] = variant_frames
 
     def _build(self) -> None:
-        body = tk.Frame(self.window, background=self.BACKGROUND)
-        body.pack(fill="both", expand=True)
+        self.body = tk.Frame(self.window, background=self.BACKGROUND)
+        self.body.pack(fill="both", expand=True)
 
-        self._build_header(body)
+        self.footer = self._build_footer(self.body)
 
-        columns = tk.Frame(body, background=self.BACKGROUND)
+        self.scroll_host = tk.Frame(
+            self.body,
+            background=self.BACKGROUND,
+        )
+        self.scroll_host.pack(side="top", fill="both", expand=True)
+
+        self.scrollbar = ttk.Scrollbar(
+            self.scroll_host,
+            orient="vertical",
+        )
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas = tk.Canvas(
+            self.scroll_host,
+            background=self.BACKGROUND,
+            highlightthickness=0,
+            yscrollcommand=self.scrollbar.set,
+        )
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.configure(command=self.scroll_canvas.yview)
+
+        self.scroll_content = tk.Frame(
+            self.scroll_canvas,
+            background=self.BACKGROUND,
+        )
+        self._scroll_content_id = self.scroll_canvas.create_window(
+            (0, 0),
+            window=self.scroll_content,
+            anchor="nw",
+        )
+        self.scroll_content.bind(
+            "<Configure>",
+            self._on_content_configure,
+        )
+        self.scroll_canvas.bind(
+            "<Configure>",
+            self._on_canvas_configure,
+        )
+        self.window.bind(
+            "<MouseWheel>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+        self.window.bind(
+            "<Button-4>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+        self.window.bind(
+            "<Button-5>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+
+        self._build_header(self.scroll_content)
+
+        columns = tk.Frame(
+            self.scroll_content,
+            background=self.BACKGROUND,
+        )
         columns.pack(fill="x", padx=26)
         columns.grid_columnconfigure(0, weight=3, uniform="settings")
         columns.grid_columnconfigure(1, weight=2, uniform="settings")
@@ -349,8 +408,6 @@ class SettingsWindow:
         self._build_appearance_card(left)
         self._build_size_card(right)
         self._build_timing_card(right)
-
-        self._build_footer(body)
 
     def _build_header(self, body: tk.Frame) -> None:
         hero = tk.Frame(
@@ -551,9 +608,14 @@ class SettingsWindow:
         )
         card.pack(fill="x", pady=(0, 14))
 
-    def _build_footer(self, body: tk.Frame) -> None:
+    def _build_footer(self, body: tk.Frame) -> tk.Frame:
         footer = tk.Frame(body, background=self.BACKGROUND)
-        footer.pack(fill="x", padx=28, pady=(16, 14))
+        footer.pack(
+            side="bottom",
+            fill="x",
+            padx=28,
+            pady=(12, 14),
+        )
         tk.Label(
             footer,
             text="♡  Only keyboard activity is detected — never what you type.",
@@ -594,6 +656,7 @@ class SettingsWindow:
             pady=9,
             cursor="hand2",
         ).pack(side="left", padx=(8, 0))
+        return footer
 
     def _card(
         self,
@@ -675,6 +738,64 @@ class SettingsWindow:
         )
         scale.pack(fill="x", pady=(9, 0))
         update(str(variable.get()))
+
+    def _on_content_configure(
+        self,
+        _event: tk.Event[tk.Misc],
+    ) -> None:
+        bounds = self.scroll_canvas.bbox("all")
+        if bounds is not None:
+            self.scroll_canvas.configure(scrollregion=bounds)
+
+    def _on_canvas_configure(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> None:
+        self.scroll_canvas.itemconfigure(
+            self._scroll_content_id,
+            width=event.width,
+        )
+
+    @staticmethod
+    def _wheel_scroll_units(event: tk.Event[tk.Misc]) -> int:
+        delta = int(getattr(event, "delta", 0) or 0)
+        if delta:
+            magnitude = max(1, abs(delta) // 120)
+            return -magnitude if delta > 0 else magnitude
+        return {
+            4: -1,
+            5: 1,
+        }.get(getattr(event, "num", None), 0)
+
+    def _event_is_over_scroll_content(
+        self,
+        widget: tk.Misc | None,
+    ) -> bool:
+        while widget is not None:
+            if widget is self.scroll_canvas:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def _on_mouse_wheel(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> str | None:
+        if not self._event_is_over_scroll_content(
+            getattr(event, "widget", None)
+        ):
+            return None
+        bounds = self.scroll_canvas.bbox("all")
+        if (
+            bounds is None
+            or bounds[3] - bounds[1] <= self.scroll_canvas.winfo_height()
+        ):
+            return None
+        units = self._wheel_scroll_units(event)
+        if not units:
+            return None
+        self.scroll_canvas.yview_scroll(units, "units")
+        return "break"
 
     def _animate_preview(self) -> None:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")

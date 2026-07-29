@@ -60,3 +60,127 @@ class SettingsWindowSizingTests(unittest.TestCase):
             (760, 520),
         )
 
+
+class SettingsWindowScrollingTests(unittest.TestCase):
+    def test_wheel_events_are_normalized_across_platforms(self) -> None:
+        wheel_units = getattr(
+            SettingsWindow,
+            "_wheel_scroll_units",
+            lambda _event: None,
+        )
+
+        cases = (
+            (SimpleNamespace(delta=120, num=None), -1),
+            (SimpleNamespace(delta=-120, num=None), 1),
+            (SimpleNamespace(delta=240, num=None), -2),
+            (SimpleNamespace(delta=1, num=None), -1),
+            (SimpleNamespace(delta=0, num=4), -1),
+            (SimpleNamespace(delta=0, num=5), 1),
+            (SimpleNamespace(delta=0, num=None), 0),
+        )
+        for event, expected in cases:
+            with self.subTest(event=event):
+                self.assertEqual(wheel_units(event), expected)
+
+    def test_wheel_scrolls_overflowing_content_under_pointer(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 900)
+        canvas.winfo_height.return_value = 400
+        canvas.master = None
+        settings_window.scroll_canvas = canvas
+        content = SimpleNamespace(master=canvas)
+        child = SimpleNamespace(master=content)
+        event = SimpleNamespace(widget=child, delta=-120, num=None)
+        handle_wheel = getattr(
+            settings_window,
+            "_on_mouse_wheel",
+            lambda _event: None,
+        )
+
+        result = handle_wheel(event)
+
+        canvas.yview_scroll.assert_called_once_with(1, "units")
+        self.assertEqual(result, "break")
+
+    def test_wheel_ignores_footer_and_content_that_fits(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 300)
+        canvas.winfo_height.return_value = 400
+        canvas.master = None
+        settings_window.scroll_canvas = canvas
+        content = SimpleNamespace(master=canvas)
+        footer_child = SimpleNamespace(master=None)
+        handle_wheel = getattr(
+            settings_window,
+            "_on_mouse_wheel",
+            lambda _event: None,
+        )
+
+        result_over_footer = handle_wheel(
+            SimpleNamespace(
+                widget=footer_child,
+                delta=-120,
+                num=None,
+            )
+        )
+        result_when_content_fits = handle_wheel(
+            SimpleNamespace(
+                widget=content,
+                delta=-120,
+                num=None,
+            )
+        )
+
+        canvas.yview_scroll.assert_not_called()
+        self.assertIsNone(result_over_footer)
+        self.assertIsNone(result_when_content_fits)
+
+
+class SettingsWindowTkLayoutTests(unittest.TestCase):
+    def setUp(self) -> None:
+        try:
+            self.root = tk.Tk()
+        except tk.TclError as error:
+            self.skipTest(f"Tk display is unavailable: {error}")
+        self.root.withdraw()
+        self.addCleanup(self.root.destroy)
+        self.settings_window = SettingsWindow(
+            self.root,
+            AppSettings(),
+            lambda _settings: None,
+        )
+        self.addCleanup(self.settings_window.close)
+
+    def test_footer_is_outside_scrollable_content(self) -> None:
+        self.assertTrue(hasattr(self.settings_window, "footer"))
+        self.assertTrue(hasattr(self.settings_window, "scroll_host"))
+        self.assertTrue(hasattr(self.settings_window, "scroll_content"))
+        self.assertTrue(hasattr(self.settings_window, "scroll_canvas"))
+        self.settings_window.window.geometry("700x480")
+        self.settings_window.window.update()
+
+        self.assertIs(
+            self.settings_window.footer.master,
+            self.settings_window.body,
+        )
+        self.assertIs(
+            self.settings_window.scroll_host.master,
+            self.settings_window.body,
+        )
+        self.assertIs(
+            self.settings_window.scroll_content.master,
+            self.settings_window.scroll_canvas,
+        )
+        self.assertIsNot(
+            self.settings_window.footer.master,
+            self.settings_window.scroll_content,
+        )
+        content_bounds = self.settings_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(content_bounds)
+        assert content_bounds is not None
+        self.assertGreater(
+            content_bounds[3] - content_bounds[1],
+            self.settings_window.scroll_canvas.winfo_height(),
+        )
