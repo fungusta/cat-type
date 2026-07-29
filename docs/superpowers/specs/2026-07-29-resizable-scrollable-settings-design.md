@@ -10,8 +10,10 @@ the usable screen area with no way to reach them.
 ## Behavior
 
 - The settings window can be resized in both dimensions.
-- Its minimum size is 700 by 480 pixels, which keeps the existing two-column
-  layout usable while allowing it to fit shorter screens.
+- Its normal minimum size is 700 by 480 pixels, which keeps the existing
+  two-column layout usable while allowing it to fit shorter screens. If the
+  available display area is smaller, keeping the footer reachable takes
+  precedence and the effective minimum is reduced to fit.
 - The header and settings cards occupy a vertically scrollable content region.
 - The footer remains outside that region so **Not now** and
   **Save my setup** are always visible.
@@ -38,7 +40,8 @@ all content already fits.
 
 The preferred initial geometry remains 920 by 800 for users whose screens can
 accommodate it. Centering will clamp that geometry to the available screen
-dimensions so the title bar and fixed footer are visible on shorter displays.
+dimensions and the window manager's maximum size so the title bar and fixed
+footer are visible on shorter displays.
 
 ## Error Handling
 
@@ -53,7 +56,8 @@ the rest of the application.
 Regression tests will construct the settings window when a Tk display is
 available and otherwise skip cleanly. They will verify:
 
-- both dimensions are resizable and the minimum size is 700 by 480;
+- both dimensions are resizable, the normal minimum is 700 by 480, and the
+  effective minimum shrinks only when the available display is smaller;
 - initial geometry is clamped when the screen is smaller than the preferred
   920 by 800 size;
 - the footer is a sibling of, rather than a child of, the scrollable content;

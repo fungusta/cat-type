@@ -836,11 +836,11 @@ class SettingsWindow:
         screen_height: int,
     ) -> tuple[int, int]:
         available_width = max(
-            cls.MIN_WIDTH,
+            1,
             screen_width - cls.SCREEN_HORIZONTAL_MARGIN,
         )
         available_height = max(
-            cls.MIN_HEIGHT,
+            1,
             screen_height - cls.SCREEN_VERTICAL_MARGIN,
         )
         return min(width, available_width), min(height, available_height)
@@ -849,12 +849,23 @@ class SettingsWindow:
         self.window.update_idletasks()
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
-        width, height = self._fit_to_screen(
-            self.window.winfo_width(),
-            self.window.winfo_height(),
+        available_width, available_height = self._fit_to_screen(
+            screen_width,
+            screen_height,
             screen_width,
             screen_height,
         )
+        maximum_width, maximum_height = self.window.maxsize()
+        if maximum_width > 0:
+            available_width = min(available_width, maximum_width)
+        if maximum_height > 0:
+            available_height = min(available_height, maximum_height)
+        self.window.minsize(
+            min(self.MIN_WIDTH, available_width),
+            min(self.MIN_HEIGHT, available_height),
+        )
+        width = min(self.window.winfo_width(), available_width)
+        height = min(self.window.winfo_height(), available_height)
         x = max(4, (screen_width - width) // 2)
         y = max(4, (screen_height - height - 32) // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")

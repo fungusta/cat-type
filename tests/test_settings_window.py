@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -59,6 +60,37 @@ class SettingsWindowSizingTests(unittest.TestCase):
             fit_to_screen(920, 800, 800, 600),
             (760, 520),
         )
+        self.assertEqual(
+            fit_to_screen(920, 800, 640, 480),
+            (600, 400),
+        )
+
+    def test_center_reduces_minimum_when_screen_is_too_small(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        window = Mock()
+        window.winfo_width.return_value = 920
+        window.winfo_height.return_value = 800
+        window.winfo_screenwidth.return_value = 640
+        window.winfo_screenheight.return_value = 480
+        window.maxsize.return_value = (625, 450)
+        settings_window.window = window
+
+        settings_window._center()
+
+        window.minsize.assert_called_once_with(600, 400)
+        window.geometry.assert_called_once_with("600x400+20+24")
+
+
+class SettingsWindowCiTests(unittest.TestCase):
+    def test_cross_platform_workflows_run_settings_window_tests(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+        for workflow_path in (
+            project_root / ".github/workflows/build.yml",
+            project_root / ".github/workflows/release.yml",
+        ):
+            with self.subTest(workflow=workflow_path):
+                workflow = workflow_path.read_text(encoding="utf-8")
+                self.assertIn("tests.test_settings_window", workflow)
 
 
 class SettingsWindowScrollingTests(unittest.TestCase):
