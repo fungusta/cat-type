@@ -138,6 +138,12 @@ class SettingsWindow:
     PEACH = "#FFE4D8"
     BLUSH = "#FFF0E9"
     BORDER = "#F0DCD2"
+    PREFERRED_WIDTH = 920
+    PREFERRED_HEIGHT = 800
+    MIN_WIDTH = 700
+    MIN_HEIGHT = 480
+    SCREEN_HORIZONTAL_MARGIN = 40
+    SCREEN_VERTICAL_MARGIN = 80
 
     def __init__(
         self,
@@ -154,9 +160,11 @@ class SettingsWindow:
 
         self.window = tk.Toplevel(parent)
         self.window.title("Cat Type Settings")
-        self.window.geometry("920x800")
-        self.window.minsize(840, 800)
-        self.window.resizable(True, False)
+        self.window.geometry(
+            f"{self.PREFERRED_WIDTH}x{self.PREFERRED_HEIGHT}"
+        )
+        self.window.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
+        self.window.resizable(True, True)
         self.window.configure(background=self.BACKGROUND)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self._configure_fonts()
@@ -698,12 +706,36 @@ class SettingsWindow:
         self._on_save(settings)
         self.close()
 
+    @classmethod
+    def _fit_to_screen(
+        cls,
+        width: int,
+        height: int,
+        screen_width: int,
+        screen_height: int,
+    ) -> tuple[int, int]:
+        available_width = max(
+            cls.MIN_WIDTH,
+            screen_width - cls.SCREEN_HORIZONTAL_MARGIN,
+        )
+        available_height = max(
+            cls.MIN_HEIGHT,
+            screen_height - cls.SCREEN_VERTICAL_MARGIN,
+        )
+        return min(width, available_width), min(height, available_height)
+
     def _center(self) -> None:
         self.window.update_idletasks()
-        width = self.window.winfo_width()
-        height = self.window.winfo_height()
-        x = (self.window.winfo_screenwidth() - width) // 2
-        y = max(4, (self.window.winfo_screenheight() - height - 32) // 2)
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        width, height = self._fit_to_screen(
+            self.window.winfo_width(),
+            self.window.winfo_height(),
+            screen_width,
+            screen_height,
+        )
+        x = max(4, (screen_width - width) // 2)
+        y = max(4, (screen_height - height - 32) // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
 
     def show(self) -> None:
