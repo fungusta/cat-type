@@ -616,18 +616,21 @@ class SettingsWindow:
             padx=28,
             pady=(12, 14),
         )
-        tk.Label(
+        self.footer_message = tk.Label(
             footer,
             text="♡  Only keyboard activity is detected — never what you type.",
             background=self.BACKGROUND,
             foreground=self.MUTED,
             font=self.fonts["small"],
-        ).pack(side="left", anchor="center")
+        )
 
-        buttons = tk.Frame(footer, background=self.BACKGROUND)
-        buttons.pack(side="right")
+        self.footer_buttons = tk.Frame(
+            footer,
+            background=self.BACKGROUND,
+        )
+        self.footer_buttons.pack(side="right")
         tk.Button(
-            buttons,
+            self.footer_buttons,
             text="Not now",
             command=self.close,
             relief="flat",
@@ -642,7 +645,7 @@ class SettingsWindow:
             cursor="hand2",
         ).pack(side="left")
         tk.Button(
-            buttons,
+            self.footer_buttons,
             text="Save my setup  ♡",
             command=self._save,
             relief="flat",
@@ -656,7 +659,23 @@ class SettingsWindow:
             pady=9,
             cursor="hand2",
         ).pack(side="left", padx=(8, 0))
+        self.footer_message.pack(side="left", anchor="center")
+        footer.bind("<Configure>", self._on_footer_configure)
         return footer
+
+    def _on_footer_configure(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> None:
+        message_fits = event.width >= (
+            self.footer_message.winfo_reqwidth()
+            + self.footer_buttons.winfo_reqwidth()
+        )
+        message_is_visible = bool(self.footer_message.winfo_manager())
+        if message_fits and not message_is_visible:
+            self.footer_message.pack(side="left", anchor="center")
+        elif not message_fits and message_is_visible:
+            self.footer_message.pack_forget()
 
     def _card(
         self,

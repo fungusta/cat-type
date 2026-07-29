@@ -17,6 +17,8 @@ the usable screen area with no way to reach them.
 - The header and settings cards occupy a vertically scrollable content region.
 - The footer remains outside that region so **Not now** and
   **Save my setup** are always visible.
+- At narrow widths, the footer hides its nonessential privacy reminder before
+  allowing either action button to be clipped.
 - Users can scroll with the visible vertical scrollbar, a mouse wheel or
   trackpad on Windows and macOS, and wheel buttons on Linux.
 - Scrolling occurs only while the pointer is over the scrollable settings

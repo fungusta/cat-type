@@ -216,3 +216,26 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             content_bounds[3] - content_bounds[1],
             self.settings_window.scroll_canvas.winfo_height(),
         )
+
+    def test_narrow_footer_keeps_actions_fully_visible(self) -> None:
+        self.settings_window.window.minsize(1, 1)
+        self.settings_window.window.geometry("600x480")
+        self.settings_window.window.update()
+        buttons = self.settings_window.footer_buttons.winfo_children()
+
+        for button in buttons:
+            with self.subTest(button=button.cget("text")):
+                self.assertEqual(
+                    button.winfo_width(),
+                    button.winfo_reqwidth(),
+                )
+                self.assertGreaterEqual(
+                    button.winfo_rootx(),
+                    self.settings_window.window.winfo_rootx(),
+                )
+                self.assertLessEqual(
+                    button.winfo_rootx() + button.winfo_width(),
+                    self.settings_window.window.winfo_rootx()
+                    + self.settings_window.window.winfo_width(),
+                )
+        self.assertFalse(self.settings_window.footer_message.winfo_ismapped())
