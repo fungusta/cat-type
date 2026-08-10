@@ -18,22 +18,27 @@ jobs:
           - runner: windows-latest
             asset: Cat-Type-Windows-x64.exe
             source: dist/Cat-Type-Windows-x64.exe
+            executable: dist/Cat Type.exe
             package_arch: x64
           - runner: macos-15-intel
             asset: Cat-Type-macOS-x64.dmg
             source: dist/Cat-Type-macOS-x64.dmg
+            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
             package_arch: x64
           - runner: macos-15
             asset: Cat-Type-macOS-arm64.dmg
             source: dist/Cat-Type-macOS-arm64.dmg
+            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
             package_arch: arm64
           - runner: ubuntu-22.04
             asset: Cat-Type-Linux-x64.tar.gz
             source: dist/Cat-Type-Linux-x64.tar.gz
+            executable: dist/Cat Type
             package_arch: x64
           - runner: ubuntu-22.04-arm
             asset: Cat-Type-Linux-arm64.tar.gz
             source: dist/Cat-Type-Linux-arm64.tar.gz
+            executable: dist/Cat Type
             package_arch: arm64
 
     runs-on: ${{ matrix.runner }}
@@ -67,6 +72,8 @@ jobs:
           tests.test_behavior
           tests.test_settings
           tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
           -v
 
       - name: Run automated tests with a virtual display
@@ -77,12 +84,17 @@ jobs:
           tests.test_behavior
           tests.test_settings
           tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
           -v
 
       - name: Build application
         run: |
           python scripts/build_icon.py
           python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - name: Verify bundled platform icon
+        run: python -m scripts.check_bundled_icon "${{ matrix.executable }}"
 
       - name: Install Inno Setup
         if: runner.os == 'Windows'

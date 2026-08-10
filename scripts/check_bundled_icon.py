@@ -18,7 +18,8 @@ def expected_icon_entry(platform: str) -> str:
 
 def validate_bundled_icon(entries: Collection[str], platform: str) -> str:
     expected = expected_icon_entry(platform)
-    if expected not in entries:
+    normalized_entries = {entry.replace("\\", "/") for entry in entries}
+    if expected not in normalized_entries:
         raise ValueError(f"PyInstaller archive is missing {expected}")
     return expected
 

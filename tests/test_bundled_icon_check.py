@@ -17,6 +17,17 @@ class BundledIconCheckTests(unittest.TestCase):
         )
         self.assertEqual(entry, "assets/cat-type.icns")
 
+    def test_accepts_windows_archive_path_separator(self) -> None:
+        checker = self._module()
+        try:
+            entry = checker.validate_bundled_icon(
+                {r"assets\cat-type.ico"},
+                "win32",
+            )
+        except ValueError as exc:
+            self.fail(str(exc))
+        self.assertEqual(entry, "assets/cat-type.ico")
+
     def test_rejects_another_platforms_icon(self) -> None:
         checker = self._module()
         with self.assertRaisesRegex(

@@ -15,12 +15,15 @@ jobs:
           - runner: windows-latest
             artifact: cat-type-windows-x64
             output: dist/Cat Type.exe
+            executable: dist/Cat Type.exe
           - runner: macos-15-intel
             artifact: cat-type-macos-x64
             output: dist/Cat Type.app
+            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
           - runner: ubuntu-22.04
             artifact: cat-type-linux-x64
             output: dist/Cat Type
+            executable: dist/Cat Type
 
     runs-on: ${{ matrix.runner }}
     steps:
@@ -49,6 +52,8 @@ jobs:
           tests.test_behavior
           tests.test_settings
           tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
           -v
 
       - name: Run automated tests with a virtual display
@@ -59,12 +64,17 @@ jobs:
           tests.test_behavior
           tests.test_settings
           tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
           -v
 
       - name: Build application
         run: |
           python scripts/build_icon.py
           python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - name: Verify bundled platform icon
+        run: python -m scripts.check_bundled_icon "${{ matrix.executable }}"
 
       - uses: actions/upload-artifact@v7
         with:
