@@ -121,7 +121,7 @@ git commit -m "fix: select packaged icon by platform"
 - Consumes: `icon_filename(platform: str) -> str` from Task 1
 - Produces: `expected_icon_entry(platform: str) -> str`
 - Produces: `validate_bundled_icon(entries: Collection[str], platform: str) -> str`
-- CLI: `python scripts/check_bundled_icon.py <executable>`
+- CLI: `python -m scripts.check_bundled_icon <executable>`
 
 - [ ] **Step 1: Write failing validator tests**
 
@@ -231,7 +231,7 @@ git commit -m "test: validate bundled platform icon"
 - Modify: `.github/workflows/release.yml`
 
 **Interfaces:**
-- Consumes: `python scripts/check_bundled_icon.py <executable>` from Task 2
+- Consumes: `python -m scripts.check_bundled_icon <executable>` from Task 2
 - Produces: a CI gate between PyInstaller and artifact packaging/upload
 
 - [ ] **Step 1: Add executable paths to both build matrices**
@@ -253,7 +253,7 @@ Add this step to both workflows directly after `Build application`:
 
 ```yaml
 - name: Verify bundled platform icon
-  run: python scripts/check_bundled_icon.py "${{ matrix.executable }}"
+  run: python -m scripts.check_bundled_icon "${{ matrix.executable }}"
 ```
 
 - [ ] **Step 3: Build the local Windows package**
@@ -272,7 +272,7 @@ Expected: PyInstaller exits 0 and produces `dist\Cat Type.exe`.
 Run:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\check_bundled_icon.py "dist\Cat Type.exe"
+.\.venv\Scripts\python.exe -m scripts.check_bundled_icon "dist\Cat Type.exe"
 ```
 
 Expected: `Verified bundled runtime icon: assets/cat-type.ico`.
