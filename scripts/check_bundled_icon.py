@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PyInstaller.archive.readers import CArchiveReader
 
-from platform_assets import icon_filename
+from platform_assets import icon_filename, runtime_modules
 
 
 def expected_icon_entry(platform: str) -> str:
@@ -24,6 +24,20 @@ def validate_bundled_icon(entries: Collection[str], platform: str) -> str:
     return expected
 
 
+def validate_bundled_runtime_modules(
+    modules: Collection[str],
+    platform: str,
+) -> tuple[str, ...]:
+    expected = runtime_modules(platform)
+    missing = tuple(module for module in expected if module not in modules)
+    if missing:
+        raise ValueError(
+            "PyInstaller archive is missing runtime modules: "
+            + ", ".join(missing)
+        )
+    return expected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Verify the runtime icon in a PyInstaller executable."
@@ -33,9 +47,18 @@ def main() -> None:
     archive = CArchiveReader(str(args.executable))
     try:
         expected = validate_bundled_icon(archive.toc, sys.platform)
+        expected_modules = runtime_modules(sys.platform)
+        if expected_modules:
+            pyz = archive.open_embedded_archive("PYZ.pyz")
+            validate_bundled_runtime_modules(pyz.toc, sys.platform)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     print(f"Verified bundled runtime icon: {expected}")
+    if expected_modules:
+        print(
+            "Verified bundled runtime modules: "
+            + ", ".join(expected_modules)
+        )
 
 
 if __name__ == "__main__":

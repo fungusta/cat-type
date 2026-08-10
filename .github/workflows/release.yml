@@ -74,6 +74,7 @@ jobs:
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
+          tests.test_package_smoke
           -v
 
       - name: Run automated tests with a virtual display
@@ -86,6 +87,7 @@ jobs:
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
+          tests.test_package_smoke
           -v
 
       - name: Build application
@@ -93,8 +95,15 @@ jobs:
           python scripts/build_icon.py
           python -m PyInstaller --noconfirm --clean CatType.spec
 
-      - name: Verify bundled platform icon
+      - name: Verify bundled runtime assets
         run: python -m scripts.check_bundled_icon "${{ matrix.executable }}"
+
+      - name: Smoke test Linux package
+        if: runner.os == 'Linux'
+        run: >-
+          xvfb-run --auto-servernum
+          python -m scripts.smoke_linux_package
+          "${{ matrix.executable }}"
 
       - name: Install Inno Setup
         if: runner.os == 'Windows'

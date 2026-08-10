@@ -293,3 +293,57 @@ Expected: exit 0 with no output.
 git add -- .github/workflows/build.yml .github/workflows/release.yml
 git commit -m "ci: reject packages missing runtime icon"
 ```
+
+---
+
+### Task 4: Package Native Runtime Modules
+
+**Files:**
+- Modify: `platform_assets.py`
+- Modify: `CatType.spec`
+- Modify: `scripts/check_bundled_icon.py`
+- Modify: `tests/test_platform_assets.py`
+- Modify: `tests/test_bundled_icon_check.py`
+
+**Interfaces:**
+- Produces: `backend_modules(platform: str) -> tuple[str, ...]`
+- Produces: `runtime_modules(platform: str) -> tuple[str, ...]`
+- Produces: `validate_bundled_runtime_modules(modules, platform)`
+
+- [x] **Step 1: Reproduce missing Xorg modules in a packaged Linux launch**
+
+Observed: the one-file executable exited after failing to import
+`pynput.keyboard._xorg` and `pynput.mouse._xorg`.
+
+- [x] **Step 2: Write and run failing backend and Pillow bridge tests**
+
+Run:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest `
+  tests.test_platform_assets.PlatformBackendTests `
+  tests.test_bundled_icon_check.BundledRuntimeModuleCheckTests -v
+```
+
+Expected before implementation: failures for missing platform and package
+validator interfaces.
+
+- [x] **Step 3: Replace display-dependent discovery with explicit modules**
+
+Linux packages the Xorg keyboard, mouse, and tray backends; macOS packages the
+corresponding Darwin backends; every platform packages `PIL._tkinter_finder`.
+
+- [x] **Step 4: Extend finished-package validation**
+
+The checker opens `PYZ.pyz` and fails when any required runtime module is
+absent.
+
+- [x] **Step 5: Rebuild and launch the Linux package under Xvfb**
+
+Expected: archive verification names all required Linux modules and the app
+remains alive for eight seconds without input-listener or Tkinter exceptions.
+
+- [x] **Step 6: Gate Linux artifact upload on a startup smoke test**
+
+Both build workflows run `scripts.smoke_linux_package` under Xvfb after archive
+validation and before packaging or artifact upload.

@@ -3,7 +3,8 @@
 ## Goal
 
 Make the packaged Linux and macOS applications start with the correct runtime
-icon, and prevent a release when its PyInstaller archive omits that icon.
+icon and native backends, and prevent a release when its PyInstaller archive
+omits any required runtime asset.
 Windows remains covered by the same platform mapping so the existing working
 package cannot drift from the other platforms.
 
@@ -18,6 +19,12 @@ reach tray startup without the file that `Image.open()` requires and exit with
 The existing CI confirms that PyInstaller produces an artifact, but it does
 not inspect that artifact for runtime assets. A successful build can therefore
 publish an application that fails immediately after launch.
+
+A native Linux startup probe also showed that display-dependent PyInstaller
+discovery omitted `pynput`'s Xorg keyboard and mouse modules. Once those were
+included, opening first-run Settings exposed a second omission,
+`PIL._tkinter_finder`. These modules must be selected without importing GUI
+backends during a headless build.
 
 ## Design
 
@@ -34,12 +41,22 @@ Both `cat_type.py` and `CatType.spec` will use this function. Source runs and
 packaged runs will therefore resolve the same platform-specific asset, and the
 build configuration will not maintain a separate mapping that can drift.
 
+The same module will list required Python modules without importing them:
+
+- every platform includes `PIL._tkinter_finder` for Settings previews;
+- macOS includes the `pynput` and `pystray` Darwin backends;
+- Linux includes the `pynput` and `pystray` Xorg backends.
+
+`CatType.spec` will use these explicit names instead of `collect_submodules`
+for GUI backends, because discovery imports those packages and fails when a
+headless build has no active display.
+
 ### Finished-package validation
 
 Add `scripts/check_bundled_icon.py`. It will open a completed PyInstaller
 CArchive, derive the expected `assets/<icon filename>` entry from the shared
-mapping, and exit unsuccessfully with a clear message when that entry is
-missing.
+mapping, inspect the embedded PYZ module table, and exit unsuccessfully with a
+clear message when an icon or required runtime module is missing.
 
 The build and release workflows will run this checker after PyInstaller on
 every matrix platform. macOS will pass the executable inside the `.app`
@@ -48,25 +65,29 @@ and release packaging will remain downstream of this check.
 
 ### Error behavior
 
-The checker will fail closed: an unreadable PyInstaller archive or a missing
-icon stops the job. Its success output will name the verified archive entry so
-CI logs show which platform asset was checked.
+The checker will fail closed: an unreadable PyInstaller archive, missing icon,
+or missing runtime module stops the job. Its success output will name every
+verified entry so CI logs show which platform assets were checked.
 
 The application will retain its current tray-start behavior. The fix ensures
 the required file exists rather than hiding asset errors at runtime.
 
 ## Tests
 
-Unit tests will cover the icon filename for Windows, macOS, and Linux and will
-verify that the archive-entry validator accepts the expected icon and rejects
-an archive containing only another platform's icon.
+Unit tests will cover icon and runtime-module mappings for Windows, macOS, and
+Linux. They will verify that archive validators accept complete platform
+contents and reject another platform's icon, missing Xorg modules, or a missing
+Pillow Tk bridge.
 
 The tests will be written and observed failing before implementation. After
 the implementation passes them, the full unit test suite will run. A local
 PyInstaller build will then be inspected with the same checker used by CI.
-Because the host is Windows, Linux and macOS executable generation remains the
-responsibility of their native GitHub Actions runners, where the checker runs
-before artifacts can be published.
+Linux additionally receives an Ubuntu 22.04/Xvfb package startup probe during
+development and CI. The smoke gate rejects early exit, keyboard-listener
+failure, missing modules, and Tkinter callback exceptions before artifact
+upload. macOS executable generation remains the responsibility of its native
+GitHub Actions runners, where the archive checker runs before artifacts can be
+published.
 
 ## Out of Scope
 

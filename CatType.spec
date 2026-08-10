@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 
 from PyInstaller.utils.hooks import collect_submodules
-from platform_assets import icon_filename
+from platform_assets import icon_filename, runtime_modules
 
 
 project_root = Path(SPECPATH)
@@ -10,11 +10,11 @@ is_windows = sys.platform == "win32"
 is_macos = sys.platform == "darwin"
 icon_path = project_root / "assets" / icon_filename(sys.platform)
 version_path = project_root / "packaging" / "version_info.txt"
-hidden_imports = (
-    collect_submodules("comtypes.gen")
-    if is_windows
-    else collect_submodules("pynput") + collect_submodules("pystray")
-)
+# Do not discover these by importing pynput/pystray: their native backends
+# require an active display and disappear from headless CI builds otherwise.
+hidden_imports = list(runtime_modules(sys.platform))
+if is_windows:
+    hidden_imports += collect_submodules("comtypes.gen")
 
 a = Analysis(
     ["cat_type.py"],

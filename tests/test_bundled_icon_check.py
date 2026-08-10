@@ -40,5 +40,54 @@ class BundledIconCheckTests(unittest.TestCase):
             )
 
 
+class BundledRuntimeModuleCheckTests(unittest.TestCase):
+    def _module(self):
+        return importlib.import_module("scripts.check_bundled_icon")
+
+    def test_accepts_expected_linux_runtime_modules(self) -> None:
+        checker = self._module()
+        modules = checker.validate_bundled_runtime_modules(
+            {
+                "PIL._tkinter_finder",
+                "pynput.keyboard._xorg",
+                "pynput.mouse._xorg",
+                "pystray._xorg",
+            },
+            "linux",
+        )
+        self.assertEqual(
+            modules,
+            (
+                "PIL._tkinter_finder",
+                "pynput.keyboard._xorg",
+                "pynput.mouse._xorg",
+                "pystray._xorg",
+            ),
+        )
+
+    def test_rejects_missing_linux_input_backends(self) -> None:
+        checker = self._module()
+        with self.assertRaisesRegex(
+            ValueError,
+            "pynput.keyboard._xorg, pynput.mouse._xorg",
+        ):
+            checker.validate_bundled_runtime_modules(
+                {"PIL._tkinter_finder", "pystray._xorg"},
+                "linux",
+            )
+
+    def test_rejects_missing_pillow_tk_bridge(self) -> None:
+        checker = self._module()
+        with self.assertRaisesRegex(ValueError, "PIL._tkinter_finder"):
+            checker.validate_bundled_runtime_modules(
+                {
+                    "pynput.keyboard._xorg",
+                    "pynput.mouse._xorg",
+                    "pystray._xorg",
+                },
+                "linux",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
