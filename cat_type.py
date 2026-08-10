@@ -18,6 +18,7 @@ from ctypes import wintypes
 from PIL import Image, ImageTk
 
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
+from platform_assets import icon_filename
 from settings_window import SettingsWindow
 
 
@@ -30,7 +31,7 @@ APP_DIR = Path(
     getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)
 )
 FRAME_ROOT = APP_DIR / "assets" / "tabby-frames"
-APP_ICON = APP_DIR / "assets" / "cat-type.ico"
+APP_ICON = APP_DIR / "assets" / icon_filename(sys.platform)
 CAT_VARIANTS = ("gray", "ginger")
 FRAME_DIR = FRAME_ROOT / CAT_VARIANTS[0]
 FRAME_NAMES = ("idle", "tap-left", "tap-right", "excited")
