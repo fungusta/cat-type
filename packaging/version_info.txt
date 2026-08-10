@@ -16,11 +16,11 @@ VSVersionInfo(
         [
           StringStruct('CompanyName', 'Cat Type'),
           StringStruct('FileDescription', 'Animated typing cat desktop companion'),
-          StringStruct('FileVersion', '1.0.3'),
+          StringStruct('FileVersion', '1.0.4'),
           StringStruct('InternalName', 'Cat Type'),
           StringStruct('OriginalFilename', 'Cat Type.exe'),
           StringStruct('ProductName', 'Cat Type'),
-          StringStruct('ProductVersion', '1.0.3')
+          StringStruct('ProductVersion', '1.0.4')
         ]
       )
     ]),
