@@ -138,6 +138,12 @@ class SettingsWindow:
     PEACH = "#FFE4D8"
     BLUSH = "#FFF0E9"
     BORDER = "#F0DCD2"
+    PREFERRED_WIDTH = 920
+    PREFERRED_HEIGHT = 800
+    MIN_WIDTH = 700
+    MIN_HEIGHT = 480
+    SCREEN_HORIZONTAL_MARGIN = 40
+    SCREEN_VERTICAL_MARGIN = 80
 
     def __init__(
         self,
@@ -154,9 +160,11 @@ class SettingsWindow:
 
         self.window = tk.Toplevel(parent)
         self.window.title("Cat Type Settings")
-        self.window.geometry("920x800")
-        self.window.minsize(840, 800)
-        self.window.resizable(True, False)
+        self.window.geometry(
+            f"{self.PREFERRED_WIDTH}x{self.PREFERRED_HEIGHT}"
+        )
+        self.window.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
+        self.window.resizable(True, True)
         self.window.configure(background=self.BACKGROUND)
         self.window.protocol("WM_DELETE_WINDOW", self.close)
         self._configure_fonts()
@@ -322,12 +330,71 @@ class SettingsWindow:
                 self._preview_frames[variant] = variant_frames
 
     def _build(self) -> None:
-        body = tk.Frame(self.window, background=self.BACKGROUND)
-        body.pack(fill="both", expand=True)
+        self.body = tk.Frame(self.window, background=self.BACKGROUND)
+        self.body.pack(fill="both", expand=True)
 
-        self._build_header(body)
+        self.footer = self._build_footer(self.body)
 
-        columns = tk.Frame(body, background=self.BACKGROUND)
+        self.scroll_host = tk.Frame(
+            self.body,
+            background=self.BACKGROUND,
+        )
+        self.scroll_host.pack(side="top", fill="both", expand=True)
+
+        self.scrollbar = ttk.Scrollbar(
+            self.scroll_host,
+            orient="vertical",
+        )
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas = tk.Canvas(
+            self.scroll_host,
+            background=self.BACKGROUND,
+            highlightthickness=0,
+            yscrollcommand=self.scrollbar.set,
+        )
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.configure(command=self.scroll_canvas.yview)
+
+        self.scroll_content = tk.Frame(
+            self.scroll_canvas,
+            background=self.BACKGROUND,
+        )
+        self._scroll_content_id = self.scroll_canvas.create_window(
+            (0, 0),
+            window=self.scroll_content,
+            anchor="nw",
+        )
+        self.scroll_content.bind(
+            "<Configure>",
+            self._on_content_configure,
+        )
+        self.scroll_canvas.bind(
+            "<Configure>",
+            self._on_canvas_configure,
+        )
+        self.window.bind(
+            "<MouseWheel>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+        self.window.bind(
+            "<Button-4>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+        self.window.bind(
+            "<Button-5>",
+            self._on_mouse_wheel,
+            add="+",
+        )
+
+        self._build_header(self.scroll_content)
+
+        columns = tk.Frame(
+            self.scroll_content,
+            background=self.BACKGROUND,
+        )
         columns.pack(fill="x", padx=26)
         columns.grid_columnconfigure(0, weight=3, uniform="settings")
         columns.grid_columnconfigure(1, weight=2, uniform="settings")
@@ -341,8 +408,6 @@ class SettingsWindow:
         self._build_appearance_card(left)
         self._build_size_card(right)
         self._build_timing_card(right)
-
-        self._build_footer(body)
 
     def _build_header(self, body: tk.Frame) -> None:
         hero = tk.Frame(
@@ -543,21 +608,29 @@ class SettingsWindow:
         )
         card.pack(fill="x", pady=(0, 14))
 
-    def _build_footer(self, body: tk.Frame) -> None:
+    def _build_footer(self, body: tk.Frame) -> tk.Frame:
         footer = tk.Frame(body, background=self.BACKGROUND)
-        footer.pack(fill="x", padx=28, pady=(16, 14))
-        tk.Label(
+        footer.pack(
+            side="bottom",
+            fill="x",
+            padx=28,
+            pady=(12, 14),
+        )
+        self.footer_message = tk.Label(
             footer,
             text="♡  Only keyboard activity is detected — never what you type.",
             background=self.BACKGROUND,
             foreground=self.MUTED,
             font=self.fonts["small"],
-        ).pack(side="left", anchor="center")
+        )
 
-        buttons = tk.Frame(footer, background=self.BACKGROUND)
-        buttons.pack(side="right")
+        self.footer_buttons = tk.Frame(
+            footer,
+            background=self.BACKGROUND,
+        )
+        self.footer_buttons.pack(side="right")
         tk.Button(
-            buttons,
+            self.footer_buttons,
             text="Not now",
             command=self.close,
             relief="flat",
@@ -572,7 +645,7 @@ class SettingsWindow:
             cursor="hand2",
         ).pack(side="left")
         tk.Button(
-            buttons,
+            self.footer_buttons,
             text="Save my setup  ♡",
             command=self._save,
             relief="flat",
@@ -586,6 +659,23 @@ class SettingsWindow:
             pady=9,
             cursor="hand2",
         ).pack(side="left", padx=(8, 0))
+        self.footer_message.pack(side="left", anchor="center")
+        footer.bind("<Configure>", self._on_footer_configure)
+        return footer
+
+    def _on_footer_configure(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> None:
+        message_fits = event.width >= (
+            self.footer_message.winfo_reqwidth()
+            + self.footer_buttons.winfo_reqwidth()
+        )
+        message_is_visible = bool(self.footer_message.winfo_manager())
+        if message_fits and not message_is_visible:
+            self.footer_message.pack(side="left", anchor="center")
+        elif not message_fits and message_is_visible:
+            self.footer_message.pack_forget()
 
     def _card(
         self,
@@ -668,6 +758,64 @@ class SettingsWindow:
         scale.pack(fill="x", pady=(9, 0))
         update(str(variable.get()))
 
+    def _on_content_configure(
+        self,
+        _event: tk.Event[tk.Misc],
+    ) -> None:
+        bounds = self.scroll_canvas.bbox("all")
+        if bounds is not None:
+            self.scroll_canvas.configure(scrollregion=bounds)
+
+    def _on_canvas_configure(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> None:
+        self.scroll_canvas.itemconfigure(
+            self._scroll_content_id,
+            width=event.width,
+        )
+
+    @staticmethod
+    def _wheel_scroll_units(event: tk.Event[tk.Misc]) -> int:
+        delta = int(getattr(event, "delta", 0) or 0)
+        if delta:
+            magnitude = max(1, abs(delta) // 120)
+            return -magnitude if delta > 0 else magnitude
+        return {
+            4: -1,
+            5: 1,
+        }.get(getattr(event, "num", None), 0)
+
+    def _event_is_over_scroll_content(
+        self,
+        widget: tk.Misc | None,
+    ) -> bool:
+        while widget is not None:
+            if widget is self.scroll_canvas:
+                return True
+            widget = getattr(widget, "master", None)
+        return False
+
+    def _on_mouse_wheel(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> str | None:
+        if not self._event_is_over_scroll_content(
+            getattr(event, "widget", None)
+        ):
+            return None
+        bounds = self.scroll_canvas.bbox("all")
+        if (
+            bounds is None
+            or bounds[3] - bounds[1] <= self.scroll_canvas.winfo_height()
+        ):
+            return None
+        units = self._wheel_scroll_units(event)
+        if not units:
+            return None
+        self.scroll_canvas.yview_scroll(units, "units")
+        return "break"
+
     def _animate_preview(self) -> None:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
         if self._preview_frames:
@@ -698,12 +846,47 @@ class SettingsWindow:
         self._on_save(settings)
         self.close()
 
+    @classmethod
+    def _fit_to_screen(
+        cls,
+        width: int,
+        height: int,
+        screen_width: int,
+        screen_height: int,
+    ) -> tuple[int, int]:
+        available_width = max(
+            1,
+            screen_width - cls.SCREEN_HORIZONTAL_MARGIN,
+        )
+        available_height = max(
+            1,
+            screen_height - cls.SCREEN_VERTICAL_MARGIN,
+        )
+        return min(width, available_width), min(height, available_height)
+
     def _center(self) -> None:
         self.window.update_idletasks()
-        width = self.window.winfo_width()
-        height = self.window.winfo_height()
-        x = (self.window.winfo_screenwidth() - width) // 2
-        y = max(4, (self.window.winfo_screenheight() - height - 32) // 2)
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+        available_width, available_height = self._fit_to_screen(
+            screen_width,
+            screen_height,
+            screen_width,
+            screen_height,
+        )
+        maximum_width, maximum_height = self.window.maxsize()
+        if maximum_width > 0:
+            available_width = min(available_width, maximum_width)
+        if maximum_height > 0:
+            available_height = min(available_height, maximum_height)
+        self.window.minsize(
+            min(self.MIN_WIDTH, available_width),
+            min(self.MIN_HEIGHT, available_height),
+        )
+        width = min(self.window.winfo_width(), available_width)
+        height = min(self.window.winfo_height(), available_height)
+        x = max(4, (screen_width - width) // 2)
+        y = max(4, (screen_height - height - 32) // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
 
     def show(self) -> None:
