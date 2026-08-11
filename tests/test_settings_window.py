@@ -182,8 +182,26 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.root,
             AppSettings(),
             lambda _settings: None,
+            keystroke_count=1_234,
         )
         self.addCleanup(self.settings_window.close)
+
+    def test_session_keystroke_counter_is_visible_and_updates_live(self) -> None:
+        self.assertEqual(
+            self.settings_window.keystroke_count_title.cget("text"),
+            "Keystrokes this session",
+        )
+        self.assertEqual(
+            self.settings_window.keystroke_count_text.get(),
+            "1,234",
+        )
+
+        self.settings_window.update_keystroke_count(5_678)
+
+        self.assertEqual(
+            self.settings_window.keystroke_count_text.get(),
+            "5,678",
+        )
 
     def test_footer_is_outside_scrollable_content(self) -> None:
         self.assertTrue(hasattr(self.settings_window, "footer"))

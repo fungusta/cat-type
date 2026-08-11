@@ -151,6 +151,7 @@ class SettingsWindow:
         settings: AppSettings,
         on_save: Callable[[AppSettings], None],
         icon_path: str | None = None,
+        keystroke_count: int = 0,
     ) -> None:
         self._on_save = on_save
         self._after_id: str | None = None
@@ -185,6 +186,9 @@ class SettingsWindow:
             value=self._label_for(PLACEMENT_LABELS, settings.placement)
         )
         self.launch_at_startup = tk.BooleanVar(value=settings.launch_at_startup)
+        self.keystroke_count_text = tk.StringVar(
+            value=f"{keystroke_count:,}"
+        )
 
         self._configure_styles()
         self._load_preview_frames(icon_path)
@@ -495,6 +499,27 @@ class SettingsWindow:
             title_font=self.fonts["control"],
             description_font=self.fonts["small"],
         ).pack(fill="x")
+        counter = tk.Frame(content, background=self.BLUSH)
+        counter.pack(fill="x", pady=(14, 0))
+        self.keystroke_count_title = tk.Label(
+            counter,
+            text="Keystrokes this session",
+            background=self.BLUSH,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        )
+        self.keystroke_count_title.pack(
+            side="left",
+            padx=(12, 6),
+            pady=10,
+        )
+        tk.Label(
+            counter,
+            textvariable=self.keystroke_count_text,
+            background=self.BLUSH,
+            foreground=self.ACCENT_DARK,
+            font=self.fonts["section"],
+        ).pack(side="right", padx=(6, 12), pady=8)
         self._divider(content).pack(fill="x", pady=13)
         Toggle(
             content,
@@ -893,6 +918,9 @@ class SettingsWindow:
         self.window.deiconify()
         self.window.lift()
         self.window.focus_force()
+
+    def update_keystroke_count(self, count: int) -> None:
+        self.keystroke_count_text.set(f"{count:,}")
 
     def close(self) -> None:
         try:
