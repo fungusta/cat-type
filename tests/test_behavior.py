@@ -1,13 +1,76 @@
 import unittest
+from dataclasses import fields
 from unittest.mock import patch
 
 from cat_type import (
+    AppEvent,
     AnimationState,
     CaretLocator,
     ScreenRect,
+    classify_portable_key,
+    classify_windows_key,
     choose_fallback_position,
     choose_overlay_position,
 )
+
+
+class FakePortableKey:
+    def __init__(self, char: str | None = None, name: str | None = None) -> None:
+        self.char = char
+        self.name = name
+
+
+class KeyboardClassificationTests(unittest.TestCase):
+    def test_windows_keys_follow_the_physical_keyboard_split(self) -> None:
+        cases = (
+            ((0x51, 0, 0), "left"),       # Q
+            ((0x54, 0, 0), "left"),       # T
+            ((0x59, 0, 0), "right"),      # Y
+            ((0x4D, 0, 0), "right"),      # M
+            ((0x20, 0, 0), "both"),       # Space
+            ((0x70, 0, 0), "left"),       # F1
+            ((0x76, 0, 0), "right"),      # F7
+            ((0x10, 0x2A, 0), "left"),    # Generic left Shift
+            ((0x10, 0x36, 0), "right"),   # Generic right Shift
+            ((0x11, 0, 0), "left"),       # Generic left Ctrl
+            ((0x11, 0, 1), "right"),      # Extended right Ctrl
+            ((0x25, 0, 0), "right"),      # Left-arrow key cluster
+            ((0x60, 0, 0), "right"),      # Numpad 0
+            ((0xAD, 0, 0), "alternate"),  # Media mute
+        )
+
+        for arguments, expected in cases:
+            with self.subTest(arguments=arguments):
+                self.assertEqual(classify_windows_key(*arguments), expected)
+
+    def test_portable_keys_follow_the_physical_keyboard_split(self) -> None:
+        cases = (
+            (FakePortableKey(char="q"), "left"),
+            (FakePortableKey(char="!"), "left"),
+            (FakePortableKey(char="y"), "right"),
+            (FakePortableKey(char="^"), "right"),
+            (FakePortableKey(char=" "), "both"),
+            (FakePortableKey(name="space"), "both"),
+            (FakePortableKey(name="shift_l"), "left"),
+            (FakePortableKey(name="shift_r"), "right"),
+            (FakePortableKey(name="f6"), "left"),
+            (FakePortableKey(name="f7"), "right"),
+            (FakePortableKey(name="left"), "right"),
+            (FakePortableKey(name="media_volume_up"), "alternate"),
+        )
+
+        for key, expected in cases:
+            with self.subTest(key=vars(key)):
+                self.assertEqual(classify_portable_key(key), expected)
+
+    def test_app_event_carries_a_paw_action_but_no_key_identity(self) -> None:
+        event = AppEvent("key", 12.5, "left")
+
+        self.assertEqual(event.paw, "left")
+        self.assertEqual(
+            {field.name for field in fields(event)},
+            {"kind", "happened_at", "paw"},
+        )
 
 
 class FakeDegenerateTextRange:

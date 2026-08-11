@@ -12,7 +12,7 @@ import tkinter as tk
 from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 from ctypes import wintypes
 
 from PIL import Image, ImageTk
@@ -51,6 +51,87 @@ VK_MENU = 0x12
 VK_LMENU = 0xA4
 VK_RMENU = 0xA5
 VK_Q = 0x51
+LLKHF_EXTENDED = 0x01
+
+PawAction = Literal["left", "right", "both", "alternate"]
+
+LEFT_WINDOWS_KEYS = frozenset(
+    {
+        0x1B,
+        0x09,
+        0x14,
+        0x5B,
+        0xA0,
+        0xA2,
+        0xA4,
+        0xC0,
+        *map(ord, "12345QWERTASDFGZXCVB"),
+    }
+)
+RIGHT_WINDOWS_KEYS = frozenset(
+    {
+        0x08,
+        0x0D,
+        0x5C,
+        0x5D,
+        0x90,
+        0xA1,
+        0xA3,
+        0xA5,
+        0xBA,
+        0xBB,
+        0xBD,
+        0xBF,
+        0xDB,
+        0xDC,
+        0xDD,
+        0xDE,
+        0xE2,
+        *range(0x21, 0x2F),
+        *range(0x60, 0x70),
+        *map(ord, "67890YUIOPHJKLNM"),
+    }
+)
+LEFT_PORTABLE_CHARACTERS = frozenset("`~12345!@#$%qwertasdfgzxcvb")
+RIGHT_PORTABLE_CHARACTERS = frozenset(
+    "67890-=_+^&*()yuiop[]{}\\|hjkl;'\"nm,./<>?"
+)
+LEFT_PORTABLE_KEYS = frozenset(
+    {
+        "esc",
+        "tab",
+        "caps_lock",
+        "shift",
+        "shift_l",
+        "ctrl",
+        "ctrl_l",
+        "alt",
+        "alt_l",
+        "cmd",
+        "cmd_l",
+    }
+)
+RIGHT_PORTABLE_KEYS = frozenset(
+    {
+        "backspace",
+        "enter",
+        "shift_r",
+        "ctrl_r",
+        "alt_r",
+        "cmd_r",
+        "insert",
+        "delete",
+        "home",
+        "end",
+        "page_up",
+        "page_down",
+        "left",
+        "right",
+        "up",
+        "down",
+        "num_lock",
+    }
+)
 
 WS_EX_TRANSPARENT = 0x00000020
 WS_EX_TOOLWINDOW = 0x00000080
@@ -373,6 +454,67 @@ def make_window_non_interactive(hwnd: int) -> None:
         0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
     )
+
+
+@dataclass(frozen=True)
+class AppEvent:
+    kind: str
+    happened_at: float
+    paw: PawAction | None = None
+
+
+def classify_windows_key(
+    vk_code: int,
+    scan_code: int = 0,
+    flags: int = 0,
+) -> PawAction:
+    if vk_code == 0x20:
+        return "both"
+    if vk_code == 0x10:
+        return "right" if scan_code == 0x36 else "left"
+    if vk_code in (VK_CONTROL, VK_MENU):
+        return "right" if flags & LLKHF_EXTENDED else "left"
+    if 0x70 <= vk_code <= 0x75:
+        return "left"
+    if 0x76 <= vk_code <= 0x7B:
+        return "right"
+    if vk_code in LEFT_WINDOWS_KEYS:
+        return "left"
+    if vk_code in RIGHT_WINDOWS_KEYS:
+        return "right"
+    return "alternate"
+
+
+def classify_portable_key(key: object) -> PawAction:
+    char = getattr(key, "char", None)
+    if char == " ":
+        return "both"
+    if isinstance(char, str):
+        if char.lower() in LEFT_PORTABLE_CHARACTERS:
+            return "left"
+        if char.lower() in RIGHT_PORTABLE_CHARACTERS:
+            return "right"
+
+    name = getattr(key, "name", None)
+    if name == "space":
+        return "both"
+    if name in LEFT_PORTABLE_KEYS:
+        return "left"
+    if name in RIGHT_PORTABLE_KEYS or (
+        isinstance(name, str) and name.startswith("num_")
+    ):
+        return "right"
+    if isinstance(name, str) and name.startswith("f"):
+        try:
+            number = int(name[1:])
+        except ValueError:
+            return "alternate"
+        if 1 <= number <= 6:
+            return "left"
+        if 7 <= number <= 12:
+            return "right"
+        return "alternate"
+    return "alternate"
 
 
 class AnimationState:
