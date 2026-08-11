@@ -224,31 +224,56 @@ class OverlayPositionTests(unittest.TestCase):
 
 
 class AnimationStateTests(unittest.TestCase):
-    def test_alternates_paws_then_settles_and_hides(self) -> None:
+    def test_explicit_keyboard_sides_choose_matching_paws(self) -> None:
         animation = AnimationState(hide_after=0.9)
-        animation.record_key(10.0)
+
+        animation.record_key(10.0, "left")
         self.assertEqual(animation.frame_name(10.01), "tap-left")
-        animation.record_key(10.2)
+        animation.record_key(10.2, "right")
         self.assertEqual(animation.frame_name(10.21), "tap-right")
-        self.assertEqual(animation.frame_name(10.4), "idle")
+
+    def test_spacebar_uses_both_paws_then_settles(self) -> None:
+        animation = AnimationState()
+
+        animation.record_key(1.0, "both")
+
+        self.assertEqual(animation.frame_name(1.01), "excited")
+        self.assertEqual(animation.frame_name(1.17), "idle")
+
+    def test_unknown_keys_keep_the_alternating_fallback(self) -> None:
+        animation = AnimationState()
+
+        animation.record_key(2.0, "alternate")
+        self.assertEqual(animation.frame_name(2.01), "tap-left")
+        animation.record_key(2.2, "alternate")
+        self.assertEqual(animation.frame_name(2.21), "tap-right")
+
+    def test_fast_typing_overrides_latest_side_with_both_paws(self) -> None:
+        animation = AnimationState()
+        for index, timestamp in enumerate((1.0, 1.05, 1.1, 1.15, 1.2)):
+            paw = "left" if index % 2 == 0 else "right"
+            animation.record_key(timestamp, paw)
+
+        self.assertEqual(animation.frame_name(1.21), "excited")
+        self.assertEqual(animation.frame_name(1.37), "idle")
+
+    def test_settles_and_hides_on_the_existing_timing(self) -> None:
+        animation = AnimationState(hide_after=0.9)
+        animation.record_key(10.0, "left")
+
+        self.assertEqual(animation.frame_name(10.17), "idle")
         self.assertTrue(animation.is_visible(10.8))
         self.assertFalse(animation.is_visible(11.2))
 
-    def test_fast_typing_uses_excited_frame(self) -> None:
-        animation = AnimationState()
-        for timestamp in (1.0, 1.05, 1.1, 1.15, 1.2):
-            animation.record_key(timestamp)
-        self.assertEqual(animation.frame_name(1.21), "excited")
-
     def test_fades_during_the_end_of_the_visible_period(self) -> None:
         animation = AnimationState(hide_after=1.5, fade_seconds=0.3)
-        animation.record_key(10.0)
+        animation.record_key(10.0, "left")
 
         self.assertEqual(animation.opacity(11.19), 1.0)
         self.assertAlmostEqual(animation.opacity(11.35), 0.5)
         self.assertEqual(animation.opacity(11.5), 0.0)
 
-        animation.record_key(11.6)
+        animation.record_key(11.6, "right")
         self.assertEqual(animation.opacity(11.6), 1.0)
 
 

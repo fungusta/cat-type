@@ -527,11 +527,19 @@ class AnimationState:
         self.fade_seconds = min(max(0.0, fade_seconds), hide_after)
         self.last_key_at = 0.0
         self._tap_count = 0
+        self._paw: PawAction = "left"
         self._recent: deque[float] = deque(maxlen=6)
 
-    def record_key(self, now: float) -> None:
+    def record_key(
+        self,
+        now: float,
+        paw: PawAction = "alternate",
+    ) -> None:
         self.last_key_at = now
         self._tap_count += 1
+        self._paw = (
+            "left" if self._tap_count % 2 else "right"
+        ) if paw == "alternate" else paw
         self._recent.append(now)
 
     def is_visible(self, now: float) -> bool:
@@ -550,11 +558,15 @@ class AnimationState:
         return max(0.0, (self.hide_after - elapsed) / self.fade_seconds)
 
     def frame_name(self, now: float) -> str:
-        if len(self._recent) >= 5 and self._recent[-1] - self._recent[-5] < 0.34:
-            return "excited"
         if now - self.last_key_at > 0.16:
             return "idle"
-        return "tap-left" if self._tap_count % 2 else "tap-right"
+        if (
+            self._paw == "both"
+            or len(self._recent) >= 5
+            and self._recent[-1] - self._recent[-5] < 0.34
+        ):
+            return "excited"
+        return "tap-left" if self._paw == "left" else "tap-right"
 
 
 class KeyboardMonitor:
