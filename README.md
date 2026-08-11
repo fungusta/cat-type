@@ -1,8 +1,9 @@
 # Cat Type
 
 Cat Type is a desktop companion for Windows, macOS, and Linux that makes a tiny
-animated cat appear while you type. It alternates paws with each key press,
-becomes excited during fast typing, and fades away after you stop.
+animated cat appear while you type. Its paws follow the side of the keyboard
+you use, spacebar taps both paws, fast typing makes it excited, and it fades
+away after you stop.
 
 Cat Type was inspired by [Bongo Cat on Steam](https://store.steampowered.com/app/3419430/Bongo_Cat/).
 I loved the idea of a tiny companion that reacts as you type and wanted to
@@ -54,6 +55,7 @@ Settings are saved for the current user and take effect immediately:
 - Choose which corner of the caret the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
+- See how many keystrokes Cat Type has reacted to in the current session.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 
@@ -111,9 +113,10 @@ architecture and publish the assets together on a GitHub Release.
 
 ## Privacy behavior
 
-- The keyboard listener discards each key after recognizing the
-  **Ctrl+Alt+Q** quit shortcut and emitting an activity signal.
-- Cat Type never reconstructs text, writes keystrokes to disk, or sends input
+- The keyboard listener classifies each key as left, right, both, or an
+  alternating fallback, then immediately discards the key itself.
+- Cat Type retains only the paw action, activity time, and in-memory session
+  total. It never reconstructs text, writes keystrokes to disk, or sends input
   over the network.
 - On Windows, UI Automation's password-field flag is checked before showing
   the cat.
