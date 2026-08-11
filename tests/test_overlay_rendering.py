@@ -21,6 +21,17 @@ from cat_type import (
 
 
 class OverlayRenderingTests(unittest.TestCase):
+    def test_keystroke_counter_is_not_rendered_in_the_cat_overlay(self) -> None:
+        app = CatTypeApp(hold_seconds=10.0)
+        try:
+            app.root.update_idletasks()
+
+            self.assertEqual(app.root.winfo_children(), [app.label])
+            self.assertEqual(app.label.winfo_reqwidth(), app.frame_width)
+            self.assertEqual(app.label.winfo_reqheight(), app.frame_height)
+        finally:
+            app.root.destroy()
+
     def test_missing_caret_uses_preferred_monitor_corner(self) -> None:
         app = CatTypeApp(
             hold_seconds=10.0,

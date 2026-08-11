@@ -572,7 +572,7 @@ class AnimationState:
 class KeyboardMonitor:
     """Signals activity only. It never turns virtual-key codes into text."""
 
-    def __init__(self, event_queue: queue.SimpleQueue[tuple[str, float]]) -> None:
+    def __init__(self, event_queue: queue.SimpleQueue[AppEvent]) -> None:
         self.event_queue = event_queue
         self._thread: threading.Thread | None = None
         self._thread_id = 0
@@ -597,6 +597,19 @@ class KeyboardMonitor:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=1.0)
 
+    def _emit_key(
+        self,
+        paw: PawAction,
+        happened_at: float | None = None,
+    ) -> None:
+        self.event_queue.put(
+            AppEvent(
+                "key",
+                time.monotonic() if happened_at is None else happened_at,
+                paw,
+            )
+        )
+
     def _run(self) -> None:
         if not IS_WINDOWS:
             self._run_portable()
@@ -620,10 +633,16 @@ class KeyboardMonitor:
                         self._ctrl_down = True
                     elif vk in (VK_MENU, VK_LMENU, VK_RMENU):
                         self._alt_down = True
-                    elif vk == VK_Q and self._ctrl_down and self._alt_down:
-                        self.event_queue.put(("quit", time.monotonic()))
+                    if vk == VK_Q and self._ctrl_down and self._alt_down:
+                        self.event_queue.put(AppEvent("quit", time.monotonic()))
                     else:
-                        self.event_queue.put(("key", time.monotonic()))
+                        self._emit_key(
+                            classify_windows_key(
+                                vk,
+                                data.scanCode,
+                                data.flags,
+                            )
+                        )
                 elif message in (WM_KEYUP, WM_SYSKEYUP):
                     if vk in (VK_CONTROL, VK_LCONTROL, VK_RCONTROL):
                         self._ctrl_down = False
@@ -638,7 +657,7 @@ class KeyboardMonitor:
             WH_KEYBOARD_LL, callback, module, 0
         )
         if not self._hook:
-            self.event_queue.put(("hook-error", time.monotonic()))
+            self.event_queue.put(AppEvent("hook-error", time.monotonic()))
             return
 
         message = wintypes.MSG()
@@ -659,15 +678,18 @@ class KeyboardMonitor:
             def on_press(key: object, *_injected: object) -> None:
                 if key in ctrl_keys:
                     self._ctrl_down = True
-                    return
-                if key in alt_keys:
+                elif key in alt_keys:
                     self._alt_down = True
-                    return
                 char = getattr(key, "char", None)
-                if char and char.lower() == "q" and self._ctrl_down and self._alt_down:
-                    self.event_queue.put(("quit", time.monotonic()))
+                if (
+                    char
+                    and char.lower() == "q"
+                    and self._ctrl_down
+                    and self._alt_down
+                ):
+                    self.event_queue.put(AppEvent("quit", time.monotonic()))
                 else:
-                    self.event_queue.put(("key", time.monotonic()))
+                    self._emit_key(classify_portable_key(key))
 
             def on_release(key: object, *_injected: object) -> None:
                 if key in ctrl_keys:
@@ -683,7 +705,7 @@ class KeyboardMonitor:
         except Exception as exc:
             if os.environ.get("CAT_TYPE_DEBUG"):
                 print(f"Keyboard listener unavailable: {exc}", file=sys.stderr)
-            self.event_queue.put(("hook-error", time.monotonic()))
+            self.event_queue.put(AppEvent("hook-error", time.monotonic()))
 
 
 class CaretLocator:
@@ -950,7 +972,8 @@ class CatTypeApp:
                 fade_seconds=fade_seconds,
             )
         ).normalized()
-        self.events: queue.SimpleQueue[tuple[str, float]] = queue.SimpleQueue()
+        self.events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
+        self.keystroke_count = 0
         self.animation = AnimationState(
             hide_after=self.settings.hold_seconds,
             fade_seconds=self.settings.fade_seconds,
@@ -1047,25 +1070,20 @@ class CatTypeApp:
         should_quit = False
         while True:
             try:
-                kind, happened_at = self.events.get_nowait()
+                event = self.events.get_nowait()
             except queue.Empty:
                 break
-            if kind == "quit":
+            if event.kind == "quit":
                 should_quit = True
-            elif kind == "settings":
+            elif event.kind == "settings":
                 self.open_settings()
-            elif kind == "toggle":
+            elif event.kind == "toggle":
                 self._set_enabled(not self.settings.enabled)
-            elif kind == "hook-error":
+            elif event.kind == "hook-error":
                 self._hook_failed = True
-            elif kind == "key":
-                if not self.settings.enabled:
-                    continue
-                if not self.animation.is_visible(happened_at):
-                    self._anchor_position = None
-                self._last_key_at = happened_at
-                self.animation.record_key(happened_at)
-                self.tracker.notify_activity(happened_at)
+            elif event.kind == "key":
+                assert event.paw is not None
+                self._handle_key_activity(event.happened_at, event.paw)
 
         if should_quit:
             self.shutdown()
@@ -1100,6 +1118,27 @@ class CatTypeApp:
             self._hide(reset_anchor=reset_anchor)
 
         self.root.after(16, self._tick)
+
+    def _handle_key_activity(
+        self,
+        happened_at: float,
+        paw: PawAction,
+    ) -> None:
+        if not self.settings.enabled:
+            return
+        if not self.animation.is_visible(happened_at):
+            self._anchor_position = None
+        self._last_key_at = happened_at
+        self.keystroke_count += 1
+        self.animation.record_key(happened_at, paw)
+        self.tracker.notify_activity(happened_at)
+        if (
+            self._settings_window is not None
+            and self._settings_window.window.winfo_exists()
+        ):
+            self._settings_window.update_keystroke_count(
+                self.keystroke_count
+            )
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
         assert snapshot.rect is not None or snapshot.fallback_allowed
@@ -1271,14 +1310,14 @@ class CatTypeApp:
             pystray.MenuItem(
                 "Settings…",
                 lambda _icon, _item: self.events.put(
-                    ("settings", time.monotonic())
+                    AppEvent("settings", time.monotonic())
                 ),
                 default=True,
             ),
             pystray.MenuItem(
                 "Enabled",
                 lambda _icon, _item: self.events.put(
-                    ("toggle", time.monotonic())
+                    AppEvent("toggle", time.monotonic())
                 ),
                 checked=lambda _item: self.settings.enabled,
             ),
@@ -1286,7 +1325,7 @@ class CatTypeApp:
             pystray.MenuItem(
                 "Quit Cat Type",
                 lambda _icon, _item: self.events.put(
-                    ("quit", time.monotonic())
+                    AppEvent("quit", time.monotonic())
                 ),
             ),
         )
@@ -1318,6 +1357,7 @@ class CatTypeApp:
             self.settings,
             self.apply_settings,
             str(APP_ICON) if APP_ICON.exists() else None,
+            keystroke_count=self.keystroke_count,
         )
 
     def apply_settings(self, settings: AppSettings) -> None:

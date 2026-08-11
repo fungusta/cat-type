@@ -1,11 +1,15 @@
+import queue
 import unittest
 from dataclasses import fields
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from cat_settings import AppSettings
 from cat_type import (
     AppEvent,
     AnimationState,
     CaretLocator,
+    CatTypeApp,
+    KeyboardMonitor,
     ScreenRect,
     classify_portable_key,
     classify_windows_key,
@@ -70,6 +74,89 @@ class KeyboardClassificationTests(unittest.TestCase):
         self.assertEqual(
             {field.name for field in fields(event)},
             {"kind", "happened_at", "paw"},
+        )
+
+
+class KeyboardMonitorEventTests(unittest.TestCase):
+    def test_emitted_key_event_contains_only_time_and_paw(self) -> None:
+        events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
+        monitor = KeyboardMonitor(events)
+
+        monitor._emit_key("left", happened_at=12.5)
+
+        self.assertEqual(events.get_nowait(), AppEvent("key", 12.5, "left"))
+
+
+class CatTypeKeyActivityTests(unittest.TestCase):
+    @staticmethod
+    def make_app(enabled: bool = True) -> CatTypeApp:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=enabled)
+        app.animation = Mock()
+        app.animation.is_visible.return_value = False
+        app.tracker = Mock()
+        app._anchor_position = (20, 30)
+        app._last_key_at = 0.0
+        app.keystroke_count = 0
+        app._settings_window = None
+        return app
+
+    def test_enabled_key_updates_animation_tracking_and_session_count(self) -> None:
+        app = self.make_app()
+
+        app._handle_key_activity(10.0, "left")
+
+        self.assertEqual(app.keystroke_count, 1)
+        self.assertIsNone(app._anchor_position)
+        self.assertEqual(app._last_key_at, 10.0)
+        app.animation.record_key.assert_called_once_with(10.0, "left")
+        app.tracker.notify_activity.assert_called_once_with(10.0)
+
+    def test_disabled_key_does_not_increment_or_animate(self) -> None:
+        app = self.make_app(enabled=False)
+
+        app._handle_key_activity(10.0, "right")
+
+        self.assertEqual(app.keystroke_count, 0)
+        app.animation.record_key.assert_not_called()
+        app.tracker.notify_activity.assert_not_called()
+
+    def test_open_settings_counter_updates_live(self) -> None:
+        app = self.make_app()
+        settings_window = Mock()
+        settings_window.window.winfo_exists.return_value = True
+        app._settings_window = settings_window
+
+        app._handle_key_activity(10.0, "both")
+
+        settings_window.update_keystroke_count.assert_called_once_with(1)
+
+    def test_repeated_keydowns_count_individually(self) -> None:
+        app = self.make_app()
+
+        app._handle_key_activity(10.0, "right")
+        app._handle_key_activity(10.1, "right")
+
+        self.assertEqual(app.keystroke_count, 2)
+
+    def test_open_settings_receives_the_current_session_count(self) -> None:
+        app = self.make_app()
+        app.root = Mock()
+        app.keystroke_count = 42
+
+        with (
+            patch("cat_type.SettingsWindow") as settings_window,
+            patch("cat_type.APP_ICON") as app_icon,
+        ):
+            app_icon.exists.return_value = False
+            app.open_settings()
+
+        settings_window.assert_called_once_with(
+            app.root,
+            app.settings,
+            app.apply_settings,
+            None,
+            keystroke_count=42,
         )
 
 
