@@ -143,50 +143,111 @@ class KeyboardMonitorEventTests(unittest.TestCase):
         self.assertEqual(events.get_nowait(), AppEvent("key", 12.5, "left"))
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Xorg-only behavior")
-    def test_xorg_listener_preserves_keypad_identity(
+    def test_xorg_listener_replaces_every_keypad_keysym_with_one_marker(
         self,
     ) -> None:
         from pynput import keyboard
+        from pynput.keyboard import _xorg
 
         if keyboard.Listener.__module__ != "pynput.keyboard._xorg":
             self.skipTest("pynput Xorg backend is not active")
         listener_type = KeyboardMonitor._portable_listener_type(keyboard.Listener)
         listener = listener_type.__new__(listener_type)
 
-        keypad_cases = {
-            keysym: key.char
-            for keysym, key in keyboard.Listener._KEYPAD_KEYS.items()
-            if getattr(key, "char", None) is not None
+        markers = set()
+        required_names = {
+            "KP_1",
+            "KP_Add",
+            "KP_Begin",
+            "KP_Down",
+            "KP_Enter",
+            "KP_F1",
+            "KP_F2",
+            "KP_F3",
+            "KP_F4",
+            "KP_Separator",
+            "KP_Space",
+            "KP_Tab",
         }
-        keypad_end = next(
-            keysym
-            for keysym, key in keyboard.Listener._KEYPAD_KEYS.items()
-            if getattr(key, "name", None) == "end"
-        )
-        for keysym, char in keypad_cases.items():
-            numlock = 0x02 if char == "1" else 0
-            display = FakeXorgDisplay(
-                keypad_end if char == "1" else keysym,
-                keysym,
-                numlock_mask=numlock,
-            )
-            event = SimpleNamespace(detail=87, state=numlock)
+        self.assertLessEqual(required_names, _xorg.KEYPAD_KEYS.keys())
+        keypad_keysyms = frozenset(_xorg.KEYPAD_KEYS.values())
+        for keysym in keypad_keysyms:
+            display = FakeXorgDisplay(keysym, keysym)
+            event = SimpleNamespace(detail=87, state=0)
 
-            with self.subTest(keysym=keysym, char=char):
+            with self.subTest(keysym=keysym):
                 key = listener._event_to_key(display, event)
-                self.assertEqual(key.char, char)
                 self.assertTrue(key._cat_type_keypad)
+                self.assertFalse(hasattr(key, "__dict__"))
+                self.assertFalse(hasattr(key, "char"))
+                self.assertFalse(hasattr(key, "name"))
+                self.assertFalse(hasattr(key, "vk"))
+                self.assertNotIn(
+                    key,
+                    {
+                        keyboard.Key.ctrl,
+                        keyboard.Key.ctrl_l,
+                        keyboard.Key.ctrl_r,
+                        keyboard.Key.alt,
+                        keyboard.Key.alt_l,
+                        keyboard.Key.alt_r,
+                        keyboard.Key.alt_gr,
+                    },
+                )
+                markers.add(key)
                 self.assertEqual(classify_portable_key(key), "right")
+        self.assertEqual(len(markers), 1)
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Xorg-only behavior")
-    def test_xorg_top_row_digits_keep_the_qwerty_split(self) -> None:
+    def test_xorg_keypad_marker_survives_numlock_and_center_mapping(
+        self,
+    ) -> None:
+        from pynput import keyboard
+        from pynput.keyboard import _xorg
+
+        if keyboard.Listener.__module__ != "pynput.keyboard._xorg":
+            self.skipTest("pynput Xorg backend is not active")
+        listener_type = KeyboardMonitor._portable_listener_type(keyboard.Listener)
+        listener = listener_type.__new__(listener_type)
+        numlock_mask = 0x02
+        key_pairs = (
+            ("KP_End", "KP_1"),
+            ("KP_Begin", "KP_5"),
+        )
+
+        for off_name, on_name in key_pairs:
+            display = FakeXorgDisplay(
+                _xorg.KEYPAD_KEYS[off_name],
+                _xorg.KEYPAD_KEYS[on_name],
+                numlock_mask=numlock_mask,
+            )
+            for state in (0, numlock_mask):
+                event = SimpleNamespace(detail=87, state=state)
+
+                with self.subTest(
+                    off_name=off_name,
+                    on_name=on_name,
+                    numlock=bool(state),
+                ):
+                    key = listener._event_to_key(display, event)
+                    self.assertTrue(key._cat_type_keypad)
+                    self.assertEqual(classify_portable_key(key), "right")
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Xorg-only behavior")
+    def test_xorg_ordinary_qwerty_keys_keep_the_physical_split(self) -> None:
         from pynput import keyboard
 
         if keyboard.Listener.__module__ != "pynput.keyboard._xorg":
             self.skipTest("pynput Xorg backend is not active")
         listener_type = KeyboardMonitor._portable_listener_type(keyboard.Listener)
         listener = listener_type.__new__(listener_type)
-        for keysym, expected in ((ord("1"), "left"), (ord("6"), "right")):
+        cases = (
+            (ord("1"), "left"),
+            (ord("6"), "right"),
+            (ord("q"), "left"),
+            (ord("y"), "right"),
+        )
+        for keysym, expected in cases:
             display = FakeXorgDisplay(keysym, keysym)
             event = SimpleNamespace(detail=10, state=0)
 

@@ -479,6 +479,14 @@ class AppEvent:
     paw: PawAction | None = None
 
 
+class _PortableKeypadKey:
+    __slots__ = ()
+    _cat_type_keypad = True
+
+
+_XORG_KEYPAD_KEY = _PortableKeypadKey()
+
+
 def classify_windows_key(
     vk_code: int,
     scan_code: int = 0,
@@ -639,14 +647,22 @@ class KeyboardMonitor:
 
     @staticmethod
     def _portable_listener_type(listener_type: type) -> type:
+        backend_module = sys.modules.get(listener_type.__module__)
+        keypad_keys = getattr(backend_module, "KEYPAD_KEYS", None)
         if (
             not IS_LINUX
             or listener_type.__module__ != "pynput.keyboard._xorg"
-            or not isinstance(
-                getattr(listener_type, "_KEYPAD_KEYS", None),
-                dict,
-            )
+            or not isinstance(keypad_keys, dict)
             or not callable(getattr(listener_type, "_keycode_to_keysym", None))
+        ):
+            return listener_type
+
+        try:
+            keypad_keysyms = frozenset(keypad_keys.values())
+        except (AttributeError, TypeError):
+            return listener_type
+        if not keypad_keysyms or not all(
+            isinstance(keysym, int) for keysym in keypad_keysyms
         ):
             return listener_type
 
@@ -655,25 +671,22 @@ class KeyboardMonitor:
                 try:
                     keysyms = (
                         self._keycode_to_keysym(display, event.detail, index)
-                        for index in (0, 1)
+                        for index in range(4)
                     )
                     is_keypad = any(
-                        keysym in self._KEYPAD_KEYS for keysym in keysyms
+                        keysym in keypad_keysyms for keysym in keysyms
                     )
                 except Exception:
-                    # pynput exposes no public Xorg hook before keypad keysyms
-                    # become ordinary characters. If those private internals
-                    # change, retain pynput's normal event rather than failing
-                    # the keyboard listener.
+                    # pynput exposes no public Xorg hook before translating
+                    # keypad keysyms. If its private internals change, retain
+                    # the normal event rather than failing input monitoring.
                     is_keypad = False
 
-                key = super()._event_to_key(display, event)
-                if is_keypad and getattr(key, "char", None) is not None:
-                    try:
-                        setattr(key, "_cat_type_keypad", True)
-                    except (AttributeError, TypeError):
-                        pass
-                return key
+                return (
+                    _XORG_KEYPAD_KEY
+                    if is_keypad
+                    else super()._event_to_key(display, event)
+                )
 
         return XorgKeypadListener
 
