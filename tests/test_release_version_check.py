@@ -31,6 +31,8 @@ class ReleaseVersionCheckTests(unittest.TestCase):
 
     def test_runtime_version_drift_is_reported(self) -> None:
         root = self.copy_version_files()
+        self.assertEqual(metadata_mismatches("1.0.5", root), [])
+
         (root / "app_version.py").write_text('APP_VERSION = "1.0.4"\n')
 
         self.assertIn("app_version.py", metadata_mismatches("1.0.5", root))
