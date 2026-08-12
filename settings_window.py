@@ -8,6 +8,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageTk
 
+from app_version import APP_VERSION
 from cat_settings import AppSettings
 
 
@@ -152,8 +153,11 @@ class SettingsWindow:
         on_save: Callable[[AppSettings], None],
         icon_path: str | None = None,
         keystroke_count: int = 0,
+        on_check_for_updates: Callable[[], None] | None = None,
+        update_status: str = "",
     ) -> None:
         self._on_save = on_save
+        self._on_check_for_updates = on_check_for_updates
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -189,6 +193,7 @@ class SettingsWindow:
         self.keystroke_count_text = tk.StringVar(
             value=f"{keystroke_count:,}"
         )
+        self.update_status_text = tk.StringVar(value=update_status)
 
         self._configure_styles()
         self._load_preview_frames(icon_path)
@@ -412,6 +417,7 @@ class SettingsWindow:
         self._build_appearance_card(left)
         self._build_size_card(right)
         self._build_timing_card(right)
+        self._build_updates_card(right)
 
     def _build_header(self, body: tk.Frame) -> None:
         hero = tk.Frame(
@@ -631,6 +637,49 @@ class SettingsWindow:
             lambda value: f"{float(value):.1f}s",
             top_padding=18,
         )
+        card.pack(fill="x", pady=(0, 14))
+
+    def _build_updates_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(
+            parent,
+            "Updates",
+            "Keep your typing pal current",
+        )
+        self.update_version_label = tk.Label(
+            content,
+            text=f"Version {APP_VERSION}",
+            background=self.CARD,
+            foreground=self.INK,
+            font=self.fonts["control"],
+        )
+        self.update_version_label.pack(anchor="w")
+        tk.Label(
+            content,
+            textvariable=self.update_status_text,
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            justify="left",
+            wraplength=280,
+        ).pack(anchor="w", fill="x", pady=(5, 10))
+        self.check_for_updates_button = tk.Button(
+            content,
+            text="Check for updates",
+            command=self._on_check_for_updates,
+            state="normal" if self._on_check_for_updates else "disabled",
+            relief="flat",
+            borderwidth=0,
+            background=self.PEACH,
+            activebackground="#F4C6B3",
+            foreground=self.ACCENT_DARK,
+            activeforeground=self.ACCENT_DARK,
+            disabledforeground=self.MUTED,
+            font=self.fonts["button"],
+            padx=14,
+            pady=8,
+            cursor="hand2",
+        )
+        self.check_for_updates_button.pack(anchor="w")
         card.pack(fill="x", pady=(0, 14))
 
     def _build_footer(self, body: tk.Frame) -> tk.Frame:
@@ -921,6 +970,15 @@ class SettingsWindow:
 
     def update_keystroke_count(self, count: int) -> None:
         self.keystroke_count_text.set(f"{count:,}")
+
+    def set_update_status(self, text: str, checking: bool = False) -> None:
+        self.update_status_text.set(text)
+        state = (
+            "disabled"
+            if checking or self._on_check_for_updates is None
+            else "normal"
+        )
+        self.check_for_updates_button.configure(state=state)
 
     def close(self) -> None:
         try:

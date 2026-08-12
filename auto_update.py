@@ -10,7 +10,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -48,6 +48,33 @@ class AvailableUpdate:
     html_url: str
     package: ReleaseAsset
     checksums: ReleaseAsset
+
+
+@dataclass(frozen=True)
+class InstallerAvailability:
+    """Whether this installation can safely replace itself."""
+
+    can_install: bool
+    status: str
+
+
+@dataclass(frozen=True)
+class UpdateEvent:
+    """An immutable result passed from an update worker to the Tk thread."""
+
+    kind: Literal[
+        "not-due",
+        "unavailable",
+        "check-result",
+        "error",
+        "progress",
+        "stage",
+        "install-started",
+    ]
+    message: str = ""
+    update: AvailableUpdate | None = None
+    received: int = 0
+    total: int = 0
 
 
 def _require_aware(moment: datetime) -> None:

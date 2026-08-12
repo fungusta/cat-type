@@ -365,13 +365,18 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             app_icon.exists.return_value = False
             app.open_settings()
 
-        settings_window.assert_called_once_with(
-            app.root,
-            app.settings,
-            app.apply_settings,
-            None,
-            keystroke_count=42,
+        settings_window.assert_called_once()
+        arguments, keywords = settings_window.call_args
+        self.assertEqual(
+            arguments,
+            (app.root, app.settings, app.apply_settings, None),
         )
+        self.assertEqual(keywords["keystroke_count"], 42)
+        self.assertEqual(
+            keywords["update_status"],
+            "Ready to check for updates.",
+        )
+        self.assertTrue(callable(keywords["on_check_for_updates"]))
 
     def test_run_uses_startup_feedback_without_recording_a_key(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
@@ -382,6 +387,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.root = Mock()
         app._tick = Mock()
         app._first_run = False
+        app._platform_name = "linux"
 
         with patch("cat_type.time.monotonic", return_value=12.5):
             app.run()
@@ -389,6 +395,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.animation.show_startup.assert_called_once_with(12.5)
         app.animation.record_key.assert_not_called()
         app.tracker.notify_activity.assert_called_once_with(12.5)
+        app.root.after.assert_any_call(2000, app.check_for_updates)
 
 
 class FakeDegenerateTextRange:

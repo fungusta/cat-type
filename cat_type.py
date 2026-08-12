@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import os
+import platform as runtime_platform
 import queue
 import sys
 import tempfile
@@ -11,12 +12,21 @@ import time
 import tkinter as tk
 from collections import deque
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
+from tkinter import messagebox
 from typing import Callable, Literal
 from ctypes import wintypes
 
 from PIL import Image, ImageTk
 
+from auto_update import (
+    AvailableUpdate,
+    InstallerAvailability,
+    UpdateEvent,
+    UpdateService,
+    UpdateStateStore,
+)
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
 from platform_assets import icon_filename
 from settings_window import SettingsWindow
@@ -1037,6 +1047,79 @@ class CaretTracker:
         return 0.025 if active else 0.25
 
 
+class _DaemonUpdateRunner:
+    """Serialize update jobs on one lazily started daemon thread."""
+
+    def __init__(self) -> None:
+        self._jobs: queue.SimpleQueue[
+            tuple[Callable[[], None], str]
+        ] = queue.SimpleQueue()
+        self._start_lock = threading.Lock()
+        self._worker: threading.Thread | None = None
+
+    def __call__(
+        self,
+        target: Callable[[], None],
+        name: str,
+    ) -> threading.Thread:
+        self._jobs.put((target, name))
+        with self._start_lock:
+            if self._worker is None:
+                self._worker = threading.Thread(
+                    target=self._run,
+                    name="cat-type-updates",
+                    daemon=True,
+                )
+                self._worker.start()
+        return self._worker
+
+    def _run(self) -> None:
+        while True:
+            target, name = self._jobs.get()
+            assert self._worker is not None
+            self._worker.name = name
+            target()
+
+
+class _UnavailableUpdateInstaller:
+    """Narrow placeholder replaced by platform installers in later tasks."""
+
+    RELEASES_URL = "https://github.com/fungusta/cat-type/releases/latest"
+
+    def __init__(self, platform_name: str, frozen: bool | None) -> None:
+        is_frozen = (
+            bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+        )
+        if platform_name == "darwin":
+            status = (
+                "macOS updates are manual. Download the latest DMG: "
+                f"{self.RELEASES_URL}"
+            )
+        elif not is_frozen:
+            status = (
+                "Source checkouts cannot update themselves. "
+                "Download a packaged Windows or Linux release: "
+                f"{self.RELEASES_URL}"
+            )
+        else:
+            status = (
+                "Automatic installation is unavailable in this build. "
+                f"Download the latest release: {self.RELEASES_URL}"
+            )
+        self._availability = InstallerAvailability(False, status)
+
+    def availability(self) -> InstallerAvailability:
+        return self._availability
+
+    def prepare(self, package: Path, update: AvailableUpdate) -> object:
+        del package, update
+        raise RuntimeError("automatic installation is unavailable")
+
+    def start(self, prepared: object) -> None:
+        del prepared
+        raise RuntimeError("automatic installation is unavailable")
+
+
 class CatTypeApp:
     TRANSPARENT_COLOR = "#00ff01"
 
@@ -1047,6 +1130,15 @@ class CatTypeApp:
         fade_seconds: float = 0.35,
         settings: AppSettings | None = None,
         settings_store: SettingsStore | None = None,
+        update_service: object | None = None,
+        update_state: object | None = None,
+        update_installer: object | None = None,
+        thread_runner: Callable[[Callable[[], None], str], object] | None = None,
+        confirm_update: Callable[[AvailableUpdate], bool] | None = None,
+        platform_name: str = sys.platform,
+        machine: str | None = None,
+        frozen: bool | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1080,6 +1172,32 @@ class CatTypeApp:
         self._tray_thread: threading.Thread | None = None
         self._x_display = None
         self._shutting_down = False
+        self._update_status = "Ready to check for updates."
+        self._initialize_update_controller(
+            update_service=(
+                UpdateService() if update_service is None else update_service
+            ),
+            update_state=(
+                UpdateStateStore() if update_state is None else update_state
+            ),
+            update_installer=(
+                _UnavailableUpdateInstaller(platform_name, frozen)
+                if update_installer is None
+                else update_installer
+            ),
+            thread_runner=(
+                _DaemonUpdateRunner() if thread_runner is None else thread_runner
+            ),
+            confirm_update=(
+                self._confirm_available_update
+                if confirm_update is None
+                else confirm_update
+            ),
+            platform_name=platform_name,
+            machine=machine or runtime_platform.machine(),
+            frozen=bool(getattr(sys, "frozen", False)) if frozen is None else frozen,
+            now=now or (lambda: datetime.now(timezone.utc)),
+        )
 
         self.root = tk.Tk()
         self.root.title("Cat Type")
@@ -1121,6 +1239,185 @@ class CatTypeApp:
         self.root.withdraw()
         self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
 
+    def _initialize_update_controller(
+        self,
+        *,
+        update_service: object,
+        update_state: object,
+        update_installer: object,
+        thread_runner: Callable[[Callable[[], None], str], object],
+        confirm_update: Callable[[AvailableUpdate], bool],
+        platform_name: str,
+        machine: str,
+        frozen: bool,
+        now: Callable[[], datetime],
+    ) -> None:
+        self.update_events: queue.SimpleQueue[UpdateEvent] = queue.SimpleQueue()
+        self._update_service = update_service
+        self._update_state = update_state
+        self._update_installer = update_installer
+        self._update_thread_runner = thread_runner
+        self._confirm_update = confirm_update
+        self._platform_name = platform_name
+        self._machine = machine
+        self._frozen = frozen
+        self._update_now = now
+        self._update_worker: object | None = None
+        self._update_worker_active = False
+
+    def check_for_updates(self, manual: bool = False) -> None:
+        if self._shutting_down or self._update_worker_active:
+            return
+        if not manual:
+            if not (
+                self._platform_name == "win32"
+                or self._platform_name.startswith("linux")
+            ):
+                return
+
+        self._set_update_status("Checking for updates…", checking=True)
+        self._update_worker_active = True
+
+        def check_worker() -> None:
+            try:
+                if not manual and not self._update_state.is_due(
+                    self._update_now()
+                ):
+                    self.update_events.put(UpdateEvent("not-due"))
+                    return
+                availability = self._update_installer.availability()
+                if not availability.can_install:
+                    self.update_events.put(
+                        UpdateEvent("unavailable", message=availability.status)
+                    )
+                    return
+                update = self._update_service.check(
+                    self._platform_name,
+                    self._machine,
+                )
+                checked_at = self._update_now()
+                self._update_state.record_success(checked_at)
+                self.update_events.put(UpdateEvent("check-result", update=update))
+            except Exception as error:
+                self.update_events.put(UpdateEvent("error", message=str(error)))
+
+        self._update_worker = self._update_thread_runner(
+            check_worker,
+            "update-check",
+        )
+
+    def _confirm_available_update(self, update: AvailableUpdate) -> bool:
+        return messagebox.askyesno(
+            "Cat Type update",
+            f"Cat Type {update.version} is available. Download and install it now?",
+            parent=self.root,
+        )
+
+    def _set_update_status(self, text: str, checking: bool = False) -> None:
+        self._update_status = text
+        if (
+            self._settings_window is not None
+            and self._settings_window.window.winfo_exists()
+        ):
+            self._settings_window.set_update_status(text, checking=checking)
+
+    def _drain_update_events(self) -> None:
+        while True:
+            try:
+                event = self.update_events.get_nowait()
+            except queue.Empty:
+                return
+            self._handle_update_event(event)
+
+    def _handle_update_event(self, event: UpdateEvent) -> None:
+        if event.kind == "progress":
+            percent = round(event.received * 100 / event.total) if event.total else 0
+            self._set_update_status(f"Downloading update… {percent}%", checking=True)
+            return
+        if event.kind == "stage":
+            self._set_update_status(event.message, checking=True)
+            return
+
+        self._update_worker_active = False
+        self._update_worker = None
+        if self._shutting_down:
+            return
+        if event.kind == "not-due":
+            self._set_update_status("Ready to check for updates.")
+            return
+        if event.kind == "unavailable":
+            self._set_update_status(event.message)
+            return
+        if event.kind == "error":
+            detail = event.message or "Unknown update error"
+            self._set_update_status(f"Update failed: {detail}")
+            return
+        if event.kind == "install-started":
+            self._set_update_status(event.message)
+            return
+        if event.kind != "check-result":
+            return
+        if event.update is None:
+            self._set_update_status("Cat Type is up to date.")
+            return
+
+        update = event.update
+        self._set_update_status(f"Cat Type {update.version} is available.")
+        if not self._confirm_update(update):
+            self._set_update_status("Update cancelled.")
+            return
+        self._start_update_install(update)
+
+    def _start_update_install(self, update: AvailableUpdate) -> None:
+        if self._shutting_down or self._update_worker_active:
+            return
+        self._update_worker_active = True
+        self._set_update_status("Downloading update… 0%", checking=True)
+
+        def progress(received: int, total: int) -> None:
+            self.update_events.put(
+                UpdateEvent("progress", received=received, total=total)
+            )
+
+        def install_worker() -> None:
+            try:
+                package = self._update_service.download_verified(
+                    update,
+                    progress=progress,
+                )
+                if self._shutting_down:
+                    return
+                self.update_events.put(
+                    UpdateEvent(
+                        "stage",
+                        message=f"Verifying Cat Type {update.version}…",
+                    )
+                )
+                prepared = self._update_installer.prepare(package, update)
+                if self._shutting_down:
+                    return
+                self.update_events.put(
+                    UpdateEvent(
+                        "stage",
+                        message=f"Installing Cat Type {update.version}…",
+                    )
+                )
+                self._update_installer.start(prepared)
+                if not self._shutting_down:
+                    self.update_events.put(
+                        UpdateEvent(
+                            "install-started",
+                            message=f"Installing Cat Type {update.version}…",
+                        )
+                    )
+            except Exception as error:
+                self.update_events.put(UpdateEvent("error", message=str(error)))
+
+        self._update_worker = self._update_thread_runner(
+            install_worker,
+            "update-install",
+        )
+
     def run(self) -> None:
         self._start_tray()
         self.keyboard.start()
@@ -1131,6 +1428,11 @@ class CatTypeApp:
         self.animation.show_startup(started_at)
         self.tracker.notify_activity(started_at)
         self.root.after(16, self._tick)
+        platform_name = getattr(self, "_platform_name", sys.platform)
+        if platform_name == "win32" or platform_name.startswith(
+            "linux"
+        ):
+            self.root.after(2000, self.check_for_updates)
         if self._first_run:
             self.root.after(400, self.open_settings)
         self.root.mainloop()
@@ -1152,6 +1454,8 @@ class CatTypeApp:
     def _tick(self) -> None:
         if not self.root.winfo_exists():
             return
+
+        self._drain_update_events()
 
         should_quit = False
         while True:
@@ -1444,7 +1748,18 @@ class CatTypeApp:
             self.apply_settings,
             str(APP_ICON) if APP_ICON.exists() else None,
             keystroke_count=self.keystroke_count,
+            on_check_for_updates=lambda: self.check_for_updates(manual=True),
+            update_status=getattr(
+                self,
+                "_update_status",
+                "Ready to check for updates.",
+            ),
         )
+        if getattr(self, "_update_worker_active", False):
+            self._settings_window.set_update_status(
+                self._update_status,
+                checking=True,
+            )
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent

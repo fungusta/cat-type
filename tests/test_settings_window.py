@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from app_version import APP_VERSION
 from cat_settings import AppSettings
 from settings_window import SettingsWindow
 
@@ -178,13 +179,64 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.skipTest(f"Tk display is unavailable: {error}")
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
+        self.on_check_for_updates = Mock()
         self.settings_window = SettingsWindow(
             self.root,
             AppSettings(),
             lambda _settings: None,
             keystroke_count=1_234,
+            on_check_for_updates=self.on_check_for_updates,
+            update_status="Ready to check.",
         )
         self.addCleanup(self.settings_window.close)
+
+    def test_updates_card_shows_version_status_and_invokes_callback_once(
+        self,
+    ) -> None:
+        self.assertEqual(
+            self.settings_window.update_version_label.cget("text"),
+            f"Version {APP_VERSION}",
+        )
+        self.assertEqual(
+            self.settings_window.update_status_text.get(),
+            "Ready to check.",
+        )
+        self.assertEqual(
+            self.settings_window.check_for_updates_button.cget("text"),
+            "Check for updates",
+        )
+
+        self.settings_window.check_for_updates_button.invoke()
+
+        self.on_check_for_updates.assert_called_once_with()
+
+    def test_update_status_changes_live_and_disables_button_while_checking(
+        self,
+    ) -> None:
+        self.settings_window.set_update_status(
+            "Checking for updates…",
+            checking=True,
+        )
+
+        self.assertEqual(
+            self.settings_window.update_status_text.get(),
+            "Checking for updates…",
+        )
+        self.assertEqual(
+            self.settings_window.check_for_updates_button.cget("state"),
+            "disabled",
+        )
+
+        self.settings_window.set_update_status("Cat Type is up to date.")
+
+        self.assertEqual(
+            self.settings_window.update_status_text.get(),
+            "Cat Type is up to date.",
+        )
+        self.assertEqual(
+            self.settings_window.check_for_updates_button.cget("state"),
+            "normal",
+        )
 
     def test_session_keystroke_counter_is_visible_and_updates_live(self) -> None:
         self.assertEqual(
