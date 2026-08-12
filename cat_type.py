@@ -29,6 +29,7 @@ from auto_update import (
 )
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
 from platform_assets import icon_filename
+from platform_updater import WindowsControllerInstaller, WindowsShutdownSignal
 from settings_window import SettingsWindow
 
 
@@ -1136,6 +1137,27 @@ class UpdateThreadRunner(Protocol):
     ) -> object: ...
 
 
+class ControllerShutdownSignal(Protocol):
+    """Nonblocking platform request consumed by the Tk polling loop."""
+
+    @property
+    def available(self) -> bool: ...
+
+    def requested(self) -> bool: ...
+
+    def close(self) -> None: ...
+
+
+class _UnavailableShutdownSignal:
+    available = False
+
+    def requested(self) -> bool:
+        return False
+
+    def close(self) -> None:
+        pass
+
+
 class _UnavailableUpdateInstaller:
     """Manual-only implementation of the normalized controller seam."""
 
@@ -1175,6 +1197,25 @@ class _UnavailableUpdateInstaller:
         raise RuntimeError("automatic installation is unavailable")
 
 
+def _default_shutdown_signal(
+    platform_name: str,
+    frozen: bool,
+) -> ControllerShutdownSignal:
+    if platform_name == "win32" and frozen:
+        return WindowsShutdownSignal()
+    return _UnavailableShutdownSignal()
+
+
+def _default_update_installer(
+    platform_name: str,
+    frozen: bool,
+    shutdown_available: bool,
+) -> ControllerUpdateInstaller:
+    if platform_name == "win32" and frozen and shutdown_available:
+        return WindowsControllerInstaller()
+    return _UnavailableUpdateInstaller(platform_name, frozen)
+
+
 class CatTypeApp:
     TRANSPARENT_COLOR = "#00ff01"
 
@@ -1194,7 +1235,7 @@ class CatTypeApp:
         machine: str | None = None,
         frozen: bool | None = None,
         now: Callable[[], datetime] | None = None,
-        before_update_handoff: Callable[[UpdateHandoffStage], None] | None = None,
+        shutdown_signal: ControllerShutdownSignal | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1229,6 +1270,14 @@ class CatTypeApp:
         self._x_display = None
         self._shutting_down = False
         self._update_status = "Ready to check for updates."
+        is_frozen = (
+            bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+        )
+        self._shutdown_signal = (
+            _default_shutdown_signal(platform_name, is_frozen)
+            if shutdown_signal is None
+            else shutdown_signal
+        )
         self._initialize_update_controller(
             update_service=(
                 UpdateService() if update_service is None else update_service
@@ -1237,7 +1286,11 @@ class CatTypeApp:
                 UpdateStateStore() if update_state is None else update_state
             ),
             update_installer=(
-                _UnavailableUpdateInstaller(platform_name, frozen)
+                _default_update_installer(
+                    platform_name,
+                    is_frozen,
+                    self._shutdown_signal.available,
+                )
                 if update_installer is None
                 else update_installer
             ),
@@ -1251,9 +1304,8 @@ class CatTypeApp:
             ),
             platform_name=platform_name,
             machine=machine or runtime_platform.machine(),
-            frozen=bool(getattr(sys, "frozen", False)) if frozen is None else frozen,
+            frozen=is_frozen,
             now=now or (lambda: datetime.now(timezone.utc)),
-            before_handoff=before_update_handoff,
         )
 
         self.root = tk.Tk()
@@ -1590,6 +1642,9 @@ class CatTypeApp:
                 self._active_update_operation_id = None
                 self._update_worker_active = False
                 self._update_worker = None
+        shutdown_signal = getattr(self, "_shutdown_signal", None)
+        if shutdown_signal is not None:
+            shutdown_signal.close()
         self._hide()
         if self._tray_icon is not None:
             self._tray_icon.stop()
@@ -1601,6 +1656,10 @@ class CatTypeApp:
             pass
 
     def _tick(self) -> None:
+        shutdown_signal = getattr(self, "_shutdown_signal", None)
+        if shutdown_signal is not None and shutdown_signal.requested():
+            self.shutdown()
+            return
         if not self.root.winfo_exists():
             return
 
