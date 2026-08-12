@@ -1,6 +1,8 @@
 import queue
+import sys
 import unittest
 from dataclasses import fields
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from cat_settings import AppSettings
@@ -19,9 +21,15 @@ from cat_type import (
 
 
 class FakePortableKey:
-    def __init__(self, char: str | None = None, name: str | None = None) -> None:
+    def __init__(
+        self,
+        char: str | None = None,
+        name: str | None = None,
+        vk: int | None = None,
+    ) -> None:
         self.char = char
         self.name = name
+        self.vk = vk
 
 
 class KeyboardClassificationTests(unittest.TestCase):
@@ -57,6 +65,7 @@ class KeyboardClassificationTests(unittest.TestCase):
             (FakePortableKey(name="space"), "both"),
             (FakePortableKey(name="shift_l"), "left"),
             (FakePortableKey(name="shift_r"), "right"),
+            (FakePortableKey(name="alt_gr"), "right"),
             (FakePortableKey(name="f6"), "left"),
             (FakePortableKey(name="f7"), "right"),
             (FakePortableKey(name="left"), "right"),
@@ -66,6 +75,53 @@ class KeyboardClassificationTests(unittest.TestCase):
         for key, expected in cases:
             with self.subTest(key=vars(key)):
                 self.assertEqual(classify_portable_key(key), expected)
+
+    def test_shifted_semicolon_stays_on_the_right(self) -> None:
+        self.assertEqual(
+            classify_portable_key(FakePortableKey(char=":")),
+            "right",
+        )
+
+    def test_macos_keypad_metadata_takes_precedence_over_characters(self) -> None:
+        keypad_keys = {
+            0x41: ".",
+            0x43: "*",
+            0x45: "+",
+            0x47: None,
+            0x4B: "/",
+            0x4C: "\r",
+            0x4E: "-",
+            0x51: "=",
+            0x52: "0",
+            0x53: "1",
+            0x54: "2",
+            0x55: "3",
+            0x56: "4",
+            0x57: "5",
+            0x58: "6",
+            0x59: "7",
+            0x5B: "8",
+            0x5C: "9",
+        }
+
+        with patch("cat_type.IS_MACOS", True):
+            for vk, char in keypad_keys.items():
+                with self.subTest(vk=vk, char=char):
+                    self.assertEqual(
+                        classify_portable_key(FakePortableKey(char=char, vk=vk)),
+                        "right",
+                    )
+
+    def test_macos_top_row_digits_keep_the_qwerty_split(self) -> None:
+        with patch("cat_type.IS_MACOS", True):
+            self.assertEqual(
+                classify_portable_key(FakePortableKey(char="1", vk=0x12)),
+                "left",
+            )
+            self.assertEqual(
+                classify_portable_key(FakePortableKey(char="6", vk=0x16)),
+                "right",
+            )
 
     def test_app_event_carries_a_paw_action_but_no_key_identity(self) -> None:
         event = AppEvent("key", 12.5, "left")
@@ -85,6 +141,103 @@ class KeyboardMonitorEventTests(unittest.TestCase):
         monitor._emit_key("left", happened_at=12.5)
 
         self.assertEqual(events.get_nowait(), AppEvent("key", 12.5, "left"))
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Xorg-only behavior")
+    def test_xorg_listener_preserves_keypad_identity(
+        self,
+    ) -> None:
+        from pynput import keyboard
+
+        if keyboard.Listener.__module__ != "pynput.keyboard._xorg":
+            self.skipTest("pynput Xorg backend is not active")
+        listener_type = KeyboardMonitor._portable_listener_type(keyboard.Listener)
+        listener = listener_type.__new__(listener_type)
+
+        keypad_cases = {
+            keysym: key.char
+            for keysym, key in keyboard.Listener._KEYPAD_KEYS.items()
+            if getattr(key, "char", None) is not None
+        }
+        keypad_end = next(
+            keysym
+            for keysym, key in keyboard.Listener._KEYPAD_KEYS.items()
+            if getattr(key, "name", None) == "end"
+        )
+        for keysym, char in keypad_cases.items():
+            numlock = 0x02 if char == "1" else 0
+            display = FakeXorgDisplay(
+                keypad_end if char == "1" else keysym,
+                keysym,
+                numlock_mask=numlock,
+            )
+            event = SimpleNamespace(detail=87, state=numlock)
+
+            with self.subTest(keysym=keysym, char=char):
+                key = listener._event_to_key(display, event)
+                self.assertEqual(key.char, char)
+                self.assertTrue(key._cat_type_keypad)
+                self.assertEqual(classify_portable_key(key), "right")
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Xorg-only behavior")
+    def test_xorg_top_row_digits_keep_the_qwerty_split(self) -> None:
+        from pynput import keyboard
+
+        if keyboard.Listener.__module__ != "pynput.keyboard._xorg":
+            self.skipTest("pynput Xorg backend is not active")
+        listener_type = KeyboardMonitor._portable_listener_type(keyboard.Listener)
+        listener = listener_type.__new__(listener_type)
+        for keysym, expected in ((ord("1"), "left"), (ord("6"), "right")):
+            display = FakeXorgDisplay(keysym, keysym)
+            event = SimpleNamespace(detail=10, state=0)
+
+            with self.subTest(keysym=keysym):
+                key = listener._event_to_key(display, event)
+                self.assertEqual(classify_portable_key(key), expected)
+
+    def test_alt_gr_counts_as_alt_for_ctrl_alt_q_quit(self) -> None:
+        from pynput import keyboard
+
+        events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
+        monitor = KeyboardMonitor(events)
+
+        class PlaybackListener:
+            def __init__(self, on_press: object, on_release: object) -> None:
+                self.on_press = on_press
+                self.on_release = on_release
+
+            def run(self) -> None:
+                self.on_press(keyboard.Key.ctrl)
+                self.on_press(keyboard.Key.alt_gr)
+                self.on_press(keyboard.KeyCode.from_char("q"))
+                self.on_release(keyboard.Key.alt_gr)
+                self.on_release(keyboard.Key.ctrl)
+
+        with patch.object(keyboard, "Listener", PlaybackListener):
+            monitor._run_portable()
+
+        emitted = []
+        while not events.empty():
+            event = events.get_nowait()
+            emitted.append((event.kind, event.paw))
+        self.assertEqual(
+            emitted,
+            [("key", "left"), ("key", "right"), ("quit", None)],
+        )
+
+
+class FakeXorgDisplay:
+    def __init__(
+        self,
+        unshifted_keysym: int,
+        shifted_keysym: int,
+        numlock_mask: int = 0,
+    ) -> None:
+        self._keysyms = (unshifted_keysym, shifted_keysym)
+        setattr(self, "__altgr_mask", 0)
+        setattr(self, "__numlock_mask", numlock_mask)
+
+    def keycode_to_keysym(self, _keycode: int, index: int) -> int:
+        return self._keysyms[index & 1]
 
 
 class CatTypeKeyActivityTests(unittest.TestCase):
@@ -158,6 +311,23 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             None,
             keystroke_count=42,
         )
+
+    def test_run_uses_startup_feedback_without_recording_a_key(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._start_tray = Mock()
+        app.keyboard = Mock()
+        app.tracker = Mock()
+        app.animation = Mock()
+        app.root = Mock()
+        app._tick = Mock()
+        app._first_run = False
+
+        with patch("cat_type.time.monotonic", return_value=12.5):
+            app.run()
+
+        app.animation.show_startup.assert_called_once_with(12.5)
+        app.animation.record_key.assert_not_called()
+        app.tracker.notify_activity.assert_called_once_with(12.5)
 
 
 class FakeDegenerateTextRange:
@@ -311,6 +481,19 @@ class OverlayPositionTests(unittest.TestCase):
 
 
 class AnimationStateTests(unittest.TestCase):
+    def test_startup_feedback_does_not_count_toward_rapid_typing(self) -> None:
+        animation = AnimationState()
+        animation.show_startup(1.0)
+        self.assertTrue(animation.is_visible(1.01))
+        self.assertEqual(animation.frame_name(1.01), "tap-left")
+
+        for timestamp in (1.05, 1.1, 1.15, 1.2):
+            animation.record_key(timestamp, "left")
+        self.assertEqual(animation.frame_name(1.21), "tap-left")
+
+        animation.record_key(1.25, "left")
+        self.assertEqual(animation.frame_name(1.26), "excited")
+
     def test_explicit_keyboard_sides_choose_matching_paws(self) -> None:
         animation = AnimationState(hide_after=0.9)
 

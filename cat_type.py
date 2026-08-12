@@ -94,7 +94,22 @@ RIGHT_WINDOWS_KEYS = frozenset(
 )
 LEFT_PORTABLE_CHARACTERS = frozenset("`~12345!@#$%qwertasdfgzxcvb")
 RIGHT_PORTABLE_CHARACTERS = frozenset(
-    "67890-=_+^&*()yuiop[]{}\\|hjkl;'\"nm,./<>?"
+    "67890-=_+^&*()yuiop[]{}\\|hjkl:;'\"nm,./<>?"
+)
+MACOS_KEYPAD_VKS = frozenset(
+    {
+        0x41,
+        0x43,
+        0x45,
+        0x47,
+        0x4B,
+        0x4C,
+        0x4E,
+        0x51,
+        *range(0x52, 0x5A),
+        0x5B,
+        0x5C,
+    }
 )
 LEFT_PORTABLE_KEYS = frozenset(
     {
@@ -118,6 +133,7 @@ RIGHT_PORTABLE_KEYS = frozenset(
         "shift_r",
         "ctrl_r",
         "alt_r",
+        "alt_gr",
         "cmd_r",
         "insert",
         "delete",
@@ -486,6 +502,11 @@ def classify_windows_key(
 
 
 def classify_portable_key(key: object) -> PawAction:
+    if getattr(key, "_cat_type_keypad", False):
+        return "right"
+    if IS_MACOS and getattr(key, "vk", None) in MACOS_KEYPAD_VKS:
+        return "right"
+
     char = getattr(key, "char", None)
     if char == " ":
         return "both"
@@ -529,6 +550,12 @@ class AnimationState:
         self._tap_count = 0
         self._paw: PawAction = "left"
         self._recent: deque[float] = deque(maxlen=6)
+
+    def show_startup(self, now: float) -> None:
+        self.last_key_at = now
+        self._tap_count = 0
+        self._paw = "left"
+        self._recent.clear()
 
     def record_key(
         self,
@@ -610,6 +637,46 @@ class KeyboardMonitor:
             )
         )
 
+    @staticmethod
+    def _portable_listener_type(listener_type: type) -> type:
+        if (
+            not IS_LINUX
+            or listener_type.__module__ != "pynput.keyboard._xorg"
+            or not isinstance(
+                getattr(listener_type, "_KEYPAD_KEYS", None),
+                dict,
+            )
+            or not callable(getattr(listener_type, "_keycode_to_keysym", None))
+        ):
+            return listener_type
+
+        class XorgKeypadListener(listener_type):
+            def _event_to_key(self, display: object, event: object) -> object:
+                try:
+                    keysyms = (
+                        self._keycode_to_keysym(display, event.detail, index)
+                        for index in (0, 1)
+                    )
+                    is_keypad = any(
+                        keysym in self._KEYPAD_KEYS for keysym in keysyms
+                    )
+                except Exception:
+                    # pynput exposes no public Xorg hook before keypad keysyms
+                    # become ordinary characters. If those private internals
+                    # change, retain pynput's normal event rather than failing
+                    # the keyboard listener.
+                    is_keypad = False
+
+                key = super()._event_to_key(display, event)
+                if is_keypad and getattr(key, "char", None) is not None:
+                    try:
+                        setattr(key, "_cat_type_keypad", True)
+                    except (AttributeError, TypeError):
+                        pass
+                return key
+
+        return XorgKeypadListener
+
     def _run(self) -> None:
         if not IS_WINDOWS:
             self._run_portable()
@@ -673,7 +740,12 @@ class KeyboardMonitor:
             from pynput import keyboard
 
             ctrl_keys = {keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r}
-            alt_keys = {keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r}
+            alt_keys = {
+                keyboard.Key.alt,
+                keyboard.Key.alt_l,
+                keyboard.Key.alt_r,
+                keyboard.Key.alt_gr,
+            }
 
             def on_press(key: object, *_injected: object) -> None:
                 if key in ctrl_keys:
@@ -697,7 +769,8 @@ class KeyboardMonitor:
                 elif key in alt_keys:
                     self._alt_down = False
 
-            self._listener = keyboard.Listener(
+            listener_type = self._portable_listener_type(keyboard.Listener)
+            self._listener = listener_type(
                 on_press=on_press,
                 on_release=on_release,
             )
@@ -1042,7 +1115,7 @@ class CatTypeApp:
         # Give immediate visual confirmation when the app starts while a text
         # field is already focused.
         started_at = time.monotonic()
-        self.animation.record_key(started_at)
+        self.animation.show_startup(started_at)
         self.tracker.notify_activity(started_at)
         self.root.after(16, self._tick)
         if self._first_run:
