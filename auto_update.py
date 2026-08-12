@@ -62,11 +62,13 @@ class InstallerAvailability:
 class UpdateEvent:
     """An immutable result passed from an update worker to the Tk thread."""
 
+    operation_id: int
     kind: Literal[
         "not-due",
         "unavailable",
         "check-result",
         "error",
+        "cancelled",
         "progress",
         "stage",
         "install-started",

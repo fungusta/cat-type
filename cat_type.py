@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from tkinter import messagebox
-from typing import Callable, Literal
+from typing import Callable, Literal, Protocol
 from ctypes import wintypes
 
 from PIL import Image, ImageTk
@@ -64,6 +64,7 @@ VK_Q = 0x51
 LLKHF_EXTENDED = 0x01
 
 PawAction = Literal["left", "right", "both", "alternate"]
+UpdateHandoffStage = Literal["prepare", "start"]
 
 LEFT_WINDOWS_KEYS = frozenset(
     {
@@ -1078,11 +1079,65 @@ class _DaemonUpdateRunner:
             target, name = self._jobs.get()
             assert self._worker is not None
             self._worker.name = name
-            target()
+            try:
+                target()
+            except BaseException:
+                # Keep servicing later jobs even if a buggy job escapes the
+                # controller's ordinary Exception boundary.
+                continue
+
+
+class ControllerUpdateInstaller(Protocol):
+    """Normalized orchestration seam for Task 4/5 platform adapters.
+
+    The low-level Windows and Linux installers intentionally keep their
+    platform-specific contracts. Thin adapters in those tasks will wrap them
+    behind this controller-facing availability/prepare/start shape.
+    """
+
+    def availability(self) -> InstallerAvailability: ...
+
+    def prepare(self, package: Path, update: AvailableUpdate) -> object: ...
+
+    def start(self, prepared: object) -> None: ...
+
+
+class ControllerUpdateService(Protocol):
+    """Release discovery and verified-download operations used by controller."""
+
+    def check(
+        self,
+        platform: str,
+        machine: str,
+    ) -> AvailableUpdate | None: ...
+
+    def download_verified(
+        self,
+        update: AvailableUpdate,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> Path: ...
+
+
+class ControllerUpdateState(Protocol):
+    """Successful-check schedule state used by the update worker."""
+
+    def is_due(self, now: datetime) -> bool: ...
+
+    def record_success(self, now: datetime) -> None: ...
+
+
+class UpdateThreadRunner(Protocol):
+    """Runs serialized controller jobs without exposing thread details."""
+
+    def __call__(
+        self,
+        target: Callable[[], None],
+        name: str,
+    ) -> object: ...
 
 
 class _UnavailableUpdateInstaller:
-    """Narrow placeholder replaced by platform installers in later tasks."""
+    """Manual-only implementation of the normalized controller seam."""
 
     RELEASES_URL = "https://github.com/fungusta/cat-type/releases/latest"
 
@@ -1130,15 +1185,16 @@ class CatTypeApp:
         fade_seconds: float = 0.35,
         settings: AppSettings | None = None,
         settings_store: SettingsStore | None = None,
-        update_service: object | None = None,
-        update_state: object | None = None,
-        update_installer: object | None = None,
-        thread_runner: Callable[[Callable[[], None], str], object] | None = None,
+        update_service: ControllerUpdateService | None = None,
+        update_state: ControllerUpdateState | None = None,
+        update_installer: ControllerUpdateInstaller | None = None,
+        thread_runner: UpdateThreadRunner | None = None,
         confirm_update: Callable[[AvailableUpdate], bool] | None = None,
         platform_name: str = sys.platform,
         machine: str | None = None,
         frozen: bool | None = None,
         now: Callable[[], datetime] | None = None,
+        before_update_handoff: Callable[[UpdateHandoffStage], None] | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1197,6 +1253,7 @@ class CatTypeApp:
             machine=machine or runtime_platform.machine(),
             frozen=bool(getattr(sys, "frozen", False)) if frozen is None else frozen,
             now=now or (lambda: datetime.now(timezone.utc)),
+            before_handoff=before_update_handoff,
         )
 
         self.root = tk.Tk()
@@ -1242,15 +1299,16 @@ class CatTypeApp:
     def _initialize_update_controller(
         self,
         *,
-        update_service: object,
-        update_state: object,
-        update_installer: object,
-        thread_runner: Callable[[Callable[[], None], str], object],
+        update_service: ControllerUpdateService,
+        update_state: ControllerUpdateState,
+        update_installer: ControllerUpdateInstaller,
+        thread_runner: UpdateThreadRunner,
         confirm_update: Callable[[AvailableUpdate], bool],
         platform_name: str,
         machine: str,
         frozen: bool,
         now: Callable[[], datetime],
+        before_handoff: Callable[[UpdateHandoffStage], None] | None = None,
     ) -> None:
         self.update_events: queue.SimpleQueue[UpdateEvent] = queue.SimpleQueue()
         self._update_service = update_service
@@ -1262,12 +1320,36 @@ class CatTypeApp:
         self._machine = machine
         self._frozen = frozen
         self._update_now = now
+        self._before_update_handoff = before_handoff or (lambda _stage: None)
         self._update_worker: object | None = None
         self._update_worker_active = False
+        self._update_lifecycle_lock = threading.RLock()
+        self._next_update_operation_id = 0
+        self._active_update_operation_id: int | None = None
+
+    def _begin_update_operation(self) -> int | None:
+        with self._update_lifecycle_lock:
+            if (
+                self._shutting_down
+                or self._active_update_operation_id is not None
+            ):
+                return None
+            self._next_update_operation_id += 1
+            operation_id = self._next_update_operation_id
+            self._active_update_operation_id = operation_id
+            self._update_worker_active = True
+            return operation_id
+
+    def _finish_update_operation(self, operation_id: int) -> bool:
+        with self._update_lifecycle_lock:
+            if self._active_update_operation_id != operation_id:
+                return False
+            self._active_update_operation_id = None
+            self._update_worker_active = False
+            self._update_worker = None
+            return True
 
     def check_for_updates(self, manual: bool = False) -> None:
-        if self._shutting_down or self._update_worker_active:
-            return
         if not manual:
             if not (
                 self._platform_name == "win32"
@@ -1275,20 +1357,26 @@ class CatTypeApp:
             ):
                 return
 
+        operation_id = self._begin_update_operation()
+        if operation_id is None:
+            return
         self._set_update_status("Checking for updates…", checking=True)
-        self._update_worker_active = True
 
         def check_worker() -> None:
             try:
                 if not manual and not self._update_state.is_due(
                     self._update_now()
                 ):
-                    self.update_events.put(UpdateEvent("not-due"))
+                    self.update_events.put(UpdateEvent(operation_id, "not-due"))
                     return
                 availability = self._update_installer.availability()
                 if not availability.can_install:
                     self.update_events.put(
-                        UpdateEvent("unavailable", message=availability.status)
+                        UpdateEvent(
+                            operation_id,
+                            "unavailable",
+                            message=availability.status,
+                        )
                     )
                     return
                 update = self._update_service.check(
@@ -1297,9 +1385,13 @@ class CatTypeApp:
                 )
                 checked_at = self._update_now()
                 self._update_state.record_success(checked_at)
-                self.update_events.put(UpdateEvent("check-result", update=update))
+                self.update_events.put(
+                    UpdateEvent(operation_id, "check-result", update=update)
+                )
             except Exception as error:
-                self.update_events.put(UpdateEvent("error", message=str(error)))
+                self.update_events.put(
+                    UpdateEvent(operation_id, "error", message=str(error))
+                )
 
         self._update_worker = self._update_thread_runner(
             check_worker,
@@ -1330,6 +1422,9 @@ class CatTypeApp:
             self._handle_update_event(event)
 
     def _handle_update_event(self, event: UpdateEvent) -> None:
+        with self._update_lifecycle_lock:
+            if event.operation_id != self._active_update_operation_id:
+                return
         if event.kind == "progress":
             percent = round(event.received * 100 / event.total) if event.total else 0
             self._set_update_status(f"Downloading update… {percent}%", checking=True)
@@ -1338,8 +1433,15 @@ class CatTypeApp:
             self._set_update_status(event.message, checking=True)
             return
 
-        self._update_worker_active = False
-        self._update_worker = None
+        terminal = event.kind in {
+            "not-due",
+            "unavailable",
+            "error",
+            "cancelled",
+            "install-started",
+        } or (event.kind == "check-result" and event.update is None)
+        if terminal:
+            self._finish_update_operation(event.operation_id)
         if self._shutting_down:
             return
         if event.kind == "not-due":
@@ -1352,8 +1454,12 @@ class CatTypeApp:
             detail = event.message or "Unknown update error"
             self._set_update_status(f"Update failed: {detail}")
             return
+        if event.kind == "cancelled":
+            self._set_update_status("Update cancelled.")
+            return
         if event.kind == "install-started":
             self._set_update_status(event.message)
+            self.shutdown()
             return
         if event.kind != "check-result":
             return
@@ -1364,54 +1470,87 @@ class CatTypeApp:
         update = event.update
         self._set_update_status(f"Cat Type {update.version} is available.")
         if not self._confirm_update(update):
+            self._finish_update_operation(event.operation_id)
             self._set_update_status("Update cancelled.")
             return
-        self._start_update_install(update)
+        self._start_update_install(update, event.operation_id)
 
-    def _start_update_install(self, update: AvailableUpdate) -> None:
-        if self._shutting_down or self._update_worker_active:
-            return
-        self._update_worker_active = True
+    def _start_update_install(
+        self,
+        update: AvailableUpdate,
+        operation_id: int,
+    ) -> None:
+        with self._update_lifecycle_lock:
+            if (
+                self._shutting_down
+                or self._active_update_operation_id != operation_id
+            ):
+                return
         self._set_update_status("Downloading update… 0%", checking=True)
 
         def progress(received: int, total: int) -> None:
-            self.update_events.put(
-                UpdateEvent("progress", received=received, total=total)
-            )
+            if received == total and total > 0:
+                self.update_events.put(
+                    UpdateEvent(
+                        operation_id,
+                        "stage",
+                        message=f"Verifying Cat Type {update.version}…",
+                    )
+                )
+            else:
+                self.update_events.put(
+                    UpdateEvent(
+                        operation_id,
+                        "progress",
+                        received=received,
+                        total=total,
+                    )
+                )
 
         def install_worker() -> None:
+            terminal = UpdateEvent(operation_id, "cancelled")
             try:
                 package = self._update_service.download_verified(
                     update,
                     progress=progress,
                 )
-                if self._shutting_down:
-                    return
                 self.update_events.put(
                     UpdateEvent(
+                        operation_id,
                         "stage",
-                        message=f"Verifying Cat Type {update.version}…",
+                        message=f"Preparing Cat Type {update.version}…",
                     )
                 )
-                prepared = self._update_installer.prepare(package, update)
-                if self._shutting_down:
-                    return
+                self._before_update_handoff("prepare")
+                with self._update_lifecycle_lock:
+                    if self._shutting_down:
+                        return
+                    prepared = self._update_installer.prepare(package, update)
                 self.update_events.put(
                     UpdateEvent(
+                        operation_id,
                         "stage",
                         message=f"Installing Cat Type {update.version}…",
                     )
                 )
-                self._update_installer.start(prepared)
-                if not self._shutting_down:
-                    self.update_events.put(
-                        UpdateEvent(
-                            "install-started",
-                            message=f"Installing Cat Type {update.version}…",
-                        )
+                self._before_update_handoff("start")
+                with self._update_lifecycle_lock:
+                    if self._shutting_down:
+                        return
+                    self._update_installer.start(prepared)
+                    terminal = UpdateEvent(
+                        operation_id,
+                        "install-started",
+                        message=f"Installing Cat Type {update.version}…",
                     )
             except Exception as error:
-                self.update_events.put(UpdateEvent("error", message=str(error)))
+                terminal = UpdateEvent(
+                    operation_id,
+                    "error",
+                    message=str(error),
+                )
+            finally:
+                self.update_events.put(terminal)
 
         self._update_worker = self._update_thread_runner(
             install_worker,
@@ -1438,9 +1577,19 @@ class CatTypeApp:
         self.root.mainloop()
 
     def shutdown(self) -> None:
-        if self._shutting_down:
-            return
-        self._shutting_down = True
+        lifecycle_lock = getattr(self, "_update_lifecycle_lock", None)
+        if lifecycle_lock is None:
+            if self._shutting_down:
+                return
+            self._shutting_down = True
+        else:
+            with lifecycle_lock:
+                if self._shutting_down:
+                    return
+                self._shutting_down = True
+                self._active_update_operation_id = None
+                self._update_worker_active = False
+                self._update_worker = None
         self._hide()
         if self._tray_icon is not None:
             self._tray_icon.stop()
@@ -1456,6 +1605,8 @@ class CatTypeApp:
             return
 
         self._drain_update_events()
+        if self._shutting_down:
+            return
 
         should_quit = False
         while True:

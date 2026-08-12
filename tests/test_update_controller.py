@@ -6,6 +6,7 @@ import unittest
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from unittest.mock import Mock
 
 from auto_update import (
@@ -19,6 +20,13 @@ from cat_type import CatTypeApp, _DaemonUpdateRunner
 
 
 NOW = datetime(2026, 8, 12, 16, 0, tzinfo=timezone.utc)
+TERMINAL_EVENT_KINDS = {
+    "not-due",
+    "unavailable",
+    "error",
+    "cancelled",
+    "install-started",
+}
 
 
 def available_update() -> AvailableUpdate:
@@ -77,12 +85,15 @@ class FakeService:
         self,
         result: AvailableUpdate | None = None,
         error: Exception | None = None,
+        download_error: Exception | None = None,
     ) -> None:
         self.result = result
         self.error = error
+        self.download_error = download_error
         self.check_calls: list[tuple[str, str]] = []
         self.downloads: list[AvailableUpdate] = []
         self.on_download: object | None = None
+        self.progress_events: list[tuple[int, int]] = []
 
     def check(self, platform: str, machine: str) -> AvailableUpdate | None:
         self.check_calls.append((platform, machine))
@@ -94,7 +105,11 @@ class FakeService:
         self.downloads.append(update)
         if progress is not None:
             progress(50, 100)
+            self.progress_events.append((50, 100))
             progress(100, 100)
+            self.progress_events.append((100, 100))
+        if self.download_error is not None:
+            raise self.download_error
         if self.on_download is not None:
             self.on_download()
         return Path("/cache") / update.package.name
@@ -124,6 +139,28 @@ class FakeInstaller:
         self.started.append(prepared)
 
 
+class BlockingInstaller(FakeInstaller):
+    def __init__(self, blocking_stage: str) -> None:
+        super().__init__()
+        self.blocking_stage = blocking_stage
+        self.handoff_entered = threading.Event()
+        self.release_handoff = threading.Event()
+
+    def prepare(self, package: Path, update: AvailableUpdate) -> object:
+        if self.blocking_stage == "prepare":
+            self.handoff_entered.set()
+            if not self.release_handoff.wait(timeout=1.0):
+                raise RuntimeError("prepare test barrier timed out")
+        return super().prepare(package, update)
+
+    def start(self, prepared: object) -> None:
+        if self.blocking_stage == "start":
+            self.handoff_entered.set()
+            if not self.release_handoff.wait(timeout=1.0):
+                raise RuntimeError("start test barrier timed out")
+        super().start(prepared)
+
+
 class UpdateControllerTests(unittest.TestCase):
     def make_app(
         self,
@@ -133,6 +170,7 @@ class UpdateControllerTests(unittest.TestCase):
         installer: FakeInstaller | None = None,
         runner: object | None = None,
         confirm: object | None = None,
+        before_handoff: Callable[[str], None] | None = None,
         platform_name: str = "linux",
         frozen: bool = True,
     ) -> CatTypeApp:
@@ -150,11 +188,17 @@ class UpdateControllerTests(unittest.TestCase):
             machine="x86_64",
             frozen=frozen,
             now=lambda: NOW,
+            before_handoff=before_handoff,
         )
+        app._hide = Mock()
+        app._tray_icon = None
+        app.keyboard = Mock()
+        app.tracker = Mock()
+        app.root = Mock()
         return app
 
     def test_update_events_and_installer_status_are_immutable(self) -> None:
-        event = UpdateEvent("status", message="Checking")
+        event = UpdateEvent(1, "stage", message="Checking")
         availability = InstallerAvailability(False, "Manual update required.")
 
         with self.assertRaises(FrozenInstanceError):
@@ -272,6 +316,7 @@ class UpdateControllerTests(unittest.TestCase):
             installer=installer,
             confirm=Mock(return_value=True),
         )
+        app.shutdown = Mock()
 
         app.check_for_updates(manual=True)
         app._drain_update_events()
@@ -287,6 +332,278 @@ class UpdateControllerTests(unittest.TestCase):
             [((Path("/cache") / update.package.name), update.version)],
         )
         self.assertEqual(app._update_status, "Installing Cat Type 1.1.0…")
+        app.shutdown.assert_called_once_with()
+
+    def test_reentrant_check_during_confirmation_collapses_into_original_flow(
+        self,
+    ) -> None:
+        update = available_update()
+        service = FakeService(result=update)
+        installer = FakeInstaller()
+        app = self.make_app(service=service, installer=installer)
+        app.shutdown = Mock()
+
+        def confirm(_update: AvailableUpdate) -> bool:
+            app.check_for_updates(manual=True)
+            return True
+
+        app._confirm_update = confirm
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(service.check_calls, [("linux", "x86_64")])
+        self.assertEqual(service.downloads, [update])
+        self.assertEqual(len(installer.started), 1)
+        app.shutdown.assert_called_once_with()
+
+    def test_stale_generation_event_cannot_overwrite_active_operation(self) -> None:
+        runner = DeferredRunner()
+        app = self.make_app(runner=runner)
+
+        app.check_for_updates(manual=True)
+        active_operation = app._active_update_operation_id
+        assert active_operation is not None
+        app.update_events.put(
+            UpdateEvent(
+                active_operation - 1,
+                "stage",
+                message="stale status",
+            )
+        )
+
+        app._drain_update_events()
+
+        self.assertEqual(app._update_status, "Checking for updates…")
+        self.assertTrue(app._update_worker_active)
+
+    def test_install_error_is_terminal_and_does_not_shutdown(self) -> None:
+        update = available_update()
+        app = self.make_app(
+            service=FakeService(
+                result=update,
+                download_error=UpdateError("checksum mismatch"),
+            ),
+            confirm=Mock(return_value=True),
+        )
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertFalse(app._update_worker_active)
+        self.assertIn("checksum mismatch", app._update_status)
+        app.shutdown.assert_not_called()
+
+    def test_success_shutdown_occurs_only_after_installer_start_returns(self) -> None:
+        update = available_update()
+        sequence: list[str] = []
+
+        class SequencedInstaller(FakeInstaller):
+            def start(self, prepared: object) -> None:
+                super().start(prepared)
+                sequence.append("start-returned")
+
+        app = self.make_app(
+            service=FakeService(result=update),
+            installer=SequencedInstaller(),
+            confirm=Mock(return_value=True),
+        )
+        app.shutdown = Mock(side_effect=lambda: sequence.append("shutdown"))
+        handled: list[UpdateEvent] = []
+        original_handler = app._handle_update_event
+        app._handle_update_event = lambda event: (
+            handled.append(event),
+            original_handler(event),
+        )[-1]
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(sequence, ["start-returned", "shutdown"])
+        app.shutdown.assert_called_once_with()
+        self.assertEqual(
+            [
+                event.kind
+                for event in handled
+                if event.kind in TERMINAL_EVENT_KINDS
+            ],
+            ["install-started"],
+        )
+
+    def test_tick_stops_after_install_started_triggers_normal_shutdown(self) -> None:
+        app = self.make_app()
+        operation_id = app._begin_update_operation()
+        assert operation_id is not None
+        app.update_events.put(
+            UpdateEvent(
+                operation_id,
+                "install-started",
+                message="Installing Cat Type 1.1.0…",
+            )
+        )
+        app.events = queue.SimpleQueue()
+
+        app._tick()
+
+        self.assertTrue(app._shutting_down)
+        app.root.destroy.assert_called_once_with()
+        app.root.after.assert_not_called()
+
+    def test_verification_and_preparation_statuses_follow_real_boundaries(
+        self,
+    ) -> None:
+        update = available_update()
+        settings = Mock()
+        settings.window.winfo_exists.return_value = True
+        app = self.make_app(
+            service=FakeService(result=update),
+            confirm=Mock(return_value=True),
+        )
+        app._settings_window = settings
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        statuses = [call.args[0] for call in settings.set_update_status.call_args_list]
+        self.assertLess(
+            statuses.index("Downloading update… 50%"),
+            statuses.index("Verifying Cat Type 1.1.0…"),
+        )
+        self.assertNotIn("Downloading update… 100%", statuses)
+        self.assertLess(
+            statuses.index("Verifying Cat Type 1.1.0…"),
+            statuses.index("Preparing Cat Type 1.1.0…"),
+        )
+        self.assertLess(
+            statuses.index("Preparing Cat Type 1.1.0…"),
+            statuses.index("Installing Cat Type 1.1.0…"),
+        )
+
+    def test_checksum_error_stops_after_real_verification_status(self) -> None:
+        update = available_update()
+        settings = Mock()
+        settings.window.winfo_exists.return_value = True
+        app = self.make_app(
+            service=FakeService(
+                result=update,
+                download_error=UpdateError("checksum mismatch"),
+            ),
+            confirm=Mock(return_value=True),
+        )
+        app._settings_window = settings
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        statuses = [call.args[0] for call in settings.set_update_status.call_args_list]
+        self.assertIn("Verifying Cat Type 1.1.0…", statuses)
+        self.assertNotIn("Downloading update… 100%", statuses)
+        self.assertNotIn("Preparing Cat Type 1.1.0…", statuses)
+        self.assertIn("Update failed: checksum mismatch", statuses)
+
+    def test_shutdown_winning_prepare_handoff_prevents_prepare_and_start(self) -> None:
+        update = available_update()
+        installer = FakeInstaller()
+        app_ref: list[CatTypeApp] = []
+
+        def before_handoff(stage: str) -> None:
+            if stage != "prepare":
+                return
+            shutdown = threading.Thread(target=app_ref[0].shutdown)
+            shutdown.start()
+            shutdown.join(timeout=1.0)
+            self.assertFalse(shutdown.is_alive())
+
+        app = self.make_app(
+            service=FakeService(result=update),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            before_handoff=before_handoff,
+        )
+        app_ref.append(app)
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(installer.prepared, [])
+        self.assertEqual(installer.started, [])
+        self.assertFalse(app._update_worker_active)
+
+    def test_shutdown_winning_start_handoff_prevents_start(self) -> None:
+        update = available_update()
+        installer = FakeInstaller()
+        app_ref: list[CatTypeApp] = []
+
+        def before_handoff(stage: str) -> None:
+            if stage != "start":
+                return
+            shutdown = threading.Thread(target=app_ref[0].shutdown)
+            shutdown.start()
+            shutdown.join(timeout=1.0)
+            self.assertFalse(shutdown.is_alive())
+
+        app = self.make_app(
+            service=FakeService(result=update),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            before_handoff=before_handoff,
+        )
+        app_ref.append(app)
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(len(installer.prepared), 1)
+        self.assertEqual(installer.started, [])
+        self.assertFalse(app._update_worker_active)
+
+    def test_shutdown_waits_for_prepare_handoff_that_already_began(self) -> None:
+        self._assert_shutdown_waits_for_active_handoff("prepare")
+
+    def test_shutdown_waits_for_start_handoff_that_already_began(self) -> None:
+        self._assert_shutdown_waits_for_active_handoff("start")
+
+    def _assert_shutdown_waits_for_active_handoff(self, stage: str) -> None:
+        update = available_update()
+        installer = BlockingInstaller(stage)
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=FakeService(result=update),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            runner=runner,
+        )
+        app.check_for_updates(manual=True)
+        check_target, _name = runner.jobs.pop()
+        check_target()
+        app._drain_update_events()
+        install_target, _name = runner.jobs.pop()
+        install_thread = threading.Thread(target=install_target)
+        shutdown_started = threading.Event()
+        shutdown_done = threading.Event()
+
+        def shutdown() -> None:
+            shutdown_started.set()
+            app.shutdown()
+            shutdown_done.set()
+
+        shutdown_thread = threading.Thread(target=shutdown)
+        try:
+            install_thread.start()
+            self.assertTrue(installer.handoff_entered.wait(timeout=1.0))
+            shutdown_thread.start()
+            self.assertTrue(shutdown_started.wait(timeout=1.0))
+            self.assertFalse(shutdown_done.wait(timeout=0.05))
+        finally:
+            installer.release_handoff.set()
+            install_thread.join(timeout=1.0)
+            shutdown_thread.join(timeout=1.0)
+        self.assertFalse(install_thread.is_alive())
+        self.assertFalse(shutdown_thread.is_alive())
+        self.assertTrue(shutdown_done.is_set())
 
     def test_manual_only_platform_statuses_never_check_or_download(self) -> None:
         cases = (
@@ -321,15 +638,29 @@ class UpdateControllerTests(unittest.TestCase):
             installer=installer,
             confirm=Mock(return_value=True),
         )
-        service.on_download = lambda: setattr(app, "_shutting_down", True)
+        service.on_download = app.shutdown
+        handled: list[UpdateEvent] = []
+        original_handler = app._handle_update_event
+        app._handle_update_event = lambda event: (
+            handled.append(event),
+            original_handler(event),
+        )[-1]
 
         app.check_for_updates(manual=True)
-        app._drain_update_events()
         app._drain_update_events()
 
         self.assertEqual(service.downloads, [update])
         self.assertEqual(installer.prepared, [])
         self.assertEqual(installer.started, [])
+        self.assertFalse(app._update_worker_active)
+        self.assertEqual(
+            [
+                event.kind
+                for event in handled
+                if event.kind in TERMINAL_EVENT_KINDS
+            ],
+            ["cancelled"],
+        )
 
 
 class ProductionUpdateRunnerTests(unittest.TestCase):
@@ -351,6 +682,21 @@ class ProductionUpdateRunnerTests(unittest.TestCase):
         self.assertIs(first_worker, second_worker)
         self.assertTrue(first_worker.daemon)
         self.assertEqual(identities.get(), identities.get())
+
+    def test_escaping_base_exception_does_not_strand_later_job(self) -> None:
+        runner = _DaemonUpdateRunner()
+        first_started = threading.Event()
+        second_done = threading.Event()
+
+        def broken_job() -> None:
+            first_started.set()
+            raise SystemExit("broken update job")
+
+        runner(broken_job, "broken-update")
+        self.assertTrue(first_started.wait(timeout=1.0))
+        runner(second_done.set, "later-update")
+
+        self.assertTrue(second_done.wait(timeout=1.0))
 
 
 if __name__ == "__main__":
