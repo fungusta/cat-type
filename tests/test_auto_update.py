@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -291,6 +292,38 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(UpdateError, "release response.*large"):
             service.check("linux", "x86_64")
 
+    def test_rejects_non_https_release_response_redirect_target(self) -> None:
+        payload = json.dumps(release_payload()).encode("utf-8")
+        opener = FakeOpener(
+            [
+                FakeResponse(
+                    payload,
+                    content_length=len(payload),
+                    url="http://untrusted.example/release",
+                )
+            ]
+        )
+
+        with self.assertRaisesRegex(UpdateError, "HTTPS"):
+            UpdateService(current_version="1.0.5", opener=opener).check(
+                "linux", "x86_64"
+            )
+
+    def test_extreme_numeric_versions_are_controlled_update_errors(self) -> None:
+        huge_component = "9" * 5000
+        service, _ = service_from_payload(
+            release_payload(tag_name=f"v{huge_component}.1.0")
+        )
+        with self.assertRaisesRegex(UpdateError, "release version"):
+            service.check("linux", "x86_64")
+
+        service, opener = service_from_payload(
+            release_payload(), current_version=f"{huge_component}.1.0"
+        )
+        with self.assertRaisesRegex(UpdateError, "current version"):
+            service.check("linux", "x86_64")
+        self.assertEqual(opener.calls, [])
+
     def test_rejects_malformed_release_payloads(self) -> None:
         malformed_payloads = (
             [],
@@ -386,11 +419,83 @@ class UpdateStateStoreTests(unittest.TestCase):
         ) as replace:
             self.store.record_success(datetime(2026, 8, 12, tzinfo=timezone.utc))
 
-        replace.assert_called_once_with(
-            self.path.with_name("update-state.json.tmp"), self.path
-        )
-        self.assertFalse(self.path.with_name("update-state.json.tmp").exists())
+        replace.assert_called_once()
+        temporary, destination = replace.call_args.args
+        self.assertEqual(destination, self.path)
+        self.assertEqual(temporary.parent, self.path.parent)
+        self.assertNotEqual(temporary, self.path)
+        self.assertFalse(temporary.exists())
         self.assertNotEqual(self.path.read_text(encoding="utf-8"), original)
+
+    def test_interleaved_state_writes_use_independent_sibling_staging_paths(
+        self,
+    ) -> None:
+        first_ready = threading.Event()
+        release_first = threading.Event()
+        staged_paths: list[Path] = []
+        errors: list[BaseException] = []
+        real_replace = Path.replace
+
+        def interleaved_replace(source: Path, destination: Path) -> Path:
+            staged_paths.append(source)
+            if len(staged_paths) == 1:
+                first_ready.set()
+                if not release_first.wait(timeout=2):
+                    raise AssertionError("second state write did not run")
+            return real_replace(source, destination)
+
+        def write_first() -> None:
+            try:
+                self.store.record_success(
+                    datetime(2026, 8, 12, tzinfo=timezone.utc)
+                )
+            except BaseException as error:
+                errors.append(error)
+
+        with patch.object(
+            Path, "replace", autospec=True, side_effect=interleaved_replace
+        ):
+            first_thread = threading.Thread(target=write_first)
+            first_thread.start()
+            self.assertTrue(first_ready.wait(timeout=2))
+            try:
+                self.store.record_success(
+                    datetime(2026, 8, 13, tzinfo=timezone.utc)
+                )
+            finally:
+                release_first.set()
+                first_thread.join(timeout=2)
+
+        self.assertFalse(first_thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(staged_paths), 2)
+        self.assertNotEqual(staged_paths[0], staged_paths[1])
+        self.assertTrue(all(path.parent == self.path.parent for path in staged_paths))
+
+    def test_state_cleanup_failure_does_not_mask_replace_failure(self) -> None:
+        with patch.object(Path, "replace", side_effect=OSError("replace failed")):
+            with patch.object(Path, "unlink", side_effect=OSError("cleanup failed")):
+                with self.assertRaisesRegex(OSError, "replace failed"):
+                    self.store.record_success(
+                        datetime(2026, 8, 12, tzinfo=timezone.utc)
+                    )
+
+    def test_state_cleanup_only_failure_is_a_controlled_update_error(self) -> None:
+        real_replace = Path.replace
+
+        with patch.object(
+            Path,
+            "replace",
+            autospec=True,
+            side_effect=lambda source, target: real_replace(source, target),
+        ):
+            with patch.object(
+                Path, "unlink", side_effect=OSError("cleanup failed")
+            ):
+                with self.assertRaisesRegex(UpdateError, "clean up.*state"):
+                    self.store.record_success(
+                        datetime(2026, 8, 12, tzinfo=timezone.utc)
+                    )
 
     def test_failed_atomic_replace_preserves_existing_state(self) -> None:
         original = '{"last_successful_check": "2026-08-01T00:00:00+00:00"}\n'
@@ -503,11 +608,73 @@ class VerifiedDownloadTests(unittest.TestCase):
         for request, _ in opener.calls:
             headers = {key.lower(): value for key, value in request.header_items()}
             self.assertEqual(headers["user-agent"], "Cat-Type/1.0.5")
-        replace.assert_called_once_with(
-            self.cache / f"{self.package_name}.part",
-            self.cache / self.package_name,
-        )
+        replace.assert_called_once()
+        temporary, destination = replace.call_args.args
+        self.assertEqual(destination, self.cache / self.package_name)
+        self.assertEqual(temporary.parent, self.cache)
+        self.assertNotEqual(temporary, destination)
         self.assertEqual(list(self.cache.iterdir()), [downloaded])
+
+    def test_interleaved_downloads_use_independent_sibling_staging_paths(
+        self,
+    ) -> None:
+        first_service, _ = self.service(
+            [
+                FakeResponse(
+                    self.checksum_body, content_length=len(self.checksum_body)
+                ),
+                FakeResponse(self.package_body, content_length=len(self.package_body)),
+            ]
+        )
+        second_service, _ = self.service(
+            [
+                FakeResponse(
+                    self.checksum_body, content_length=len(self.checksum_body)
+                ),
+                FakeResponse(self.package_body, content_length=len(self.package_body)),
+            ]
+        )
+        update = available_update(self.package_body, self.checksum_body)
+        first_ready = threading.Event()
+        release_first = threading.Event()
+        staged_paths: list[Path] = []
+        errors: list[BaseException] = []
+        real_replace = Path.replace
+
+        def interleaved_replace(source: Path, destination: Path) -> Path:
+            staged_paths.append(source)
+            if len(staged_paths) == 1:
+                first_ready.set()
+                if not release_first.wait(timeout=2):
+                    raise AssertionError("second download did not run")
+            return real_replace(source, destination)
+
+        def download_first() -> None:
+            try:
+                first_service.download_verified(update)
+            except BaseException as error:
+                errors.append(error)
+
+        with patch.object(
+            Path, "replace", autospec=True, side_effect=interleaved_replace
+        ):
+            first_thread = threading.Thread(target=download_first)
+            first_thread.start()
+            self.assertTrue(first_ready.wait(timeout=2))
+            try:
+                second_service.download_verified(update)
+            finally:
+                release_first.set()
+                first_thread.join(timeout=2)
+
+        self.assertFalse(first_thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(staged_paths), 2)
+        self.assertNotEqual(staged_paths[0], staged_paths[1])
+        self.assertTrue(all(path.parent == self.cache for path in staged_paths))
+        self.assertEqual(
+            (self.cache / self.package_name).read_bytes(), self.package_body
+        )
 
     def test_reports_monotonic_streamed_progress_with_declared_total(self) -> None:
         service, _ = self.service(
@@ -660,6 +827,43 @@ class VerifiedDownloadTests(unittest.TestCase):
             )
 
         self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_cleanup_failure_does_not_mask_checksum_mismatch(self) -> None:
+        bad_checksum = checksum_for(self.package_name, b"different bytes")
+        service, _ = self.service(
+            [
+                FakeResponse(bad_checksum, content_length=len(bad_checksum)),
+                FakeResponse(self.package_body, content_length=len(self.package_body)),
+            ]
+        )
+
+        with patch.object(Path, "unlink", side_effect=OSError("cleanup failed")):
+            with self.assertRaisesRegex(UpdateError, "checksum does not match"):
+                service.download_verified(
+                    available_update(self.package_body, bad_checksum)
+                )
+
+    def test_cleanup_only_failure_is_a_controlled_update_error(self) -> None:
+        service, _ = self.service(
+            [
+                FakeResponse(self.checksum_body, content_length=len(self.checksum_body)),
+                FakeResponse(self.package_body, content_length=len(self.package_body)),
+            ]
+        )
+        update = available_update(self.package_body, self.checksum_body)
+        real_replace = Path.replace
+
+        with patch.object(
+            Path,
+            "replace",
+            autospec=True,
+            side_effect=lambda source, target: real_replace(source, target),
+        ):
+            with patch.object(
+                Path, "unlink", side_effect=OSError("cleanup failed")
+            ):
+                with self.assertRaisesRegex(UpdateError, "clean up"):
+                    service.download_verified(update)
 
     def test_matches_only_the_exact_checksum_filename(self) -> None:
         correct = hashlib.sha256(self.package_body).hexdigest()

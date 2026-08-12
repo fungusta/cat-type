@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -59,7 +61,16 @@ def _parse_version(value: str, *, label: str) -> tuple[int, int, int]:
     matched = _VERSION_PATTERN.fullmatch(value)
     if matched is None:
         raise UpdateError(f"invalid {label}: {value!r}")
-    return tuple(int(part) for part in matched.groups())  # type: ignore[return-value]
+    components = matched.groups()
+    if any(len(component) > 9 for component in components):
+        raise UpdateError(f"invalid {label}: numeric component is too large")
+    try:
+        major, minor, patch = (int(component) for component in components)
+    except ValueError as error:
+        raise UpdateError(
+            f"invalid {label}: numeric component is too large"
+        ) from error
+    return major, minor, patch
 
 
 def _is_https_url(value: object) -> bool:
@@ -125,18 +136,31 @@ class UpdateStateStore:
     def record_success(self, now: datetime) -> None:
         _require_aware(now)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f"{self.path.name}.tmp")
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{self.path.name}.",
+            suffix=".tmp",
+            dir=self.path.parent,
+        )
+        temporary = Path(temporary_name)
         payload = {
             "last_successful_check": now.astimezone(timezone.utc).isoformat()
         }
+        primary_error: BaseException | None = None
         try:
-            temporary.write_text(
-                json.dumps(payload, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
-            )
+            with os.fdopen(descriptor, "w", encoding="utf-8") as state_file:
+                state_file.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
             temporary.replace(self.path)
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                if primary_error is None:
+                    raise UpdateError(
+                        "could not clean up update state staging file"
+                    ) from cleanup_error
 
 
 class UpdateService:
@@ -163,6 +187,7 @@ class UpdateService:
         )
         try:
             with self.opener(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+                self._require_https_final_url(response)
                 raw_payload = _read_bounded(
                     response, MAX_METADATA_BYTES, label="release response"
                 )
@@ -279,20 +304,30 @@ class UpdateService:
         except OSError as error:
             raise UpdateError("could not create update cache") from error
         destination = self.cache_dir / update.package.name
-        partial = self.cache_dir / f"{update.package.name}.part"
+        try:
+            descriptor, partial_name = tempfile.mkstemp(
+                prefix=f".{update.package.name}.",
+                suffix=".part",
+                dir=self.cache_dir,
+            )
+        except OSError as error:
+            raise UpdateError("could not create package staging file") from error
+        partial = Path(partial_name)
         digest = hashlib.sha256()
         received = 0
+        primary_error: BaseException | None = None
         try:
-            partial.unlink(missing_ok=True)
             request = self._download_request(update.package.url)
-            with self.opener(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-                self._require_https_response(response)
-                declared = _response_length(response)
-                if declared is not None and declared != update.package.size:
-                    raise UpdateError("package size does not match release metadata")
-                if progress is not None:
-                    progress(0, update.package.size)
-                with partial.open("wb") as package_file:
+            with os.fdopen(descriptor, "wb") as package_file:
+                with self.opener(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+                    self._require_https_final_url(response)
+                    declared = _response_length(response)
+                    if declared is not None and declared != update.package.size:
+                        raise UpdateError(
+                            "package size does not match release metadata"
+                        )
+                    if progress is not None:
+                        progress(0, update.package.size)
                     while True:
                         chunk = response.read(64 * 1024)
                         if not chunk:
@@ -312,12 +347,23 @@ class UpdateService:
                 raise UpdateError("package checksum does not match SHA256SUMS.txt")
             partial.replace(destination)
             return destination
-        except UpdateError:
+        except UpdateError as error:
+            primary_error = error
             raise
         except (HTTPError, URLError, OSError, TimeoutError, ValueError) as error:
-            raise UpdateError("could not download package") from error
+            primary_error = UpdateError("could not download package")
+            raise primary_error from error
+        except BaseException as error:
+            primary_error = error
+            raise
         finally:
-            partial.unlink(missing_ok=True)
+            try:
+                partial.unlink(missing_ok=True)
+            except OSError as cleanup_error:
+                if primary_error is None:
+                    raise UpdateError(
+                        "could not clean up package staging file"
+                    ) from cleanup_error
 
     @staticmethod
     def _validate_download_asset(
@@ -337,7 +383,7 @@ class UpdateService:
         request = self._download_request(asset.url)
         try:
             with self.opener(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
-                self._require_https_response(response)
+                self._require_https_final_url(response)
                 payload = _read_bounded(
                     response,
                     min(asset.size, MAX_METADATA_BYTES),
@@ -361,7 +407,7 @@ class UpdateService:
         )
 
     @staticmethod
-    def _require_https_response(response: object) -> None:
+    def _require_https_final_url(response: object) -> None:
         geturl = getattr(response, "geturl", None)
         final_url = geturl() if callable(geturl) else getattr(response, "url", None)
         if not _is_https_url(final_url):
