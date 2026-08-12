@@ -78,17 +78,16 @@ begin
   end;
 end;
 
-procedure SignalCatTypeShutdown;
-var
-  ShutdownEvent: THandle;
+function OpenCatTypeShutdownEvent: THandle;
 begin
-  ShutdownEvent := OpenEventW(
+  Result := OpenEventW(
     EVENT_MODIFY_STATE, False, 'Local\CatTypeShutdown');
-  if ShutdownEvent <> 0 then
-  begin
-    SetEvent(ShutdownEvent);
-    CloseHandle(ShutdownEvent);
-  end;
+end;
+
+procedure SignalCatTypeShutdown(ShutdownEvent: THandle);
+begin
+  SetEvent(ShutdownEvent);
+  CloseHandle(ShutdownEvent);
 end;
 
 procedure WaitForCatTypeExit;
@@ -108,11 +107,36 @@ begin
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ShutdownEvent: THandle;
 begin
   Result := '';
-  if IsAutoUpdate then
+  if WizardSilent then
   begin
-    SignalCatTypeShutdown;
+    if not IsAutoUpdate then
+    begin
+      Result := 'Automatic update authorization is missing.';
+      Exit;
+    end;
+    ShutdownEvent := OpenCatTypeShutdownEvent;
+  end
+  else
+  begin
+    ShutdownEvent := OpenCatTypeShutdownEvent;
+    if ShutdownEvent = 0 then
+      Exit;
+    if MsgBox(
+      'Cat Type must close to update. Close Cat Type now and continue?',
+      mbConfirmation, MB_YESNO) <> IDYES then
+    begin
+      CloseHandle(ShutdownEvent);
+      Result := 'Cat Type must close before the update can continue.';
+      Exit;
+    end;
+  end;
+  if ShutdownEvent <> 0 then
+  begin
+    SignalCatTypeShutdown(ShutdownEvent);
     WaitForCatTypeExit;
   end;
 end;

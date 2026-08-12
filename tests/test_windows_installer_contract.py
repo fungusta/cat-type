@@ -150,13 +150,7 @@ class InnoInstallerContractTests(unittest.TestCase):
     def test_prepare_to_install_signals_event_then_waits_for_exact_mutex(
         self,
     ) -> None:
-        prepare = re.search(
-            r"(?is)function\s+PrepareToInstall\s*\([^)]*\).*?"
-            r"begin(?P<body>.*?)end\s*;",
-            self.script,
-        )
-        self.assertIsNotNone(prepare)
-        body = prepare.group("body")
+        body = self.script[self.script.index("function PrepareToInstall") :]
         self.assertIn("SignalCatTypeShutdown", body)
         self.assertIn("WaitForCatTypeExit", body)
         self.assertLess(
@@ -165,6 +159,108 @@ class InnoInstallerContractTests(unittest.TestCase):
         )
         self.assertIn("Local\\CatTypeShutdown", self.script)
         self.assertIn("Local\\CatTypeDesktopApp", self.script)
+
+    def test_silent_non_auto_install_stops_before_shutdown_or_restart_manager(
+        self,
+    ) -> None:
+        prepare = self.script[self.script.index("function PrepareToInstall") :]
+        invalid_silent = re.search(
+            r"(?is)if\s+WizardSilent\s+then\s+begin\s+"
+            r"if\s+not\s+IsAutoUpdate\s+then\s+begin\s+"
+            r"Result\s*:=\s*'[^']+'\s*;\s+Exit\s*;\s+end\s*;",
+            prepare,
+        )
+        self.assertIsNotNone(invalid_silent)
+        assert invalid_silent is not None
+        self.assertLess(
+            invalid_silent.end(),
+            prepare.index("OpenCatTypeShutdownEvent"),
+        )
+        self.assertLess(
+            invalid_silent.end(),
+            prepare.index("SignalCatTypeShutdown"),
+        )
+
+    def test_valid_silent_auto_update_signals_and_waits(self) -> None:
+        prepare = self.script[self.script.index("function PrepareToInstall") :]
+        self.assertRegex(
+            prepare,
+            r"(?is)if\s+WizardSilent\s+then\s+begin.*?"
+            r"if\s+not\s+IsAutoUpdate\s+then.*?Exit\s*;.*?"
+            r"ShutdownEvent\s*:=\s*OpenCatTypeShutdownEvent\s*;.*?"
+            r"end\s+else\s+begin",
+        )
+        self.assertRegex(
+            prepare,
+            r"(?is)if\s+ShutdownEvent\s*<>\s*0\s+then\s+begin\s+"
+            r"SignalCatTypeShutdown\s*\(\s*ShutdownEvent\s*\)\s*;\s+"
+            r"WaitForCatTypeExit\s*;",
+        )
+
+    def test_interactive_current_app_prompts_before_signal_and_honors_answer(
+        self,
+    ) -> None:
+        prepare = self.script[self.script.index("function PrepareToInstall") :]
+        interactive = re.search(
+            r"(?is)end\s+else\s+begin(?P<body>.*?)end\s*;\s+"
+            r"if\s+ShutdownEvent\s*<>\s*0",
+            prepare,
+        )
+        self.assertIsNotNone(interactive)
+        body = interactive.group("body")
+        self.assertRegex(
+            body,
+            r"ShutdownEvent\s*:=\s*OpenCatTypeShutdownEvent\s*;",
+        )
+        self.assertRegex(
+            body,
+            r"(?is)if\s+ShutdownEvent\s*=\s*0\s+then\s+Exit\s*;",
+        )
+        self.assertRegex(
+            body,
+            r"(?is)MsgBox\s*\(.*?Cat Type must close to update.*?"
+            r"MB_YESNO.*?\)\s*<>\s*IDYES",
+        )
+        declined = re.search(
+            r"(?is)if\s+MsgBox\s*\(.*?\)\s*<>\s*IDYES\s+then\s+"
+            r"begin(?P<body>.*?)end\s*;",
+            body,
+        )
+        self.assertIsNotNone(declined)
+        declined_body = declined.group("body")
+        self.assertIn("CloseHandle(ShutdownEvent)", declined_body)
+        self.assertRegex(declined_body, r"Result\s*:=\s*'[^']+'\s*;")
+        self.assertIn("Exit;", declined_body)
+        self.assertNotIn("SignalCatTypeShutdown", body)
+
+    def test_interactive_old_app_falls_through_to_restart_manager_prompt(
+        self,
+    ) -> None:
+        prepare = self.script[self.script.index("function PrepareToInstall") :]
+        self.assertRegex(
+            prepare,
+            r"(?is)Result\s*:=\s*''\s*;.*?end\s+else\s+begin\s+"
+            r"ShutdownEvent\s*:=\s*OpenCatTypeShutdownEvent\s*;\s+"
+            r"if\s+ShutdownEvent\s*=\s*0\s+then\s+Exit\s*;\s+"
+            r"if\s+MsgBox",
+        )
+
+    def test_shutdown_event_opened_by_prepare_is_closed_on_every_path(
+        self,
+    ) -> None:
+        signal = re.search(
+            r"(?is)procedure\s+SignalCatTypeShutdown\s*"
+            r"\(\s*ShutdownEvent\s*:\s*THandle\s*\)\s*;.*?"
+            r"begin(?P<body>.*?)end\s*;",
+            self.script,
+        )
+        self.assertIsNotNone(signal)
+        self.assertIn("CloseHandle(ShutdownEvent)", signal.group("body"))
+        self.assertRegex(
+            self.script[self.script.index("function PrepareToInstall") :],
+            r"(?is)if\s+MsgBox.*?<>\s*IDYES\s+then\s+begin.*?"
+            r"CloseHandle\s*\(\s*ShutdownEvent\s*\).*?Exit\s*;",
+        )
 
     def test_graceful_wait_is_bounded_to_five_seconds_in_short_intervals(
         self,
