@@ -1,3 +1,3 @@
 """Cat Type's runtime release version."""
 
-APP_VERSION: str = "1.0.7"
+APP_VERSION: str = "1.0.8"
