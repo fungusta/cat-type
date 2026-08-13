@@ -41,9 +41,9 @@ Download **Cat-Type-Linux-x64.tar.gz** for most PCs or
 `Cat Type`. The overlay and global keyboard listener require X11 or XWayland.
 A system tray implementation such as AppIndicator is also recommended.
 
-Windows uses native accessibility APIs to place the cat beside the text caret.
-The initial macOS and Linux builds fall back to the mouse pointer when a native
-caret rectangle is unavailable.
+Cat Type uses native accessibility APIs to place the cat beside the text caret
+when that geometry is available. If no usable caret can be detected, it falls
+back to the current mouse pointer.
 
 ## Settings
 
@@ -167,13 +167,10 @@ Cat Type combines two Windows mechanisms:
 2. `GetGUIThreadInfo` and `rcCaret` as a fallback for traditional Win32
    controls.
 
-Some canvas-based editors, terminals, games, or applications that do not
-publish an accessible caret cannot be tracked. Elevated applications are also
-outside the reach of a normally launched process.
-
-When a focused, non-password text control is available but does not publish a
-usable caret rectangle, Cat Type falls back to the matching corner of the
-active monitor's work area.
+Some canvas-based editors, terminals, games, elevated applications, or other
+controls do not publish a usable caret. In those cases, Cat Type falls back to
+the current mouse pointer. Password fields detected through UI Automation stay
+hidden and never use the pointer fallback.
 
 ## Tests
 

@@ -2,13 +2,11 @@ import ctypes
 import time
 import tkinter as tk
 import unittest
-from unittest.mock import patch
 
 import win32gui
 import win32ui
 from PIL import Image
 
-from cat_settings import AppSettings
 from cat_type import (
     CAT_VARIANTS,
     CaretSnapshot,
@@ -29,36 +27,6 @@ class OverlayRenderingTests(unittest.TestCase):
             self.assertEqual(app.root.winfo_children(), [app.label])
             self.assertEqual(app.label.winfo_reqwidth(), app.frame_width)
             self.assertEqual(app.label.winfo_reqheight(), app.frame_height)
-        finally:
-            app.root.destroy()
-
-    def test_missing_caret_uses_preferred_monitor_corner(self) -> None:
-        app = CatTypeApp(
-            hold_seconds=10.0,
-            settings=AppSettings(placement="below-left"),
-        )
-        try:
-            now = time.monotonic()
-            app.animation.record_key(now)
-            with patch(
-                "cat_type.active_work_area",
-                return_value=ScreenRect(-1920, 40, 0, 1080),
-            ):
-                app._show(
-                    CaretSnapshot(
-                        captured_at=now,
-                        rect=None,
-                        source="uia-fallback",
-                        fallback_allowed=True,
-                    ),
-                    now,
-                )
-            app.root.update()
-
-            self.assertEqual(
-                (app.root.winfo_x(), app.root.winfo_y()),
-                (-1914, 954),
-            )
         finally:
             app.root.destroy()
 
