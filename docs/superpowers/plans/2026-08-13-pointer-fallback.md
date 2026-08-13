@@ -174,6 +174,11 @@ def _locate_pointer(self) -> ScreenRect | None:
 9. Add `pynput.keyboard._win32` and `pynput.mouse._win32` to
    `backend_modules("win32")` and verify both the platform module list and
    frozen-archive validator reject missing Windows `pynput` backends.
+10. Resolve non-Windows work areas per monitor using `NSScreen.visibleFrame`
+    on macOS and XRandR monitor rectangles on Linux; retain virtual-root bounds
+    as a failure fallback and verify secondary-monitor selection. Pair each
+    macOS `frame` ownership rectangle with its `visibleFrame` placement
+    rectangle so menu-bar and Dock strips remain owned by the correct screen.
 
 - [ ] **Step 4: Run the targeted tests and verify GREEN**
 

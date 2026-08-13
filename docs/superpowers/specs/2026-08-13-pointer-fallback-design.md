@@ -59,10 +59,18 @@ the same pointer-location method remains the primary source.
 
 The pointer is represented as a 2-by-20-pixel rectangle beginning at the
 rounded pointer coordinates. Existing `choose_overlay_position()` behavior
-therefore honors the configured corner, chooses the pointer's monitor, flips
-at screen edges, and clamps the cat to the work area. As with a detected caret,
-the overlay position is fixed for one appearance and is recalculated on the
-next appearance after the animation hides.
+therefore honors the configured corner, chooses the pointer's monitor, flips at
+screen edges, and clamps the cat to the work area. Windows uses its existing
+monitor APIs, macOS uses `NSScreen.visibleFrame`, and Linux uses active XRandR
+monitor rectangles. If portable monitor discovery fails, Cat Type retains the
+virtual-desktop fallback. As with a detected caret, the overlay position is
+fixed for one appearance and is recalculated on the next appearance after the
+animation hides.
+
+On macOS, monitor ownership is selected with each `NSScreen.frame`, including
+menu-bar and Dock strips, while placement is clamped to the matching
+`visibleFrame`. This prevents an excluded strip near a shared edge from being
+misclassified as part of the neighboring screen.
 
 The old Windows-only active-monitor-corner fallback and its
 `fallback_allowed` flag are removed because every allowed missing-caret case

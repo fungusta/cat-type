@@ -1,3 +1,4 @@
+import io
 import queue
 import sys
 import unittest
@@ -5,6 +6,7 @@ from dataclasses import fields
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import cat_type
 from cat_settings import AppSettings
 from cat_type import (
     AppEvent,
@@ -12,6 +14,7 @@ from cat_type import (
     CaretLocator,
     CatTypeApp,
     KeyboardMonitor,
+    MonitorArea,
     ScreenRect,
     classify_portable_key,
     classify_windows_key,
@@ -517,6 +520,30 @@ class CaretFallbackTests(unittest.TestCase):
         self.assertEqual(snapshot.source, "uia")
         locate_pointer.assert_not_called()
 
+    def test_windows_prefers_win32_caret_over_pointer(self) -> None:
+        locator = CaretLocator()
+        caret = ScreenRect(200, 300, 202, 320)
+
+        with (
+            patch("cat_type.IS_WINDOWS", True),
+            patch.object(
+                locator,
+                "_locate_with_uia",
+                return_value=(None, False),
+            ),
+            patch.object(
+                locator,
+                "_locate_with_win32",
+                return_value=caret,
+            ),
+            patch.object(locator, "_locate_pointer") as locate_pointer,
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.rect, caret)
+        self.assertEqual(snapshot.source, "win32")
+        locate_pointer.assert_not_called()
+
     def test_password_field_never_uses_pointer(self) -> None:
         locator = CaretLocator()
 
@@ -568,6 +595,187 @@ class CaretFallbackTests(unittest.TestCase):
             rect = locator._locate_pointer()
 
         self.assertIsNone(rect)
+
+    def test_pointer_failure_logs_only_in_debug_mode(self) -> None:
+        for debug, expected in ((False, ""), (True, "Pointer lookup failed")):
+            locator = CaretLocator(debug=debug)
+            error_output = io.StringIO()
+
+            with (
+                patch(
+                    "pynput.mouse.Controller",
+                    side_effect=RuntimeError("pointer unavailable"),
+                ),
+                patch("sys.stderr", error_output),
+            ):
+                locator._locate_pointer()
+
+            with self.subTest(debug=debug):
+                self.assertIn(expected, error_output.getvalue())
+                if not debug:
+                    self.assertEqual(error_output.getvalue(), "")
+
+
+class PortableWorkAreaTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux-only check")
+    def test_linux_provider_reads_host_monitor(self) -> None:
+        areas = cat_type._linux_monitor_areas()
+
+        self.assertTrue(areas)
+        self.assertTrue(
+            all(
+                area.bounds.width > 0 and area.bounds.height > 0
+                for area in areas
+            )
+        )
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS-only check")
+    def test_macos_provider_reads_each_connected_screen(self) -> None:
+        from AppKit import NSScreen
+
+        screens = NSScreen.screens()
+        areas = cat_type._macos_monitor_areas()
+
+        self.assertTrue(screens)
+        self.assertEqual(len(areas), len(screens))
+
+    def test_pointer_uses_its_secondary_monitor_bounds(self) -> None:
+        primary = ScreenRect(0, 0, 1920, 1080)
+        secondary = ScreenRect(-1280, 0, 0, 1024)
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", False),
+            patch("cat_type.IS_LINUX", True),
+            patch(
+                "cat_type._linux_monitor_areas",
+                return_value=(
+                    MonitorArea(primary, primary),
+                    MonitorArea(secondary, secondary),
+                ),
+                create=True,
+            ),
+        ):
+            area = cat_type.work_area_for(
+                ScreenRect(-10, 500, -8, 520)
+            )
+
+        self.assertEqual(area, secondary)
+
+    def test_shared_edge_belongs_to_monitor_starting_at_that_edge(self) -> None:
+        primary = ScreenRect(0, 0, 1920, 1080)
+        secondary = ScreenRect(1920, 0, 3200, 1024)
+
+        area = cat_type._nearest_work_area(
+            ScreenRect(1920, 500, 1922, 520),
+            (
+                MonitorArea(primary, primary),
+                MonitorArea(secondary, secondary),
+            ),
+        )
+
+        self.assertEqual(area, secondary)
+
+    def test_macos_excluded_strip_still_belongs_to_its_screen(self) -> None:
+        primary_bounds = ScreenRect(0, 0, 1920, 1080)
+        primary_work = ScreenRect(0, 25, 1920, 1080)
+        secondary_bounds = ScreenRect(1920, 0, 3200, 1024)
+        secondary_work = ScreenRect(1920, 0, 3200, 1024)
+
+        area = cat_type._nearest_work_area(
+            ScreenRect(1919, 5, 1921, 25),
+            (
+                MonitorArea(primary_bounds, primary_work),
+                MonitorArea(secondary_bounds, secondary_work),
+            ),
+        )
+
+        self.assertEqual(area, primary_work)
+
+    def test_linux_reads_active_xrandr_monitor_rectangles(self) -> None:
+        monitors = (
+            SimpleNamespace(
+                x=0,
+                y=0,
+                width_in_pixels=1920,
+                height_in_pixels=1080,
+            ),
+            SimpleNamespace(
+                x=-1280,
+                y=0,
+                width_in_pixels=1280,
+                height_in_pixels=1024,
+            ),
+        )
+        connection = Mock()
+        root = connection.screen.return_value.root
+        request = root.xrandr_get_monitors.return_value
+        request.monitors = monitors
+
+        with patch("Xlib.display.Display", return_value=connection):
+            areas = cat_type._linux_monitor_areas()
+
+        self.assertEqual(
+            areas,
+            (
+                MonitorArea(
+                    ScreenRect(0, 0, 1920, 1080),
+                    ScreenRect(0, 0, 1920, 1080),
+                ),
+                MonitorArea(
+                    ScreenRect(-1280, 0, 0, 1024),
+                    ScreenRect(-1280, 0, 0, 1024),
+                ),
+            ),
+        )
+        connection.close.assert_called_once_with()
+
+    def test_macos_converts_visible_frames_to_pointer_coordinates(self) -> None:
+        def frame(x: int, y: int, width: int, height: int) -> object:
+            return SimpleNamespace(
+                origin=SimpleNamespace(x=x, y=y),
+                size=SimpleNamespace(width=width, height=height),
+            )
+
+        screens = (
+            Mock(
+                frame=Mock(return_value=frame(0, 0, 1920, 1080)),
+                visibleFrame=Mock(return_value=frame(0, 0, 1920, 1055)),
+            ),
+            Mock(
+                frame=Mock(return_value=frame(-1280, 0, 1280, 1024)),
+                visibleFrame=Mock(
+                    return_value=frame(-1280, 0, 1280, 1024)
+                )
+            ),
+        )
+        appkit = SimpleNamespace(
+            NSScreen=SimpleNamespace(screens=Mock(return_value=screens))
+        )
+        quartz = SimpleNamespace(
+            CGDisplayPixelsHigh=Mock(return_value=1080)
+        )
+
+        with patch.dict(
+            sys.modules,
+            {"AppKit": appkit, "Quartz": quartz},
+        ):
+            areas = cat_type._macos_monitor_areas()
+
+        self.assertEqual(
+            areas,
+            (
+                MonitorArea(
+                    ScreenRect(0, 0, 1920, 1080),
+                    ScreenRect(0, 25, 1920, 1080),
+                ),
+                MonitorArea(
+                    ScreenRect(-1280, 56, 0, 1080),
+                    ScreenRect(-1280, 56, 0, 1080),
+                ),
+            ),
+        )
+        quartz.CGDisplayPixelsHigh.assert_called_once_with(0)
 
 
 class OverlayPositionTests(unittest.TestCase):

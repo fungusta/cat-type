@@ -41,9 +41,10 @@ Download **Cat-Type-Linux-x64.tar.gz** for most PCs or
 `Cat Type`. The overlay and global keyboard listener require X11 or XWayland.
 A system tray implementation such as AppIndicator is also recommended.
 
-Cat Type uses native accessibility APIs to place the cat beside the text caret
-when that geometry is available. If no usable caret can be detected, it falls
-back to the current mouse pointer.
+On Windows, Cat Type uses native accessibility APIs to place the cat beside the
+text caret when that geometry is available. If no usable caret can be detected,
+it falls back to the current mouse pointer. macOS and Linux currently use the
+mouse pointer directly.
 
 ## Settings
 

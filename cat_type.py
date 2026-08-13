@@ -312,6 +312,12 @@ class ScreenRect:
 
 
 @dataclass(frozen=True)
+class MonitorArea:
+    bounds: ScreenRect
+    work_area: ScreenRect
+
+
+@dataclass(frozen=True)
 class CaretSnapshot:
     captured_at: float
     rect: ScreenRect | None
@@ -358,19 +364,129 @@ def acquire_single_instance() -> bool:
     return True
 
 
+def _virtual_work_area() -> ScreenRect:
+    root = tk._default_root
+    if root is not None:
+        left = root.winfo_vrootx()
+        top = root.winfo_vrooty()
+        return ScreenRect(
+            left,
+            top,
+            left + root.winfo_vrootwidth(),
+            top + root.winfo_vrootheight(),
+        )
+    return ScreenRect(0, 0, 1920, 1080)
+
+
+def _linux_monitor_areas() -> tuple[MonitorArea, ...]:
+    connection = None
+    try:
+        from Xlib import display
+
+        connection = display.Display()
+        root = connection.screen().root
+        request = root.xrandr_get_monitors()
+        return tuple(
+            MonitorArea(
+                bounds=ScreenRect(
+                    monitor.x,
+                    monitor.y,
+                    monitor.x + monitor.width_in_pixels,
+                    monitor.y + monitor.height_in_pixels,
+                ),
+                work_area=ScreenRect(
+                    monitor.x,
+                    monitor.y,
+                    monitor.x + monitor.width_in_pixels,
+                    monitor.y + monitor.height_in_pixels,
+                ),
+            )
+            for monitor in request.monitors
+            if monitor.width_in_pixels > 0 and monitor.height_in_pixels > 0
+        )
+    except Exception:
+        return ()
+    finally:
+        if connection is not None:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+
+def _macos_monitor_areas() -> tuple[MonitorArea, ...]:
+    try:
+        from AppKit import NSScreen
+        import Quartz
+
+        primary_height = Quartz.CGDisplayPixelsHigh(0)
+        areas = []
+
+        def convert(frame: object) -> ScreenRect:
+            left = round(frame.origin.x)
+            top = round(
+                primary_height - frame.origin.y - frame.size.height
+            )
+            width = round(frame.size.width)
+            height = round(frame.size.height)
+            return ScreenRect(left, top, left + width, top + height)
+
+        for screen in NSScreen.screens():
+            bounds = convert(screen.frame())
+            work_area = convert(screen.visibleFrame())
+            if (
+                bounds.right > bounds.left
+                and bounds.bottom > bounds.top
+                and work_area.right > work_area.left
+                and work_area.bottom > work_area.top
+            ):
+                areas.append(MonitorArea(bounds, work_area))
+        return tuple(areas)
+    except Exception:
+        return ()
+
+
+def _nearest_work_area(
+    rect: ScreenRect,
+    areas: tuple[MonitorArea, ...],
+) -> ScreenRect | None:
+    if not areas:
+        return None
+
+    for area in areas:
+        if (
+            area.bounds.left <= rect.left < area.bounds.right
+            and area.bounds.top <= rect.top < area.bounds.bottom
+        ):
+            return area.work_area
+
+    def distance(area: MonitorArea) -> int:
+        bounds = area.bounds
+        x_distance = max(
+            bounds.left - rect.left,
+            0,
+            rect.left - bounds.right,
+        )
+        y_distance = max(
+            bounds.top - rect.top,
+            0,
+            rect.top - bounds.bottom,
+        )
+        return x_distance * x_distance + y_distance * y_distance
+
+    return min(areas, key=distance).work_area
+
+
 def work_area_for(rect: ScreenRect) -> ScreenRect:
     if not IS_WINDOWS:
-        root = tk._default_root
-        if root is not None:
-            left = root.winfo_vrootx()
-            top = root.winfo_vrooty()
-            return ScreenRect(
-                left,
-                top,
-                left + root.winfo_vrootwidth(),
-                top + root.winfo_vrootheight(),
-            )
-        return ScreenRect(0, 0, 1920, 1080)
+        areas = (
+            _macos_monitor_areas()
+            if IS_MACOS
+            else _linux_monitor_areas()
+            if IS_LINUX
+            else ()
+        )
+        return _nearest_work_area(rect, areas) or _virtual_work_area()
 
     assert user32 is not None
     point = wintypes.POINT(rect.left, rect.top)
