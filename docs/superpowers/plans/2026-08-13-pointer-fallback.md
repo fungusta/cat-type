@@ -24,6 +24,9 @@
 **Files:**
 - Modify: `tests/test_behavior.py`
 - Modify: `cat_type.py`
+- Modify: `platform_assets.py`
+- Modify: `tests/test_platform_assets.py`
+- Modify: `tests/test_bundled_icon_check.py`
 
 **Interfaces:**
 - Consumes: `CaretLocator._locate_with_uia()`, `CaretLocator._locate_with_win32()`, and `pynput.mouse.Controller.position`.
@@ -168,6 +171,9 @@ def _locate_pointer(self) -> ScreenRect | None:
 6. After Windows UIA and Win32 both fail, call `_locate_pointer()` and return the same `pointer-fallback` snapshot when it succeeds.
 7. Preserve the immediate `uia-password` return before Win32 and pointer lookup.
 8. In the tick/show path, require `snapshot.rect is not None`; remove `fallback_allowed` checks and the active-monitor-corner rendering branch.
+9. Add `pynput.keyboard._win32` and `pynput.mouse._win32` to
+   `backend_modules("win32")` and verify both the platform module list and
+   frozen-archive validator reject missing Windows `pynput` backends.
 
 - [ ] **Step 4: Run the targeted tests and verify GREEN**
 

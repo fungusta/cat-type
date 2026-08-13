@@ -10,6 +10,11 @@ def icon_filename(platform: str) -> str:
 
 
 def backend_modules(platform: str) -> tuple[str, ...]:
+    if platform == "win32":
+        return (
+            "pynput.keyboard._win32",
+            "pynput.mouse._win32",
+        )
     if platform == "darwin":
         return (
             "pynput.keyboard._darwin",

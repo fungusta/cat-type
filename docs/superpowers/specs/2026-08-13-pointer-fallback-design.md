@@ -24,7 +24,10 @@ no special pointer path.
 
 This keeps all screen-position discovery in one component, makes the fallback
 directly unit-testable, and reuses the bundled `pynput` dependency on every
-platform.
+platform. Because importing the `pynput` package initializes both input
+subpackages, the frozen Windows build explicitly includes
+`pynput.keyboard._win32` and `pynput.mouse._win32`, matching the existing
+explicit macOS and Linux backend declarations.
 
 ### Query the pointer in `CatTypeApp._show`
 

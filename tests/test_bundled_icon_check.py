@@ -76,6 +76,14 @@ class BundledRuntimeModuleCheckTests(unittest.TestCase):
                 "linux",
             )
 
+    def test_rejects_missing_windows_pynput_backends(self) -> None:
+        checker = self._module()
+        with self.assertRaisesRegex(ValueError, "pynput.keyboard._win32"):
+            checker.validate_bundled_runtime_modules(
+                {"PIL._tkinter_finder", "pynput.mouse._win32"},
+                "win32",
+            )
+
     def test_rejects_missing_pillow_tk_bridge(self) -> None:
         checker = self._module()
         with self.assertRaisesRegex(ValueError, "PIL._tkinter_finder"):

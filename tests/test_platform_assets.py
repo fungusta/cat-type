@@ -88,7 +88,11 @@ class PlatformBackendTests(unittest.TestCase):
         )
         self.assertEqual(
             platform_assets.runtime_modules("win32"),
-            ("PIL._tkinter_finder",),
+            (
+                "PIL._tkinter_finder",
+                "pynput.keyboard._win32",
+                "pynput.mouse._win32",
+            ),
         )
 
 
