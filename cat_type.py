@@ -1304,6 +1304,7 @@ def _default_update_installer(
 
 class CatTypeApp:
     TRANSPARENT_COLOR = "#00ff01"
+    MAX_CONTINUITY_SNAPSHOT_AGE_SECONDS = 0.25
 
     def __init__(
         self,
@@ -1826,12 +1827,18 @@ class CatTypeApp:
         now = time.monotonic()
         snapshot = self.tracker.snapshot()
         snapshot_is_current = snapshot.captured_at >= self._last_key_at - 0.05
+        snapshot_allows_continuity = (
+            self._overlay_visible
+            and self._anchor_position is not None
+            and now - snapshot.captured_at
+            <= self.MAX_CONTINUITY_SNAPSHOT_AGE_SECONDS
+        )
 
         if (
             self.settings.enabled
             and
             self.animation.is_visible(now)
-            and (snapshot_is_current or self._overlay_visible)
+            and (snapshot_is_current or snapshot_allows_continuity)
             and snapshot.rect is not None
             and not snapshot.is_password
         ):

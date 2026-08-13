@@ -458,6 +458,35 @@ class CatTypeTickRenderingTests(unittest.TestCase):
         app._show.assert_called_once_with(snapshot, 10.11)
         app._hide.assert_not_called()
 
+    def test_visible_overlay_without_anchor_waits_for_fresh_snapshot(self) -> None:
+        snapshot = CaretSnapshot(
+            captured_at=10.04,
+            rect=ScreenRect(500, 300, 502, 320),
+            source="test",
+        )
+        app = self.make_app(overlay_visible=True, snapshot=snapshot)
+        app._anchor_position = None
+
+        with patch("cat_type.time.monotonic", return_value=10.11):
+            app._tick()
+
+        app._show.assert_not_called()
+        app._hide.assert_called_once_with(reset_anchor=False)
+
+    def test_visible_overlay_rejects_stalled_old_snapshot(self) -> None:
+        snapshot = CaretSnapshot(
+            captured_at=9.0,
+            rect=ScreenRect(500, 300, 502, 320),
+            source="test",
+        )
+        app = self.make_app(overlay_visible=True, snapshot=snapshot)
+
+        with patch("cat_type.time.monotonic", return_value=10.11):
+            app._tick()
+
+        app._show.assert_not_called()
+        app._hide.assert_called_once_with(reset_anchor=False)
+
     def test_hidden_overlay_still_waits_for_fresh_snapshot(self) -> None:
         snapshot = CaretSnapshot(
             captured_at=10.04,
