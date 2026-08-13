@@ -39,7 +39,7 @@ backup=$5
 health=$6
 lock="${backup}.lock"
 
-if ! mkdir -- "$lock" 2>/dev/null; then
+if [ ! -d "$lock" ]; then
     exit 1
 fi
 cleanup_lock() {
@@ -98,7 +98,9 @@ fi
 "$current" </dev/null >/dev/null 2>&1 &
 new_pid=$!
 sleep "$health"
-if ! kill -0 "$new_pid" 2>/dev/null; then
+new_state=$(sed 's/^[^)]*) //' "/proc/$new_pid/stat" 2>/dev/null | awk '{print $1}')
+if ! kill -0 "$new_pid" 2>/dev/null || \
+        [ -z "$new_state" ] || [ "$new_state" = "Z" ]; then
     wait "$new_pid" 2>/dev/null || :
     restore_old
     exit 1
@@ -435,10 +437,12 @@ class LinuxPortableInstaller:
     def start(
         self,
         prepared: PreparedLinuxUpdate,
-        pid: int = os.getpid(),
+        pid: int | None = None,
     ) -> None:
         if not isinstance(prepared, PreparedLinuxUpdate):
             raise TypeError("prepared Linux update has the wrong type")
+        if pid is None:
+            pid = os.getpid()
         if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
             raise ValueError("Linux updater PID must be a positive integer")
         current = self._current_executable()
@@ -467,33 +471,51 @@ class LinuxPortableInstaller:
             raise RuntimeError("unsafe prepared Linux backup path")
         if os.path.lexists(backup):
             raise RuntimeError("Linux update backup already exists")
+        lock = Path(f"{backup}.lock")
+        try:
+            lock.mkdir(mode=0o700)
+        except FileExistsError as error:
+            raise RuntimeError("A Linux update is already in progress") from error
+        except OSError as error:
+            raise RuntimeError("The Linux update lock could not be created") from error
         try:
             stat_payload = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
             identity = stat_payload.rsplit(") ", 1)[1].split()[19]
         except (OSError, IndexError) as error:
+            try:
+                lock.rmdir()
+            except OSError:
+                pass
             raise RuntimeError(
                 "Linux updater process identity is unavailable"
             ) from error
 
-        self._helper_process = self._popen(
-            [
-                "/bin/sh",
-                "-c",
-                LINUX_HELPER_SOURCE,
-                "cat-type-linux-updater",
-                str(pid),
-                identity,
-                str(current),
-                str(staged),
-                str(backup),
-                format(self._helper_health_seconds, ".15g"),
-            ],
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-        )
+        try:
+            self._helper_process = self._popen(
+                [
+                    "/bin/sh",
+                    "-c",
+                    LINUX_HELPER_SOURCE,
+                    "cat-type-linux-updater",
+                    str(pid),
+                    identity,
+                    str(current),
+                    str(staged),
+                    str(backup),
+                    format(self._helper_health_seconds, ".15g"),
+                ],
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+            )
+        except BaseException:
+            try:
+                lock.rmdir()
+            except OSError:
+                pass
+            raise
 
 
 class LinuxControllerInstaller:

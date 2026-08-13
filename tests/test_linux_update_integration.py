@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from platform_updater import (
     LINUX_HELPER_SOURCE,
@@ -110,10 +110,17 @@ class LinuxHelperContractTests(unittest.TestCase):
         popen.assert_not_called()
 
     def test_popen_failure_propagates_without_changing_files(self) -> None:
+        lock = Path(f"{self.backup}.lock")
+        lock_seen_by_popen: list[bool] = []
+
+        def fail_popen(*_args, **_kwargs):
+            lock_seen_by_popen.append(lock.is_dir())
+            raise OSError("cannot start helper")
+
         installer = LinuxPortableInstaller(
             executable=self.current,
             frozen=True,
-            popen=Mock(side_effect=OSError("cannot start helper")),
+            popen=fail_popen,
             helper_health_seconds=0.2,
         )
         old = self.current.read_bytes()
@@ -125,6 +132,56 @@ class LinuxHelperContractTests(unittest.TestCase):
         self.assertEqual(self.current.read_bytes(), old)
         self.assertEqual(self.staged.read_bytes(), new)
         self.assertFalse(self.backup.exists())
+        self.assertEqual(lock_seen_by_popen, [True])
+        self.assertFalse(lock.exists())
+
+    def test_existing_exact_update_lock_rejects_before_popen(self) -> None:
+        popen = Mock()
+        installer = LinuxPortableInstaller(
+            executable=self.current,
+            frozen=True,
+            popen=popen,
+            helper_health_seconds=0.2,
+        )
+        lock = Path(f"{self.backup}.lock")
+        lock.mkdir()
+        old = self.current.read_bytes()
+        new = self.staged.read_bytes()
+
+        with self.assertRaisesRegex(RuntimeError, "already in progress"):
+            installer.start(self.prepared(), pid=os.getpid())
+
+        popen.assert_not_called()
+        self.assertEqual(self.current.read_bytes(), old)
+        self.assertEqual(self.staged.read_bytes(), new)
+        self.assertFalse(self.backup.exists())
+        self.assertTrue(lock.is_dir())
+
+    def test_omitted_pid_is_resolved_when_start_is_called(self) -> None:
+        popen = Mock(return_value=object())
+        installer = LinuxPortableInstaller(
+            executable=self.current,
+            frozen=True,
+            popen=popen,
+            helper_health_seconds=0.2,
+        )
+        live_pid = os.getpid()
+
+        with patch("platform_updater.os.getpid", return_value=live_pid) as getpid:
+            installer.start(self.prepared())
+
+        getpid.assert_called_once_with()
+        self.assertEqual(popen.call_args.args[0][4], str(live_pid))
+
+    def test_helper_rejects_a_zombie_replacement_before_removing_backup(
+        self,
+    ) -> None:
+        self.assertIn('"/proc/$new_pid/stat"', LINUX_HELPER_SOURCE)
+        self.assertIn('[ "$new_state" = "Z" ]', LINUX_HELPER_SOURCE)
+        self.assertLess(
+            LINUX_HELPER_SOURCE.index('[ "$new_state" = "Z" ]'),
+            LINUX_HELPER_SOURCE.index('rm -f -- "$backup"'),
+        )
 
     def test_start_rejects_staging_file_without_executable_bits(self) -> None:
         popen = Mock()
@@ -206,6 +263,7 @@ class LinuxHelperIntegrationTests(unittest.TestCase):
         self.assertEqual(self.installer._helper_process.wait(timeout=2), 0)
         self.assertEqual(self.current.read_bytes(), new_bytes)
         self.assertFalse(self.staged.exists())
+        self.assertFalse(Path(f"{self.backup}.lock").exists())
         self.assertNotIn("old", self.log.read_text())
 
     def test_new_early_exit_rolls_back_and_relaunches_old(self) -> None:
