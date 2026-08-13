@@ -298,16 +298,29 @@ git commit -m "release: prepare Cat Type 1.0.8"
 - Consumes: the complete repository test suite, Python compilation, release-version checker, Git history, and the GitHub `Cross-platform build` workflow.
 - Produces: one clean `main` commit on `origin/main` with successful Windows x64, macOS Intel, and Linux x64 build jobs.
 
-- [ ] **Step 1: Run the complete local test suite in a Linux desktop environment**
+- [ ] **Step 1: Run the complete Linux CI-equivalent test suite**
 
-Run in an environment containing Python 3.12, tkinter, Xvfb, and `requirements.txt` dependencies:
+Run in an environment containing Python 3.12, tkinter, Xvfb, and `requirements.txt` dependencies. Use the same platform-appropriate module selection as `.github/workflows/build.yml`; `tests.test_overlay_rendering` is Windows-only because it imports `win32gui` and is exercised by the Windows job:
 
 ```bash
 xvfb-run --auto-servernum \
-  python -m unittest discover -s tests -v
+  python -m unittest \
+  tests.test_behavior \
+  tests.test_settings \
+  tests.test_settings_window \
+  tests.test_platform_assets \
+  tests.test_bundled_icon_check \
+  tests.test_package_smoke \
+  tests.test_release_version_check \
+  tests.test_auto_update \
+  tests.test_update_controller \
+  tests.test_platform_updater \
+  tests.test_windows_installer_contract \
+  tests.test_linux_update_integration \
+  -v
 ```
 
-Expected: every discovered test passes with zero failures or errors. Platform-specific skips are allowed only where the test's decorator names a different operating system.
+Expected: every selected test passes with zero failures or errors. Platform-specific skips are allowed only where the test's decorator names a different operating system. The pushed cross-platform workflow remains the authoritative Windows overlay and package verification before tagging.
 
 - [ ] **Step 2: Run static, metadata, and worktree checks**
 
