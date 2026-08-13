@@ -154,10 +154,12 @@ class SettingsWindow:
         icon_path: str | None = None,
         keystroke_count: int = 0,
         on_check_for_updates: Callable[[], None] | None = None,
+        on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
     ) -> None:
         self._on_save = on_save
         self._on_check_for_updates = on_check_for_updates
+        self._on_open_release_page = on_open_release_page
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -680,6 +682,24 @@ class SettingsWindow:
             cursor="hand2",
         )
         self.check_for_updates_button.pack(anchor="w")
+        self.open_release_page_button = tk.Button(
+            content,
+            text="Open release page",
+            command=self._on_open_release_page,
+            state="normal" if self._on_open_release_page else "disabled",
+            relief="flat",
+            borderwidth=0,
+            background=self.CARD,
+            activebackground=self.BLUSH,
+            foreground=self.ACCENT_DARK,
+            activeforeground=self.ACCENT_DARK,
+            disabledforeground=self.MUTED,
+            font=self.fonts["small"],
+            padx=0,
+            pady=6,
+            cursor="hand2",
+        )
+        self.open_release_page_button.pack(anchor="w", pady=(4, 0))
         card.pack(fill="x", pady=(0, 14))
 
     def _build_footer(self, body: tk.Frame) -> tk.Frame:

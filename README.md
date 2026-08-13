@@ -86,7 +86,9 @@ the published tarball when its containing folder is writable. Cat Type stages
 the replacement beside the current executable, atomically keeps the old copy
 as a `.previous` backup, and rolls back and relaunches that backup if the new
 copy fails its startup health check. Installations in protected locations are
-left unchanged and show instructions to update manually.
+left unchanged and show instructions to update manually. The replacement
+helper requires Linux `/proc` plus the standard `sh`, `mv`, `sed`, and `awk`
+command-line tools included by mainstream desktop distributions.
 
 macOS updates remain manual, and apps run from source never self-install.
 Checking or downloading contacts GitHub's API and release download hosts; Cat

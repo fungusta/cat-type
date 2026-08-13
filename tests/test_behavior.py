@@ -377,6 +377,12 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             "Ready to check for updates.",
         )
         self.assertTrue(callable(keywords["on_check_for_updates"]))
+        self.assertTrue(callable(keywords["on_open_release_page"]))
+        with patch("cat_type.webbrowser.open") as open_browser:
+            keywords["on_open_release_page"]()
+        open_browser.assert_called_once_with(
+            "https://github.com/fungusta/cat-type/releases/latest"
+        )
 
     def test_run_uses_startup_feedback_without_recording_a_key(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)

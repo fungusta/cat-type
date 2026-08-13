@@ -180,12 +180,14 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
         self.on_check_for_updates = Mock()
+        self.on_open_release_page = Mock()
         self.settings_window = SettingsWindow(
             self.root,
             AppSettings(),
             lambda _settings: None,
             keystroke_count=1_234,
             on_check_for_updates=self.on_check_for_updates,
+            on_open_release_page=self.on_open_release_page,
             update_status="Ready to check.",
         )
         self.addCleanup(self.settings_window.close)
@@ -207,8 +209,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
 
         self.settings_window.check_for_updates_button.invoke()
+        self.settings_window.open_release_page_button.invoke()
 
         self.on_check_for_updates.assert_called_once_with()
+        self.on_open_release_page.assert_called_once_with()
 
     def test_update_status_changes_live_and_disables_button_while_checking(
         self,

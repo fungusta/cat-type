@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from collections import deque
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -1422,13 +1423,12 @@ class CatTypeApp:
 
         def check_worker() -> None:
             try:
-                if not manual and not self._update_state.is_due(
-                    self._update_now()
-                ):
-                    self.update_events.put(UpdateEvent(operation_id, "not-due"))
-                    return
+                supports_discovery = self._frozen and (
+                    self._platform_name == "win32"
+                    or self._platform_name.startswith("linux")
+                )
                 availability = self._update_installer.availability()
-                if not availability.can_install:
+                if not supports_discovery:
                     self.update_events.put(
                         UpdateEvent(
                             operation_id,
@@ -1437,12 +1437,29 @@ class CatTypeApp:
                         )
                     )
                     return
+                if not manual and not self._update_state.is_due(
+                    self._update_now()
+                ):
+                    self.update_events.put(UpdateEvent(operation_id, "not-due"))
+                    return
                 update = self._update_service.check(
                     self._platform_name,
                     self._machine,
                 )
                 checked_at = self._update_now()
                 self._update_state.record_success(checked_at)
+                if update is not None and not availability.can_install:
+                    self.update_events.put(
+                        UpdateEvent(
+                            operation_id,
+                            "unavailable",
+                            message=(
+                                f"Cat Type {update.version} is available. "
+                                f"{availability.status}"
+                            ),
+                        )
+                    )
+                    return
                 self.update_events.put(
                     UpdateEvent(operation_id, "check-result", update=update)
                 )
@@ -1965,6 +1982,9 @@ class CatTypeApp:
             str(APP_ICON) if APP_ICON.exists() else None,
             keystroke_count=self.keystroke_count,
             on_check_for_updates=lambda: self.check_for_updates(manual=True),
+            on_open_release_page=lambda: webbrowser.open(
+                _UnavailableUpdateInstaller.RELEASES_URL
+            ),
             update_status=getattr(
                 self,
                 "_update_status",

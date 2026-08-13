@@ -628,11 +628,10 @@ class UpdateControllerTests(unittest.TestCase):
         self.assertFalse(shutdown_thread.is_alive())
         self.assertTrue(shutdown_done.is_set())
 
-    def test_manual_only_platform_statuses_never_check_or_download(self) -> None:
+    def test_source_and_macos_statuses_never_check_or_download(self) -> None:
         cases = (
             ("darwin", True, "macOS updates are manual."),
             ("linux", False, "Source checkouts cannot update themselves."),
-            ("linux", True, "This Linux location is protected."),
         )
         for platform_name, frozen, status in cases:
             with self.subTest(status=status):
@@ -651,6 +650,33 @@ class UpdateControllerTests(unittest.TestCase):
                 self.assertEqual(service.check_calls, [])
                 self.assertEqual(service.downloads, [])
                 self.assertEqual(app._update_status, status)
+
+    def test_protected_packaged_linux_still_discovers_available_update(self) -> None:
+        update = available_update()
+        service = FakeService(result=update)
+        state = FakeState()
+        confirm = Mock(return_value=True)
+        installer = FakeInstaller(
+            InstallerAvailability(False, "This Linux location is protected.")
+        )
+        app = self.make_app(
+            service=service,
+            state=state,
+            installer=installer,
+            confirm=confirm,
+            platform_name="linux",
+            frozen=True,
+        )
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(service.check_calls, [("linux", "x86_64")])
+        self.assertEqual(state.successes, [NOW])
+        self.assertEqual(service.downloads, [])
+        confirm.assert_not_called()
+        self.assertIn("Cat Type 1.1.0 is available.", app._update_status)
+        self.assertIn("protected", app._update_status)
 
     def test_shutdown_during_download_prevents_prepare_or_install(self) -> None:
         update = available_update()
