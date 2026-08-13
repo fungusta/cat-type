@@ -104,8 +104,9 @@ try {
     $install = Start-Process `
         -FilePath $installerPath `
         -ArgumentList $arguments `
-        -Wait `
         -PassThru
+    # -Wait includes descendants, but a successful update relaunches Cat Type.
+    Wait-Process -InputObject $install -Timeout 60 -ErrorAction Stop
     if ($install.ExitCode -ne 0) {
         throw "Auto-update installer exited with status $($install.ExitCode)."
     }

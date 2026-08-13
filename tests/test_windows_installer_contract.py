@@ -10,6 +10,7 @@ from platform_updater import WindowsControllerInstaller, WindowsInstaller
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "packaging" / "CatType.iss"
+SMOKE_SCRIPT_PATH = ROOT / "scripts" / "smoke_windows_installer_update.ps1"
 INSTALLER_NAME = "Cat-Type-Windows-x64.exe"
 EXPECTED_FLAGS = [
     "/VERYSILENT",
@@ -328,6 +329,26 @@ class InnoInstallerContractTests(unittest.TestCase):
         self.assertIn("postinstall", flags)
         self.assertIn("skipifsilent", flags)
         self.assertNotIn("skipifnotsilent", flags)
+
+
+class WindowsInstallerSmokeContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.script = SMOKE_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    def test_waits_for_installer_without_waiting_for_relaunched_process_tree(
+        self,
+    ) -> None:
+        installer_run = self.script[self.script.index("$install = Start-Process") :]
+
+        self.assertNotRegex(
+            installer_run,
+            r"(?is)Start-Process.*?\s-Wait\s+.*?\s-PassThru",
+        )
+        self.assertRegex(
+            installer_run,
+            r"(?i)Wait-Process\s+-InputObject\s+\$install\s+-Timeout\s+\d+",
+        )
 
 
 if __name__ == "__main__":
