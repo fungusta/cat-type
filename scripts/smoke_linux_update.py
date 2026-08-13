@@ -49,14 +49,22 @@ def run_frozen_update_smoke(executable: Path, timeout: float = 8.0) -> None:
             stderr=subprocess.DEVNULL,
         )
         replacement_pid: int | None = None
+        helper_process: subprocess.Popen[bytes] | None = None
         try:
             installer.start(prepared, pid=old_process.pid)
+            helper_process = installer._helper_process
             old_process.terminate()
             old_process.wait(timeout=2.0)
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
-                if launch_log.exists() and not prepared.backup.exists():
-                    replacement_pid = int(launch_log.read_text().strip())
+                if replacement_pid is None and launch_log.exists():
+                    try:
+                        candidate = int(launch_log.read_text().strip())
+                    except ValueError:
+                        candidate = 0
+                    if candidate > 0:
+                        replacement_pid = candidate
+                if replacement_pid is not None and not prepared.backup.exists():
                     break
                 time.sleep(0.02)
             else:
@@ -76,9 +84,18 @@ def run_frozen_update_smoke(executable: Path, timeout: float = 8.0) -> None:
                 old_process.wait()
             if replacement_pid is not None:
                 try:
-                    os.kill(replacement_pid, signal.SIGKILL)
+                    if helper_process is not None:
+                        os.killpg(helper_process.pid, signal.SIGKILL)
+                    else:
+                        os.kill(replacement_pid, signal.SIGKILL)
                 except OSError:
                     pass
+            if helper_process is not None and helper_process.poll() is None:
+                try:
+                    os.killpg(helper_process.pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                helper_process.wait(timeout=2.0)
 
     with tempfile.TemporaryDirectory(prefix="cat-type-protected-update-") as raw:
         directory = Path(raw)
