@@ -12,6 +12,7 @@ from cat_type import (
     AppEvent,
     AnimationState,
     CaretLocator,
+    CaretSnapshot,
     CatTypeApp,
     KeyboardMonitor,
     MonitorArea,
@@ -404,6 +405,87 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.animation.record_key.assert_not_called()
         app.tracker.notify_activity.assert_called_once_with(12.5)
         app.root.after.assert_any_call(2000, app.check_for_updates)
+
+
+class CatTypeTickRenderingTests(unittest.TestCase):
+    @staticmethod
+    def make_app(
+        *,
+        overlay_visible: bool,
+        snapshot: CaretSnapshot,
+    ) -> CatTypeApp:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._shutdown_signal = None
+        app.root = Mock()
+        app.root.winfo_exists.return_value = True
+        app._drain_update_events = Mock()
+        app._shutting_down = False
+        app._hook_failed = False
+        app.settings = AppSettings(
+            enabled=True,
+            hold_seconds=1.5,
+            fade_seconds=0.35,
+        )
+        app.animation = AnimationState(
+            hide_after=1.5,
+            fade_seconds=0.35,
+        )
+        app.animation.record_key(10.0, "left")
+        app.events = queue.SimpleQueue()
+        app.events.put(AppEvent("key", 10.10, "right"))
+        app.keystroke_count = 1
+        app._last_key_at = 10.0
+        app._anchor_position = (100, 100) if overlay_visible else None
+        app._overlay_visible = overlay_visible
+        app._settings_window = None
+        app.tracker = Mock()
+        app.tracker.snapshot.return_value = snapshot
+        app._show = Mock()
+        app._hide = Mock()
+        return app
+
+    def test_visible_overlay_survives_briefly_stale_snapshot(self) -> None:
+        snapshot = CaretSnapshot(
+            captured_at=10.04,
+            rect=ScreenRect(500, 300, 502, 320),
+            source="test",
+        )
+        app = self.make_app(overlay_visible=True, snapshot=snapshot)
+
+        with patch("cat_type.time.monotonic", return_value=10.11):
+            app._tick()
+
+        app._show.assert_called_once_with(snapshot, 10.11)
+        app._hide.assert_not_called()
+
+    def test_hidden_overlay_still_waits_for_fresh_snapshot(self) -> None:
+        snapshot = CaretSnapshot(
+            captured_at=10.04,
+            rect=ScreenRect(500, 300, 502, 320),
+            source="test",
+        )
+        app = self.make_app(overlay_visible=False, snapshot=snapshot)
+
+        with patch("cat_type.time.monotonic", return_value=10.11):
+            app._tick()
+
+        app._show.assert_not_called()
+        app._hide.assert_called_once_with(reset_anchor=False)
+
+    def test_password_snapshot_hides_visible_overlay(self) -> None:
+        snapshot = CaretSnapshot(
+            captured_at=10.04,
+            rect=None,
+            is_password=True,
+            source="uia-password",
+        )
+        app = self.make_app(overlay_visible=True, snapshot=snapshot)
+
+        with patch("cat_type.time.monotonic", return_value=10.11):
+            app._tick()
+
+        app._show.assert_not_called()
+        app._hide.assert_called_once_with(reset_anchor=True)
 
 
 class FakeDegenerateTextRange:

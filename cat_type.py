@@ -1831,7 +1831,7 @@ class CatTypeApp:
             self.settings.enabled
             and
             self.animation.is_visible(now)
-            and snapshot_is_current
+            and (snapshot_is_current or self._overlay_visible)
             and snapshot.rect is not None
             and not snapshot.is_password
         ):
