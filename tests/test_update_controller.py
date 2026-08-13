@@ -395,6 +395,29 @@ class UpdateControllerTests(unittest.TestCase):
         self.assertIn("checksum mismatch", app._update_status)
         app.shutdown.assert_not_called()
 
+    def test_installer_helper_launch_failure_is_terminal_and_does_not_shutdown(
+        self,
+    ) -> None:
+        update = available_update()
+
+        class LaunchFailingInstaller(FakeInstaller):
+            def start(self, prepared: object) -> None:
+                del prepared
+                raise OSError("could not launch Linux update helper")
+
+        app = self.make_app(
+            service=FakeService(result=update),
+            installer=LaunchFailingInstaller(),
+            confirm=Mock(return_value=True),
+        )
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertIn("could not launch Linux update helper", app._update_status)
+        app.shutdown.assert_not_called()
+
     def test_success_shutdown_occurs_only_after_installer_start_returns(self) -> None:
         update = available_update()
         sequence: list[str] = []

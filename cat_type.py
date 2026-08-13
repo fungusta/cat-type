@@ -29,7 +29,11 @@ from auto_update import (
 )
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
 from platform_assets import icon_filename
-from platform_updater import WindowsControllerInstaller, WindowsShutdownSignal
+from platform_updater import (
+    LinuxControllerInstaller,
+    WindowsControllerInstaller,
+    WindowsShutdownSignal,
+)
 from settings_window import SettingsWindow
 
 
@@ -1213,6 +1217,8 @@ def _default_update_installer(
 ) -> ControllerUpdateInstaller:
     if platform_name == "win32" and frozen and shutdown_available:
         return WindowsControllerInstaller()
+    if platform_name.startswith("linux") and frozen:
+        return LinuxControllerInstaller()
     return _UnavailableUpdateInstaller(platform_name, frozen)
 
 
