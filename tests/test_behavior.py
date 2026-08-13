@@ -15,7 +15,6 @@ from cat_type import (
     ScreenRect,
     classify_portable_key,
     classify_windows_key,
-    choose_fallback_position,
     choose_overlay_position,
 )
 
@@ -480,7 +479,45 @@ class CaretRangeTests(unittest.TestCase):
 
 
 class CaretFallbackTests(unittest.TestCase):
-    def test_allows_corner_fallback_for_verified_text_control(self) -> None:
+    def test_windows_uses_pointer_when_caret_providers_fail(self) -> None:
+        locator = CaretLocator()
+        pointer = ScreenRect(640, 480, 642, 500)
+
+        with (
+            patch("cat_type.IS_WINDOWS", True),
+            patch.object(
+                locator,
+                "_locate_with_uia",
+                return_value=(None, False),
+            ),
+            patch.object(locator, "_locate_with_win32", return_value=None),
+            patch.object(locator, "_locate_pointer", return_value=pointer),
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.rect, pointer)
+        self.assertEqual(snapshot.source, "pointer-fallback")
+
+    def test_windows_prefers_detected_caret_over_pointer(self) -> None:
+        locator = CaretLocator()
+        caret = ScreenRect(100, 200, 102, 220)
+
+        with (
+            patch("cat_type.IS_WINDOWS", True),
+            patch.object(
+                locator,
+                "_locate_with_uia",
+                return_value=(caret, False),
+            ),
+            patch.object(locator, "_locate_pointer") as locate_pointer,
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.rect, caret)
+        self.assertEqual(snapshot.source, "uia")
+        locate_pointer.assert_not_called()
+
+    def test_password_field_never_uses_pointer(self) -> None:
         locator = CaretLocator()
 
         with (
@@ -488,14 +525,49 @@ class CaretFallbackTests(unittest.TestCase):
             patch.object(
                 locator,
                 "_locate_with_uia",
-                return_value=(None, False, True),
+                return_value=(None, True),
             ),
-            patch.object(locator, "_locate_with_win32", return_value=None),
+            patch.object(locator, "_locate_pointer") as locate_pointer,
         ):
             snapshot = locator.locate()
 
-        self.assertTrue(snapshot.fallback_allowed)
-        self.assertEqual(snapshot.source, "uia-fallback")
+        self.assertTrue(snapshot.is_password)
+        self.assertIsNone(snapshot.rect)
+        locate_pointer.assert_not_called()
+
+    def test_non_windows_uses_shared_pointer_provider(self) -> None:
+        locator = CaretLocator()
+        pointer = ScreenRect(320, 240, 322, 260)
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch.object(locator, "_locate_pointer", return_value=pointer),
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.rect, pointer)
+        self.assertEqual(snapshot.source, "pointer-fallback")
+
+    def test_pointer_coordinates_are_rounded_to_a_caret_sized_rect(self) -> None:
+        locator = CaretLocator()
+        controller = Mock()
+        controller.position = (123.6, 456.2)
+
+        with patch("pynput.mouse.Controller", return_value=controller):
+            rect = locator._locate_pointer()
+
+        self.assertEqual(rect, ScreenRect(124, 456, 126, 476))
+
+    def test_pointer_failure_returns_no_position(self) -> None:
+        locator = CaretLocator()
+
+        with patch(
+            "pynput.mouse.Controller",
+            side_effect=RuntimeError("pointer unavailable"),
+        ):
+            rect = locator._locate_pointer()
+
+        self.assertIsNone(rect)
 
 
 class OverlayPositionTests(unittest.TestCase):
@@ -531,28 +603,6 @@ class OverlayPositionTests(unittest.TestCase):
             choose_overlay_position(caret, 88, 88, work),
             (208, 126),
         )
-
-    def test_fallback_uses_preferred_work_area_corner(self) -> None:
-        work = ScreenRect(-1920, 40, 0, 1080)
-        expected = {
-            "above-left": (-1914, 46),
-            "above-right": (-94, 46),
-            "below-left": (-1914, 986),
-            "below-right": (-94, 986),
-        }
-
-        for placement, position in expected.items():
-            with self.subTest(placement=placement):
-                self.assertEqual(
-                    choose_fallback_position(
-                        88,
-                        88,
-                        work,
-                        placement=placement,
-                    ),
-                    position,
-                )
-
 
 class AnimationStateTests(unittest.TestCase):
     def test_startup_feedback_does_not_count_toward_rapid_typing(self) -> None:

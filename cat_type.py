@@ -251,12 +251,6 @@ if IS_WINDOWS:
     user32.ClientToScreen.restype = wintypes.BOOL
     user32.MonitorFromPoint.argtypes = [wintypes.POINT, wintypes.DWORD]
     user32.MonitorFromPoint.restype = wintypes.HMONITOR
-    user32.GetForegroundWindow.restype = wintypes.HWND
-    user32.GetWindowRect.argtypes = [
-        wintypes.HWND,
-        ctypes.POINTER(wintypes.RECT),
-    ]
-    user32.GetWindowRect.restype = wintypes.BOOL
     user32.GetMonitorInfoW.argtypes = [
         wintypes.HMONITOR,
         ctypes.POINTER(MONITORINFO),
@@ -323,7 +317,6 @@ class CaretSnapshot:
     rect: ScreenRect | None
     is_password: bool = False
     source: str = "none"
-    fallback_allowed: bool = False
 
 
 def set_per_monitor_dpi_awareness() -> None:
@@ -389,19 +382,6 @@ def work_area_for(rect: ScreenRect) -> ScreenRect:
     return ScreenRect(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))
 
 
-def active_work_area() -> ScreenRect:
-    """Return the work area containing the currently focused application."""
-    if IS_WINDOWS:
-        assert user32 is not None
-        hwnd = user32.GetForegroundWindow()
-        rect = wintypes.RECT()
-        if hwnd and user32.GetWindowRect(hwnd, ctypes.byref(rect)):
-            return work_area_for(
-                ScreenRect(rect.left, rect.top, rect.right, rect.bottom)
-            )
-    return work_area_for(ScreenRect(0, 0, 1, 1))
-
-
 def choose_overlay_position(
     caret: ScreenRect,
     overlay_width: int,
@@ -440,29 +420,6 @@ def choose_overlay_position(
 
     x = max(work_area.left, min(x, work_area.right - overlay_width))
     y = max(work_area.top, min(y, work_area.bottom - overlay_height))
-    return x, y
-
-
-def choose_fallback_position(
-    overlay_width: int,
-    overlay_height: int,
-    work_area: ScreenRect,
-    gap: int = 6,
-    placement: str = "above-right",
-) -> tuple[int, int]:
-    """Place the overlay in the preferred corner when no caret is available."""
-    prefer_left = placement.endswith("left")
-    prefer_below = placement.startswith("below")
-    x = (
-        work_area.left + gap
-        if prefer_left
-        else work_area.right - overlay_width - gap
-    )
-    y = (
-        work_area.bottom - overlay_height - gap
-        if prefer_below
-        else work_area.top + gap
-    )
     return x, y
 
 
@@ -842,22 +799,17 @@ class CaretLocator:
             # environments. Until a provider returns a usable caret rectangle,
             # anchor the companion at the pointer so typing feedback remains
             # available everywhere.
-            try:
-                from pynput.mouse import Controller
-
-                left, top = Controller().position
+            pointer_rect = self._locate_pointer()
+            if pointer_rect:
                 return CaretSnapshot(
                     now,
-                    ScreenRect(round(left), round(top), round(left) + 2, round(top) + 20),
+                    pointer_rect,
                     False,
                     "pointer-fallback",
                 )
-            except Exception as exc:
-                if self.debug:
-                    print(f"Pointer lookup failed: {exc}", file=sys.stderr)
-                return CaretSnapshot(now, None)
+            return CaretSnapshot(now, None)
 
-        uia_rect, is_password, fallback_allowed = self._locate_with_uia()
+        uia_rect, is_password = self._locate_with_uia()
         if is_password:
             return CaretSnapshot(now, None, True, "uia-password")
         if uia_rect:
@@ -866,15 +818,29 @@ class CaretLocator:
         win32_rect = self._locate_with_win32()
         if win32_rect:
             return CaretSnapshot(now, win32_rect, False, "win32")
-        if fallback_allowed:
+
+        pointer_rect = self._locate_pointer()
+        if pointer_rect:
             return CaretSnapshot(
                 now,
-                None,
+                pointer_rect,
                 False,
-                "uia-fallback",
-                fallback_allowed=True,
+                "pointer-fallback",
             )
         return CaretSnapshot(now, None)
+
+    def _locate_pointer(self) -> ScreenRect | None:
+        try:
+            from pynput.mouse import Controller
+
+            left, top = Controller().position
+            left = round(left)
+            top = round(top)
+            return ScreenRect(left, top, left + 2, top + 20)
+        except Exception as exc:
+            if self.debug:
+                print(f"Pointer lookup failed: {exc}", file=sys.stderr)
+            return None
 
     def _locate_with_win32(self) -> ScreenRect | None:
         assert user32 is not None
@@ -897,21 +863,19 @@ class CaretLocator:
             right = top_left.x + 2
         return ScreenRect(top_left.x, top_left.y, right, bottom)
 
-    def _locate_with_uia(self) -> tuple[ScreenRect | None, bool, bool]:
+    def _locate_with_uia(self) -> tuple[ScreenRect | None, bool]:
         if self._automation is None or self._uia is None:
-            return None, False, False
+            return None, False
 
         try:
             element = self._automation.GetFocusedElement()
             if not element:
-                return None, False, False
+                return None, False
             if bool(element.CurrentIsPassword):
-                return None, True, False
+                return None, True
 
-            has_text_pattern = False
             unknown = element.GetCurrentPattern(self._uia.UIA_TextPattern2Id)
             if unknown:
-                has_text_pattern = True
                 pattern = unknown.QueryInterface(
                     self._uia.IUIAutomationTextPattern2
                 )
@@ -919,12 +883,11 @@ class CaretLocator:
                 if is_active and text_range:
                     rect = self._rect_from_uia_range(text_range)
                     if rect:
-                        return rect, False, True
+                        return rect, False
 
             # Older providers often expose TextPattern but not TextPattern2.
             unknown = element.GetCurrentPattern(self._uia.UIA_TextPatternId)
             if unknown:
-                has_text_pattern = True
                 pattern = unknown.QueryInterface(
                     self._uia.IUIAutomationTextPattern
                 )
@@ -932,12 +895,12 @@ class CaretLocator:
                 if ranges and ranges.Length:
                     rect = self._rect_from_uia_range(ranges.GetElement(0))
                     if rect:
-                        return rect, False, True
+                        return rect, False
         except Exception as exc:
             if self.debug:
                 print(f"UI Automation lookup failed: {exc}", file=sys.stderr)
-            return None, False, False
-        return None, False, has_text_pattern
+            return None, False
+        return None, False
 
     @staticmethod
     def _rect_from_uia_range(text_range: object) -> ScreenRect | None:
@@ -1753,7 +1716,7 @@ class CatTypeApp:
             and
             self.animation.is_visible(now)
             and snapshot_is_current
-            and (snapshot.rect is not None or snapshot.fallback_allowed)
+            and snapshot.rect is not None
             and not snapshot.is_password
         ):
             self._show(snapshot, now)
@@ -1787,27 +1750,19 @@ class CatTypeApp:
             )
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
-        assert snapshot.rect is not None or snapshot.fallback_allowed
+        assert snapshot.rect is not None
         self.root.wm_attributes("-alpha", self.animation.opacity(now))
         frame_name = self.animation.frame_name(now)
 
         if self._anchor_position is None:
-            if snapshot.rect is not None:
-                area = work_area_for(snapshot.rect)
-                self._anchor_position = choose_overlay_position(
-                    snapshot.rect,
-                    self.frame_width,
-                    self.frame_height,
-                    area,
-                    placement=self.settings.placement,
-                )
-            else:
-                self._anchor_position = choose_fallback_position(
-                    self.frame_width,
-                    self.frame_height,
-                    active_work_area(),
-                    placement=self.settings.placement,
-                )
+            area = work_area_for(snapshot.rect)
+            self._anchor_position = choose_overlay_position(
+                snapshot.rect,
+                self.frame_width,
+                self.frame_height,
+                area,
+                placement=self.settings.placement,
+            )
             if self.settings.cat_style == "alternate":
                 self._active_variant = CAT_VARIANTS[self._next_variant_index]
                 self._next_variant_index = (
