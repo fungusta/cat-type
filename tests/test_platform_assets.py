@@ -112,6 +112,27 @@ class PackagingContractTests(unittest.TestCase):
                 with self.subTest(workflow=workflow.name, module=module):
                     self.assertIn(module, source)
 
+    def test_workflows_run_packaged_update_handoff_smokes(self) -> None:
+        build = (
+            PROJECT_ROOT / ".github" / "workflows" / "build.yml"
+        ).read_text(encoding="utf-8")
+        release = (
+            PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+        ).read_text(encoding="utf-8")
+
+        for source in (build, release):
+            self.assertIn("scripts.smoke_linux_update", source)
+            self.assertIn("scripts.smoke_windows_package", source)
+        self.assertIn("smoke_windows_installer_update.ps1", release)
+
+        for relative_path in (
+            "scripts/smoke_linux_update.py",
+            "scripts/smoke_windows_package.py",
+            "scripts/smoke_windows_installer_update.ps1",
+        ):
+            with self.subTest(path=relative_path):
+                self.assertTrue((PROJECT_ROOT / relative_path).is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

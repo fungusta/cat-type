@@ -116,6 +116,18 @@ jobs:
           python -m scripts.smoke_linux_package
           "${{ matrix.executable }}"
 
+      - name: Smoke test frozen Linux update
+        if: runner.os == 'Linux'
+        run: >-
+          python -m scripts.smoke_linux_update
+          "${{ matrix.executable }}"
+
+      - name: Smoke test Windows shutdown handoff
+        if: runner.os == 'Windows'
+        run: >-
+          python -m scripts.smoke_windows_package
+          "${{ matrix.executable }}"
+
       - name: Install Inno Setup
         if: runner.os == 'Windows'
         run: choco install innosetup --no-progress --yes
@@ -126,6 +138,13 @@ jobs:
         run: |
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\CatType.iss
           Move-Item -LiteralPath "dist\Cat Type Setup.exe" -Destination "dist\Cat-Type-Windows-x64.exe"
+
+      - name: Smoke test Windows legacy installer update
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          ./scripts/smoke_windows_installer_update.ps1
+          -Installer "dist/Cat-Type-Windows-x64.exe"
 
       - name: Build macOS disk image
         if: runner.os == 'macOS'

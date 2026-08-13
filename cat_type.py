@@ -1385,6 +1385,7 @@ class CatTypeApp:
         self._update_lifecycle_lock = threading.RLock()
         self._next_update_operation_id = 0
         self._active_update_operation_id: int | None = None
+        self._pending_manual_update_check = False
 
     def _begin_update_operation(self) -> int | None:
         with self._update_lifecycle_lock:
@@ -1418,6 +1419,10 @@ class CatTypeApp:
 
         operation_id = self._begin_update_operation()
         if operation_id is None:
+            if manual:
+                with self._update_lifecycle_lock:
+                    if not self._shutting_down:
+                        self._pending_manual_update_check = True
             return
         self._set_update_status("Checking for updates…", checking=True)
 
@@ -1473,6 +1478,17 @@ class CatTypeApp:
             "update-check",
         )
 
+    def _clear_pending_manual_update_check(self) -> None:
+        with self._update_lifecycle_lock:
+            self._pending_manual_update_check = False
+
+    def _replay_pending_manual_update_check(self) -> None:
+        with self._update_lifecycle_lock:
+            if self._shutting_down or not self._pending_manual_update_check:
+                return
+            self._pending_manual_update_check = False
+        self.check_for_updates(manual=True)
+
     def _confirm_available_update(self, update: AvailableUpdate) -> bool:
         return messagebox.askyesno(
             "Cat Type update",
@@ -1521,23 +1537,29 @@ class CatTypeApp:
             return
         if event.kind == "not-due":
             self._set_update_status("Ready to check for updates.")
+            self._replay_pending_manual_update_check()
             return
         if event.kind == "unavailable":
+            self._clear_pending_manual_update_check()
             self._set_update_status(event.message)
             return
         if event.kind == "error":
             detail = event.message or "Unknown update error"
             self._set_update_status(f"Update failed: {detail}")
+            self._replay_pending_manual_update_check()
             return
         if event.kind == "cancelled":
+            self._clear_pending_manual_update_check()
             self._set_update_status("Update cancelled.")
             return
         if event.kind == "install-started":
+            self._clear_pending_manual_update_check()
             self._set_update_status(event.message)
             self.shutdown()
             return
         if event.kind != "check-result":
             return
+        self._clear_pending_manual_update_check()
         if event.update is None:
             self._set_update_status("Cat Type is up to date.")
             return
@@ -1665,6 +1687,7 @@ class CatTypeApp:
                 self._active_update_operation_id = None
                 self._update_worker_active = False
                 self._update_worker = None
+                self._pending_manual_update_check = False
         shutdown_signal = getattr(self, "_shutdown_signal", None)
         if shutdown_signal is not None:
             shutdown_signal.close()

@@ -96,6 +96,18 @@ jobs:
           python -m scripts.smoke_linux_package
           "${{ matrix.executable }}"
 
+      - name: Smoke test frozen Linux update
+        if: runner.os == 'Linux'
+        run: >-
+          python -m scripts.smoke_linux_update
+          "${{ matrix.executable }}"
+
+      - name: Smoke test Windows shutdown handoff
+        if: runner.os == 'Windows'
+        run: >-
+          python -m scripts.smoke_windows_package
+          "${{ matrix.executable }}"
+
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}

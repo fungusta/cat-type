@@ -91,7 +91,7 @@ if ! mv -T -n -- "$staged" "$current"; then
     exit 1
 fi
 if path_exists "$staged" || ! path_exists "$current"; then
-    "$backup" </dev/null >/dev/null 2>&1 &
+    restore_old
     exit 1
 fi
 

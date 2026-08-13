@@ -245,6 +245,28 @@ class UpdateControllerTests(unittest.TestCase):
         target()
         self.assertEqual(service.check_calls, [("linux", "x86_64")])
 
+    def test_manual_check_racing_fresh_startup_check_is_replayed(self) -> None:
+        service = FakeService()
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=service,
+            state=FakeState(due=False),
+            runner=runner,
+        )
+
+        app.check_for_updates(manual=False)
+        app.check_for_updates(manual=True)
+        automatic_target, _name = runner.jobs.pop()
+        automatic_target()
+        app._drain_update_events()
+
+        self.assertEqual(len(runner.jobs), 1)
+        manual_target, _name = runner.jobs.pop()
+        manual_target()
+        app._drain_update_events()
+        self.assertEqual(service.check_calls, [("linux", "x86_64")])
+        self.assertEqual(app._update_status, "Cat Type is up to date.")
+
     def test_worker_results_change_settings_only_when_tk_drains_events(self) -> None:
         settings = Mock()
         settings.window.winfo_exists.return_value = True

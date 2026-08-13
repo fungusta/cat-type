@@ -183,6 +183,15 @@ class LinuxHelperContractTests(unittest.TestCase):
             LINUX_HELPER_SOURCE.index('rm -f -- "$backup"'),
         )
 
+    def test_post_move_invariant_failure_restores_canonical_old_path(self) -> None:
+        branch = LINUX_HELPER_SOURCE.split(
+            'if path_exists "$staged" || ! path_exists "$current"; then',
+            1,
+        )[1].split("fi", 1)[0]
+
+        self.assertIn("restore_old", branch)
+        self.assertNotIn('"$backup" </dev/null', branch)
+
     def test_start_rejects_staging_file_without_executable_bits(self) -> None:
         popen = Mock()
         self.staged.chmod(0o600)
