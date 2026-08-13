@@ -44,6 +44,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
@@ -139,12 +141,34 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" packaging\CatType.iss
           Move-Item -LiteralPath "dist\Cat Type Setup.exe" -Destination "dist\Cat-Type-Windows-x64.exe"
 
+      - name: Build isolated Windows installer smoke fixture
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $legacyRoot = Join-Path $env:RUNNER_TEMP "cat-type-v1.0.5"
+          git worktree add --detach $legacyRoot b0ce667
+          Push-Location $legacyRoot
+          try {
+            python -m PyInstaller --noconfirm --clean CatType.spec
+          }
+          finally {
+            Pop-Location
+          }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DMyAppId={{15AA574B-A234-42C7-8328-607B2D83000F}" `
+            "/DMyOutputBaseFilename=Cat Type Smoke Setup" `
+            "/DMyUninstallable=no" `
+            "/DSmokeTest=1" `
+            packaging\CatType.iss
+
       - name: Smoke test Windows legacy installer update
         if: runner.os == 'Windows'
         shell: pwsh
         run: >-
           ./scripts/smoke_windows_installer_update.ps1
-          -Installer "dist/Cat-Type-Windows-x64.exe"
+          -Installer "dist/Cat Type Smoke Setup.exe"
+          -LegacyExecutable
+          "${{ runner.temp }}/cat-type-v1.0.5/dist/Cat Type.exe"
 
       - name: Build macOS disk image
         if: runner.os == 'macOS'

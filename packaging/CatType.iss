@@ -2,9 +2,18 @@
 #define MyAppVersion "1.0.5"
 #define MyAppPublisher "fungusta"
 #define MyAppExeName "Cat Type.exe"
+#ifndef MyAppId
+  #define MyAppId "{{B5744A59-8267-45DE-A419-5FF56D9BB86C}"
+#endif
+#ifndef MyOutputBaseFilename
+  #define MyOutputBaseFilename "Cat Type Setup"
+#endif
+#ifndef MyUninstallable
+  #define MyUninstallable "yes"
+#endif
 
 [Setup]
-AppId={{B5744A59-8267-45DE-A419-5FF56D9BB86C}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
@@ -13,7 +22,7 @@ DefaultGroupName=Cat Type
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=..\dist
-OutputBaseFilename=Cat Type Setup
+OutputBaseFilename={#MyOutputBaseFilename}
 SetupIconFile=..\assets\cat-type.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
@@ -23,6 +32,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=force
 RestartApplications=no
+Uninstallable={#MyUninstallable}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -35,11 +45,15 @@ Name: "launchstartup"; Description: "Start Cat Type when I sign in to Windows"; 
 Source: "..\dist\Cat Type.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
+#ifndef SmokeTest
 Name: "{autoprograms}\Cat Type"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\Cat Type"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+#endif
 
 [Registry]
+#ifndef SmokeTest
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Cat Type"; ValueData: """{app}\{#MyAppExeName}"""; Tasks: launchstartup; Flags: uninsdeletevalue
+#endif
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch Cat Type"; Flags: nowait postinstall skipifsilent

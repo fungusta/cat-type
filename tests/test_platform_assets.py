@@ -124,6 +124,11 @@ class PackagingContractTests(unittest.TestCase):
             self.assertIn("scripts.smoke_linux_update", source)
             self.assertIn("scripts.smoke_windows_package", source)
         self.assertIn("smoke_windows_installer_update.ps1", release)
+        self.assertIn("git worktree add --detach", release)
+        self.assertIn("b0ce667", release)
+        self.assertIn("MyAppId", release)
+        self.assertIn("MyUninstallable=no", release)
+        self.assertIn("SmokeTest=1", release)
 
         for relative_path in (
             "scripts/smoke_linux_update.py",

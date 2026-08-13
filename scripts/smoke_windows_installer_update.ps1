@@ -1,16 +1,20 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Installer
+    [string]$Installer,
+    [Parameter(Mandatory = $true)]
+    [string]$LegacyExecutable
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
+$legacyExecutablePath = (Resolve-Path -LiteralPath $LegacyExecutable).Path
 $runnerRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { $env:TEMP }
 $testRoot = Join-Path $runnerRoot ("cat-type-installer-update-" + [guid]::NewGuid())
 $target = Join-Path $testRoot "Legacy Cat Type"
 $installedExe = Join-Path $target "Cat Type.exe"
+$installerLog = Join-Path $testRoot "installer.log"
 New-Item -ItemType Directory -Path $target | Out-Null
 
 $nativeSource = @'
@@ -42,6 +46,10 @@ function Stop-TestProcesses {
     Get-TestProcesses | ForEach-Object {
         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
     }
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (@(Get-TestProcesses).Count -and [DateTime]::UtcNow -lt $deadline) {
+        Start-Sleep -Milliseconds 100
+    }
 }
 
 function Wait-ForShutdownEvent([int]$Seconds) {
@@ -61,22 +69,23 @@ function Wait-ForShutdownEvent([int]$Seconds) {
 }
 
 try {
-    $legacySource = @'
-using System;
-using System.Threading;
-public static class Program {
-    [STAThread]
-    public static void Main() { Thread.Sleep(Timeout.Infinite); }
-}
-'@
-    Add-Type `
-        -TypeDefinition $legacySource `
-        -OutputAssembly $installedExe `
-        -OutputType WindowsApplication
+    Copy-Item -LiteralPath $legacyExecutablePath -Destination $installedExe
     $legacy = Start-Process -FilePath $installedExe -PassThru
-    Start-Sleep -Milliseconds 500
-    if ($legacy.HasExited) {
-        throw "Synthetic legacy Cat Type exited before installer handoff."
+    $legacyDeadline = [DateTime]::UtcNow.AddSeconds(30)
+    while (@(Get-TestProcesses).Count -lt 2 -and [DateTime]::UtcNow -lt $legacyDeadline) {
+        Start-Sleep -Milliseconds 100
+    }
+    $legacyProcesses = @(Get-TestProcesses)
+    if ($legacyProcesses.Count -lt 2) {
+        throw "Pinned legacy PyInstaller fixture did not start both processes."
+    }
+    $legacyProcessIds = @($legacyProcesses | ForEach-Object { $_.ProcessId })
+    Start-Sleep -Seconds 5
+    $stableLegacyProcesses = @(Get-CimInstance Win32_Process | Where-Object {
+        $legacyProcessIds -contains $_.ProcessId
+    })
+    if ($stableLegacyProcesses.Count -ne $legacyProcessIds.Count) {
+        throw "Pinned legacy PyInstaller processes did not remain alive."
     }
 
     $arguments = @(
@@ -87,6 +96,9 @@ public static class Program {
         "/NORESTART",
         "/CURRENTUSER",
         "/AUTOUPDATE=1",
+        "/NOICONS",
+        "/TASKS=",
+        ('/LOG="' + $installerLog + '"'),
         ('/DIR="' + $target + '"')
     )
     $install = Start-Process `
@@ -97,9 +109,11 @@ public static class Program {
     if ($install.ExitCode -ne 0) {
         throw "Auto-update installer exited with status $($install.ExitCode)."
     }
-    $legacy.Refresh()
-    if (-not $legacy.HasExited) {
-        throw "Auto-update installer did not close the legacy process."
+    $remainingLegacy = @(Get-CimInstance Win32_Process | Where-Object {
+        $legacyProcessIds -contains $_.ProcessId
+    })
+    if ($remainingLegacy.Count) {
+        throw "Auto-update installer did not close every legacy PyInstaller process."
     }
     if (-not (Test-Path -LiteralPath $installedExe)) {
         throw "Auto-update installer did not place Cat Type.exe."
@@ -127,26 +141,24 @@ public static class Program {
         [CatTypeUpdateNative]::CloseHandle($handle) | Out-Null
     }
     $deadline = [DateTime]::UtcNow.AddSeconds(20)
-    while ((Get-TestProcesses).Count -and [DateTime]::UtcNow -lt $deadline) {
+    while (@(Get-TestProcesses).Count -and [DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 100
     }
-    if ((Get-TestProcesses).Count) {
+    if (@(Get-TestProcesses).Count) {
         throw "Relaunched Cat Type processes did not exit after shutdown signal."
     }
     Write-Output "Windows legacy installer update smoke passed."
 }
+catch {
+    if (Test-Path -LiteralPath $installerLog) {
+        Write-Output "--- isolated installer log ---"
+        Get-Content -LiteralPath $installerLog
+        Write-Output "--- end isolated installer log ---"
+    }
+    throw
+}
 finally {
     Stop-TestProcesses
-    $uninstaller = Get-ChildItem `
-        -LiteralPath $target `
-        -Filter "unins*.exe" `
-        -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($uninstaller) {
-        Start-Process `
-            -FilePath $uninstaller.FullName `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
-            -Wait
-    }
     if (Test-Path -LiteralPath $testRoot) {
         Remove-Item -LiteralPath $testRoot -Recurse -Force
     }
