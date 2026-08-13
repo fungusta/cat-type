@@ -711,8 +711,15 @@ class PortableWorkAreaTests(unittest.TestCase):
         root = connection.screen.return_value.root
         request = root.xrandr_get_monitors.return_value
         request.monitors = monitors
+        display_module = SimpleNamespace(
+            Display=Mock(return_value=connection)
+        )
+        xlib_module = SimpleNamespace(display=display_module)
 
-        with patch("Xlib.display.Display", return_value=connection):
+        with patch.dict(
+            sys.modules,
+            {"Xlib": xlib_module, "Xlib.display": display_module},
+        ):
             areas = cat_type._linux_monitor_areas()
 
         self.assertEqual(
