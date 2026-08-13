@@ -2,6 +2,18 @@ import importlib
 import importlib.util
 import sys
 import unittest
+from pathlib import Path
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+UPDATE_TEST_MODULES = (
+    "tests.test_release_version_check",
+    "tests.test_auto_update",
+    "tests.test_update_controller",
+    "tests.test_platform_updater",
+    "tests.test_windows_installer_contract",
+    "tests.test_linux_update_integration",
+)
 
 
 class PlatformIconTests(unittest.TestCase):
@@ -78,6 +90,27 @@ class PlatformBackendTests(unittest.TestCase):
             platform_assets.runtime_modules("win32"),
             ("PIL._tkinter_finder",),
         )
+
+
+class PackagingContractTests(unittest.TestCase):
+    def test_pyinstaller_explicitly_bundles_update_runtime_modules(self) -> None:
+        spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
+
+        for module in ("app_version", "auto_update", "platform_updater"):
+            with self.subTest(module=module):
+                self.assertIn(f'"{module}"', spec_source)
+
+    def test_build_and_release_workflows_run_update_regressions(self) -> None:
+        workflows = (
+            PROJECT_ROOT / ".github" / "workflows" / "build.yml",
+            PROJECT_ROOT / ".github" / "workflows" / "release.yml",
+        )
+
+        for workflow in workflows:
+            source = workflow.read_text(encoding="utf-8")
+            for module in UPDATE_TEST_MODULES:
+                with self.subTest(workflow=workflow.name, module=module):
+                    self.assertIn(module, source)
 
 
 if __name__ == "__main__":

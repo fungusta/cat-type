@@ -75,6 +75,10 @@ jobs:
           tests.test_platform_assets
           tests.test_bundled_icon_check
           tests.test_package_smoke
+          tests.test_release_version_check
+          tests.test_auto_update
+          tests.test_update_controller
+          tests.test_windows_installer_contract
           -v
 
       - name: Run automated tests with a virtual display
@@ -88,6 +92,12 @@ jobs:
           tests.test_platform_assets
           tests.test_bundled_icon_check
           tests.test_package_smoke
+          tests.test_release_version_check
+          tests.test_auto_update
+          tests.test_update_controller
+          tests.test_platform_updater
+          tests.test_windows_installer_contract
+          tests.test_linux_update_integration
           -v
 
       - name: Build application

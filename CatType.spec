@@ -12,7 +12,12 @@ icon_path = project_root / "assets" / icon_filename(sys.platform)
 version_path = project_root / "packaging" / "version_info.txt"
 # Do not discover these by importing pynput/pystray: their native backends
 # require an active display and disappear from headless CI builds otherwise.
-hidden_imports = list(runtime_modules(sys.platform))
+hidden_imports = [
+    "app_version",
+    "auto_update",
+    "platform_updater",
+    *runtime_modules(sys.platform),
+]
 if is_windows:
     hidden_imports += collect_submodules("comtypes.gen")
 

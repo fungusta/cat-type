@@ -32,6 +32,8 @@ class PackageSmokeTests(unittest.TestCase):
             "Could not install the keyboard activity listener",
             "Keyboard listener unavailable:",
             "ModuleNotFoundError:",
+            "ImportError:",
+            "Update startup failed:",
             "Exception in Tkinter callback",
         ):
             with self.subTest(diagnostic=diagnostic):

@@ -13,6 +13,8 @@ FAILURE_DIAGNOSTICS = (
     "Could not install the keyboard activity listener",
     "Keyboard listener unavailable:",
     "ModuleNotFoundError:",
+    "ImportError:",
+    "Update startup failed:",
     "Exception in Tkinter callback",
 )
 

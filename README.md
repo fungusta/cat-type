@@ -59,6 +59,40 @@ Settings are saved for the current user and take effect immediately:
 
 Press **Ctrl+Alt+Q** at any time to quit.
 
+## Automatic updates
+
+Packaged Windows and Linux builds check GitHub for a newer stable release at
+startup. After a successful check, Cat Type waits at least 24 hours before
+checking automatically again. You can check at any time with **Check for
+updates** in Settings. Cat Type always asks for confirmation before it
+downloads or installs an available update; declining leaves the running copy
+unchanged.
+
+Downloads come from the public Cat Type GitHub release and are accepted only
+when their SHA-256 digest matches the exact asset entry in the release's
+`SHA256SUMS.txt`. This detects corruption and asset mix-ups, but the checksum
+and download have the same GitHub release as their trust source. Current
+releases are not code-signed, and macOS builds are not notarized, so checksum
+verification is not a substitute for platform signing.
+
+On Windows, a confirmed update starts the verified installer silently, shuts
+down Cat Type through its normal cleanup path, and relaunches the new version.
+When updating an older version that does not support graceful shutdown, the
+installer may force-close it; the in-app confirmation is the user's consent
+for that fallback.
+
+On Linux, self-installation is limited to the frozen portable executable from
+the published tarball when its containing folder is writable. Cat Type stages
+the replacement beside the current executable, atomically keeps the old copy
+as a `.previous` backup, and rolls back and relaunches that backup if the new
+copy fails its startup health check. Installations in protected locations are
+left unchanged and show instructions to update manually.
+
+macOS updates remain manual, and apps run from source never self-install.
+Checking or downloading contacts GitHub's API and release download hosts; Cat
+Type does not include keyboard input or the session keystroke count in those
+requests.
+
 ## Run from source
 
 On Windows, from PowerShell:
