@@ -6,6 +6,7 @@ import inspect
 import os
 import queue
 import stat
+import sys
 import tarfile
 import tempfile
 import threading
@@ -271,6 +272,10 @@ def _regular_member(
     return member, body
 
 
+@unittest.skipUnless(
+    sys.platform.startswith("linux"),
+    "Linux portable staging requires Linux filesystem semantics",
+)
 class LinuxPortableStagingTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()

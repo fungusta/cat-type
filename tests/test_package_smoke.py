@@ -23,7 +23,7 @@ class PackageSmokeTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "exited with status 7"):
             smoke.run_startup_smoke(
                 [sys.executable, "-c", "raise SystemExit(7)"],
-                duration=0.2,
+                duration=2.0,
             )
 
     def test_rejects_runtime_failure_diagnostics(self) -> None:

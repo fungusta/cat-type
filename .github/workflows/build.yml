@@ -58,6 +58,7 @@ jobs:
           tests.test_release_version_check
           tests.test_auto_update
           tests.test_update_controller
+          tests.test_platform_updater
           tests.test_windows_installer_contract
           -v
 
