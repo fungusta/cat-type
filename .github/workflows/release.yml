@@ -172,16 +172,29 @@ jobs:
           -LegacyExecutable
           "${{ runner.temp }}/cat-type-v1.0.5/dist/Cat Type.exe"
 
+      - name: Install macOS disk image tooling
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
+
       - name: Build macOS disk image
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          hdiutil create \
-            -volname "Cat Type" \
-            -srcfolder "dist/Cat Type.app" \
-            -ov \
-            -format UDZO \
-            "dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg"
+          dmg_source="${RUNNER_TEMP}/cat-type-dmg-${{ matrix.package_arch }}"
+          mkdir -p "$dmg_source"
+          cp -R "dist/Cat Type.app" "$dmg_source/"
+          create-dmg \
+            --volname "Cat Type" \
+            --window-pos 200 120 \
+            --window-size 600 360 \
+            --icon-size 120 \
+            --icon "Cat Type.app" 150 180 \
+            --hide-extension "Cat Type.app" \
+            --app-drop-link 450 180 \
+            --no-internet-enable \
+            --overwrite \
+            "dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg" \
+            "$dmg_source"
 
       - name: Build Linux archive
         if: runner.os == 'Linux'

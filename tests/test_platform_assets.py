@@ -142,6 +142,22 @@ class PackagingContractTests(unittest.TestCase):
             with self.subTest(path=relative_path):
                 self.assertTrue((PROJECT_ROOT / relative_path).is_file())
 
+    def test_release_builds_drag_to_applications_macos_disk_image(self) -> None:
+        release = (
+            PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+        ).read_text(encoding="utf-8")
+
+        for expected in (
+            "brew install create-dmg",
+            'cp -R "dist/Cat Type.app" "$dmg_source/"',
+            "--window-size 600 360",
+            '--icon "Cat Type.app" 150 180',
+            '--hide-extension "Cat Type.app"',
+            "--app-drop-link 450 180",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, release)
+
 
 if __name__ == "__main__":
     unittest.main()
