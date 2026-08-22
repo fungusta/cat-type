@@ -4,6 +4,8 @@ import sys
 import unittest
 from pathlib import Path
 
+from PIL import Image
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UPDATE_TEST_MODULES = (
@@ -151,12 +153,22 @@ class PackagingContractTests(unittest.TestCase):
             "brew install create-dmg",
             'cp -R "dist/Cat Type.app" "$dmg_source/"',
             "--window-size 600 360",
-            '--icon "Cat Type.app" 150 180',
+            '--background "packaging/dmg-background.png"',
+            '--volicon "assets/cat-type.icns"',
+            '--icon "Cat Type.app" 132 182',
             '--hide-extension "Cat Type.app"',
-            "--app-drop-link 450 180",
+            "--app-drop-link 468 182",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, release)
+
+    def test_macos_disk_image_background_matches_finder_window(self) -> None:
+        background = PROJECT_ROOT / "packaging" / "dmg-background.png"
+
+        self.assertTrue(background.is_file())
+        with Image.open(background) as image:
+            self.assertEqual(image.size, (600, 360))
+            self.assertEqual(image.mode, "RGB")
 
 
 if __name__ == "__main__":

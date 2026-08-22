@@ -187,10 +187,12 @@ jobs:
             --volname "Cat Type" \
             --window-pos 200 120 \
             --window-size 600 360 \
+            --background "packaging/dmg-background.png" \
+            --volicon "assets/cat-type.icns" \
             --icon-size 120 \
-            --icon "Cat Type.app" 150 180 \
+            --icon "Cat Type.app" 132 182 \
             --hide-extension "Cat Type.app" \
-            --app-drop-link 450 180 \
+            --app-drop-link 468 182 \
             --no-internet-enable \
             --overwrite \
             "dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg" \
