@@ -156,10 +156,12 @@ class SettingsWindow:
         on_check_for_updates: Callable[[], None] | None = None,
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
+        on_close: Callable[[], None] | None = None,
     ) -> None:
         self._on_save = on_save
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
+        self._on_close = on_close
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -1008,3 +1010,8 @@ class SettingsWindow:
             self.window.destroy()
         except tk.TclError:
             pass
+        finally:
+            on_close = self._on_close
+            self._on_close = None
+            if on_close is not None:
+                on_close()

@@ -176,12 +176,21 @@ SWP_NOSIZE = 0x0001
 SWP_NOMOVE = 0x0002
 SWP_NOACTIVATE = 0x0010
 MONITOR_DEFAULTTONEAREST = 0x00000002
+_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY = 1
+_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED = 2
 TEXT_PATTERN_RANGE_ENDPOINT_START = 0
 TEXT_PATTERN_RANGE_ENDPOINT_END = 1
 TEXT_UNIT_CHARACTER = 0
 
 LRESULT = ctypes.c_ssize_t
 ULONG_PTR = wintypes.WPARAM
+
+_macos_activation_policy_accessors: tuple[
+    Callable[[], int],
+    Callable[[int], bool],
+    Callable[[], bool],
+] | None = None
+
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = [
@@ -560,6 +569,167 @@ def make_window_non_interactive(hwnd: int) -> None:
         0,
         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
     )
+
+
+def _macos_activation_policy_accessors_for_app() -> tuple[
+    Callable[[], int],
+    Callable[[int], bool],
+    Callable[[], bool],
+] | None:
+    """Return accessors for the current Aqua application's activation policy."""
+    global _macos_activation_policy_accessors
+    if not IS_MACOS:
+        return None
+    if _macos_activation_policy_accessors is not None:
+        return _macos_activation_policy_accessors
+
+    objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+    objc.objc_getClass.restype = ctypes.c_void_p
+    objc.objc_getClass.argtypes = [ctypes.c_char_p]
+    objc.sel_registerName.restype = ctypes.c_void_p
+    objc.sel_registerName.argtypes = [ctypes.c_char_p]
+    send_id = ctypes.CFUNCTYPE(
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    )(("objc_msgSend", objc))
+    send_integer = ctypes.CFUNCTYPE(
+        ctypes.c_long,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    )(("objc_msgSend", objc))
+    send_policy = ctypes.CFUNCTYPE(
+        ctypes.c_bool,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_long,
+    )(("objc_msgSend", objc))
+    send_boolean = ctypes.CFUNCTYPE(
+        ctypes.c_bool,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    )(("objc_msgSend", objc))
+    application = send_id(
+        objc.objc_getClass(b"NSApplication"),
+        objc.sel_registerName(b"sharedApplication"),
+    )
+    get_selector = objc.sel_registerName(b"activationPolicy")
+    set_selector = objc.sel_registerName(b"setActivationPolicy:")
+    is_active_selector = objc.sel_registerName(b"isActive")
+
+    def get_policy() -> int:
+        return int(send_integer(application, get_selector))
+
+    def set_policy(policy: int) -> bool:
+        return bool(send_policy(application, set_selector, policy))
+
+    def is_active() -> bool:
+        return bool(send_boolean(application, is_active_selector))
+
+    _macos_activation_policy_accessors = get_policy, set_policy, is_active
+    return _macos_activation_policy_accessors
+
+
+def _raise_macos_window_without_activation(title: str) -> bool:
+    """Order one visible Aqua window above other apps without activating it."""
+    if not IS_MACOS:
+        return False
+    from AppKit import NSApplication
+
+    for window in NSApplication.sharedApplication().windows():
+        if window.isVisible() and str(window.title()) == title:
+            window.orderFrontRegardless()
+            return True
+    return False
+
+
+class _MacOSNativeOverlaySurface:
+    """Temporarily replace Tk's opaque overlay view with a native image view."""
+
+    def __init__(self, window_title: str) -> None:
+        self._window_title = window_title
+        self._window: object | None = None
+        self._tk_content_view: object | None = None
+        self._image_view: object | None = None
+        self._images: dict[tuple[str, str], object] = {}
+
+    @property
+    def installed(self) -> bool:
+        return self._window is not None and self._tk_content_view is not None
+
+    def install(self, variant: str, frame_name: str) -> None:
+        if not IS_MACOS:
+            return
+        from AppKit import (
+            NSApplication,
+            NSColor,
+            NSImageFrameNone,
+            NSImageScaleAxesIndependently,
+            NSImageView,
+        )
+
+        window = next(
+            (
+                candidate
+                for candidate in NSApplication.sharedApplication().windows()
+                if candidate.isVisible()
+                and str(candidate.title()) == self._window_title
+            ),
+            None,
+        )
+        if window is None:
+            raise RuntimeError("could not find the mapped Cat Type overlay")
+
+        if not self.installed:
+            tk_content_view = window.contentView()
+            if self._image_view is None:
+                self._image_view = NSImageView.alloc().initWithFrame_(
+                    tk_content_view.bounds()
+                )
+                self._image_view.setImageFrameStyle_(NSImageFrameNone)
+                self._image_view.setImageScaling_(
+                    NSImageScaleAxesIndependently
+                )
+                self._image_view.setWantsLayer_(True)
+                self._image_view.layer().setOpaque_(False)
+            else:
+                self._image_view.setFrame_(tk_content_view.bounds())
+            self._window = window
+            self._tk_content_view = tk_content_view
+            window.setContentView_(self._image_view)
+            window.setOpaque_(False)
+            window.setBackgroundColor_(NSColor.clearColor())
+
+        self.set_frame(variant, frame_name)
+
+    def set_frame(self, variant: str, frame_name: str) -> None:
+        if not self.installed or self._image_view is None:
+            return
+        from AppKit import NSImage
+
+        key = (variant, frame_name)
+        image = self._images.get(key)
+        if image is None:
+            image = NSImage.alloc().initWithContentsOfFile_(
+                str(FRAME_ROOT / variant / f"{frame_name}.png")
+            )
+            if image is None:
+                raise RuntimeError(
+                    f"could not load native overlay frame {variant}/{frame_name}"
+                )
+            self._images[key] = image
+        self._image_view.setImage_(image)
+
+    def set_alpha(self, alpha: float) -> None:
+        if self._window is not None:
+            self._window.setAlphaValue_(alpha)
+
+    def restore(self) -> None:
+        if self._window is None or self._tk_content_view is None:
+            return
+        self._window.setContentView_(self._tk_content_view)
+        self._window = None
+        self._tk_content_view = None
 
 
 @dataclass(frozen=True)
@@ -1352,6 +1522,8 @@ class CatTypeApp:
         self._active_variant = CAT_VARIANTS[0]
         self._next_variant_index = 0
         self._settings_window: SettingsWindow | None = None
+        self._macos_previous_activation_policy: int | None = None
+        self._macos_overlay_surface: _MacOSNativeOverlaySurface | None = None
         self._tray_icon: pystray.Icon | None = None
         self._tray_thread: threading.Thread | None = None
         self._x_display = None
@@ -1396,6 +1568,9 @@ class CatTypeApp:
         )
 
         self.root = tk.Tk()
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
         self.root.title("Cat Type")
         if APP_ICON.exists():
             try:
@@ -1434,6 +1609,12 @@ class CatTypeApp:
         self._make_overlay_non_interactive()
         self.root.withdraw()
         self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
+        if IS_MACOS:
+            self._macos_overlay_surface = _MacOSNativeOverlaySurface(
+                self.root.title()
+            )
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
 
     def _initialize_update_controller(
         self,
@@ -1874,7 +2055,16 @@ class CatTypeApp:
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
         assert snapshot.rect is not None
-        self.root.wm_attributes("-alpha", self.animation.opacity(now))
+        opacity = self.animation.opacity(now)
+        native_surface = self._macos_overlay_surface
+        if native_surface is not None and native_surface.installed:
+            native_surface.set_alpha(opacity)
+        elif native_surface is not None:
+            # Never expose Tk's opaque black backing while the native
+            # transparent surface is being installed.
+            self.root.wm_attributes("-alpha", 0.0)
+        else:
+            self.root.wm_attributes("-alpha", opacity)
         frame_name = self.animation.frame_name(now)
 
         if self._anchor_position is None:
@@ -1896,19 +2086,59 @@ class CatTypeApp:
 
         rendered_frame = (self._active_variant, frame_name)
         if rendered_frame != self._last_rendered_frame:
-            self.label.configure(
-                image=self.frames[self._active_variant][frame_name]
-            )
+            if native_surface is not None and native_surface.installed:
+                native_surface.set_frame(self._active_variant, frame_name)
+            else:
+                self.label.configure(
+                    image=self.frames[self._active_variant][frame_name]
+                )
             self._shape_linux_overlay(self._active_variant, frame_name)
             self._last_rendered_frame = rendered_frame
 
         x, y = self._anchor_position
-        self.root.geometry(f"{self.frame_width}x{self.frame_height}+{x}+{y}")
         if not self._overlay_visible:
-            self.root.deiconify()
-            self.root.lift()
-            self._make_overlay_non_interactive()
-            self.root.update_idletasks()
+            self.label.configure(
+                image=self.frames[self._active_variant][frame_name]
+            )
+            self.root.geometry(
+                f"{self.frame_width}x{self.frame_height}+{x}+{y}"
+            )
+            activation_policy = _macos_activation_policy_accessors_for_app()
+            if activation_policy is not None and not activation_policy[2]():
+                previous_policy = activation_policy[0]()
+                if (
+                    previous_policy
+                    != _NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED
+                    and activation_policy[1](
+                        _NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED
+                    )
+                ):
+                    self._macos_previous_activation_policy = previous_policy
+            try:
+                self.root.deiconify()
+                self.root.lift()
+                self._make_overlay_non_interactive()
+                self.root.update_idletasks()
+                if native_surface is not None:
+                    native_surface.install(self._active_variant, frame_name)
+                    native_surface.set_alpha(opacity)
+                _raise_macos_window_without_activation(self.root.title())
+                if IS_MACOS:
+                    self.root.after_idle(
+                        _raise_macos_window_without_activation,
+                        self.root.title(),
+                    )
+                    for delay_ms in (25, 75, 175):
+                        self.root.after(
+                            delay_ms,
+                            _raise_macos_window_without_activation,
+                            self.root.title(),
+                        )
+            except BaseException:
+                if native_surface is not None:
+                    native_surface.restore()
+                self._restore_macos_activation_policy()
+                raise
             self._overlay_visible = True
 
         if self.debug and (
@@ -1926,8 +2156,13 @@ class CatTypeApp:
 
     def _hide(self, reset_anchor: bool = True) -> None:
         if self._overlay_visible:
+            native_surface = self._macos_overlay_surface
+            if native_surface is not None and native_surface.installed:
+                native_surface.set_alpha(0.0)
+                native_surface.restore()
             self.root.withdraw()
             self._overlay_visible = False
+            self._restore_macos_activation_policy()
         if reset_anchor:
             self._anchor_position = None
         self.root.wm_attributes("-alpha", 1.0)
@@ -1936,6 +2171,19 @@ class CatTypeApp:
         make_window_non_interactive(self.root.winfo_id())
         if IS_LINUX:
             self._shape_linux_overlay(self._active_variant, "idle")
+
+    def _restore_macos_activation_policy(self) -> None:
+        previous_policy = getattr(
+            self,
+            "_macos_previous_activation_policy",
+            None,
+        )
+        if previous_policy is None:
+            return
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](previous_policy)
+        self._macos_previous_activation_policy = None
 
     def _shape_linux_overlay(self, variant: str, frame_name: str) -> None:
         """Use X Shape for a transparent, click-through overlay on X11."""
@@ -2070,6 +2318,12 @@ class CatTypeApp:
         self._tray_thread.start()
 
     def open_settings(self) -> None:
+        if getattr(self, "_overlay_visible", False):
+            self._hide(reset_anchor=False)
+        self._restore_macos_activation_policy()
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
         if (
             self._settings_window is not None
             and self._settings_window.window.winfo_exists()
@@ -2091,12 +2345,18 @@ class CatTypeApp:
                 "_update_status",
                 "Ready to check for updates.",
             ),
+            on_close=self._return_to_macos_background_policy,
         )
         if getattr(self, "_update_worker_active", False):
             self._settings_window.set_update_status(
                 self._update_status,
                 checking=True,
             )
+
+    def _return_to_macos_background_policy(self) -> None:
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent
@@ -2108,6 +2368,8 @@ class CatTypeApp:
             self.settings.hold_seconds,
         )
         if self.settings.size_percent != previous_size:
+            if self._overlay_visible:
+                self._hide()
             self.frames = self._load_frames(self.settings.size_percent)
             self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
             self.frame_height = self.frames[CAT_VARIANTS[0]]["idle"].height()
