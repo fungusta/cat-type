@@ -187,7 +187,7 @@ jobs:
             --volname "Cat Type" \
             --window-pos 200 120 \
             --window-size 600 360 \
-            --background "packaging/dmg-background.png" \
+            --background "packaging/dmg-background-v3.png" \
             --volicon "assets/cat-type.icns" \
             --icon-size 120 \
             --icon "Cat Type.app" 132 182 \
