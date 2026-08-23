@@ -145,7 +145,7 @@ python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
 The macOS output is `dist/Cat Type.app`; the Linux output is
-`dist/Cat Type`. Push a tag such as `v1.0.13` to build every supported
+`dist/Cat Type`. Push a tag such as `v1.0.14` to build every supported
 architecture and publish the assets together on a GitHub Release.
 
 ## Privacy behavior

@@ -353,6 +353,14 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     self.settings_window.window.winfo_rootx()
                     + self.settings_window.window.winfo_width(),
                 )
+
+        required_width = (
+            self.settings_window.footer_message.winfo_reqwidth()
+            + self.settings_window.footer_buttons.winfo_reqwidth()
+        )
+        self.settings_window._on_footer_configure(
+            SimpleNamespace(width=required_width - 1)
+        )
         self.assertFalse(self.settings_window.footer_message.winfo_ismapped())
 
     def test_narrow_layout_stacks_cards_without_clipping_the_header(self) -> None:
