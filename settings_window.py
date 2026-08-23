@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 from pathlib import Path
 from tkinter import font as tkfont
@@ -42,7 +43,15 @@ class Toggle(tk.Frame):
         title_font: tkfont.Font,
         description_font: tkfont.Font,
     ) -> None:
-        super().__init__(parent, background=background, cursor="hand2")
+        super().__init__(
+            parent,
+            background=background,
+            cursor="hand2",
+            takefocus=True,
+            highlightthickness=1,
+            highlightbackground=background,
+            highlightcolor=accent,
+        )
         self.variable = variable
         self.accent = accent
 
@@ -77,6 +86,8 @@ class Toggle(tk.Frame):
 
         for widget in (self, copy, *copy.winfo_children(), self.switch):
             widget.bind("<Button-1>", self._toggle)
+        for sequence in ("<space>", "<Return>", "<KP_Enter>"):
+            self.bind(sequence, self._toggle)
         self.variable.trace_add("write", lambda *_args: self._draw())
         self._draw()
 
@@ -129,6 +140,131 @@ class Toggle(tk.Frame):
         self.switch.create_image(0, 0, anchor="nw", image=self._switch_image)
 
 
+class CatScale(tk.Canvas):
+    """A theme-stable slider with mouse and keyboard controls."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        variable: tk.Variable,
+        minimum: float,
+        maximum: float,
+        command: Callable[[str], None],
+        background: str,
+        trough: str,
+        accent: str,
+        accent_dark: str,
+    ) -> None:
+        super().__init__(
+            parent,
+            height=24,
+            background=background,
+            highlightthickness=0,
+            cursor="hand2",
+            takefocus=True,
+        )
+        self.variable = variable
+        self.minimum = float(minimum)
+        self.maximum = float(maximum)
+        self.command = command
+        self.trough = trough
+        self.accent = accent
+        self.accent_dark = accent_dark
+        self._integer_value = isinstance(variable, tk.IntVar)
+        self._step = 1.0 if self._integer_value else 0.1
+
+        self.bind("<Configure>", lambda _event: self._draw())
+        self.bind("<Button-1>", self._set_from_pointer)
+        self.bind("<B1-Motion>", self._set_from_pointer)
+        self.bind("<FocusIn>", lambda _event: self._draw())
+        self.bind("<FocusOut>", lambda _event: self._draw())
+        self.bind("<Left>", lambda event: self._nudge(event, -self._step))
+        self.bind("<Down>", lambda event: self._nudge(event, -self._step))
+        self.bind("<Right>", lambda event: self._nudge(event, self._step))
+        self.bind("<Up>", lambda event: self._nudge(event, self._step))
+        self.bind("<Home>", lambda event: self._set_from_key(event, self.minimum))
+        self.bind("<End>", lambda event: self._set_from_key(event, self.maximum))
+        self.variable.trace_add("write", self._on_variable_changed)
+        self.after_idle(self._draw)
+
+    def _fraction(self) -> float:
+        span = self.maximum - self.minimum
+        if span <= 0:
+            return 0.0
+        value = min(self.maximum, max(self.minimum, float(self.variable.get())))
+        return (value - self.minimum) / span
+
+    def _draw(self) -> None:
+        if not self.winfo_exists():
+            return
+        self.delete("all")
+        left = 10
+        right = max(left, self.winfo_width() - 10)
+        y = 12
+        knob_x = left + ((right - left) * self._fraction())
+        self.create_line(
+            left,
+            y,
+            right,
+            y,
+            fill=self.trough,
+            width=6,
+            capstyle="round",
+        )
+        if knob_x > left:
+            self.create_line(
+                left,
+                y,
+                knob_x,
+                y,
+                fill=self.accent,
+                width=6,
+                capstyle="round",
+            )
+        outline = (
+            self.accent_dark
+            if self.focus_get() is self
+            else self.accent
+        )
+        self.create_oval(
+            knob_x - 8,
+            y - 8,
+            knob_x + 8,
+            y + 8,
+            fill="#FFFFFF",
+            outline=outline,
+            width=2,
+        )
+
+    def _set_value(self, value: float) -> None:
+        clamped = min(self.maximum, max(self.minimum, value))
+        self.variable.set(round(clamped) if self._integer_value else clamped)
+
+    def _set_from_pointer(self, event: tk.Event[tk.Misc]) -> str:
+        self.focus_set()
+        left = 10
+        right = max(left + 1, self.winfo_width() - 10)
+        fraction = min(1.0, max(0.0, (event.x - left) / (right - left)))
+        self._set_value(self.minimum + ((self.maximum - self.minimum) * fraction))
+        return "break"
+
+    def _nudge(self, event: tk.Event[tk.Misc], amount: float) -> str:
+        return self._set_from_key(event, float(self.variable.get()) + amount)
+
+    def _set_from_key(
+        self,
+        _event: tk.Event[tk.Misc],
+        value: float,
+    ) -> str:
+        self._set_value(value)
+        return "break"
+
+    def _on_variable_changed(self, *_args: object) -> None:
+        self._draw()
+        self.command(str(self.variable.get()))
+
+
 class SettingsWindow:
     BACKGROUND = "#FFF8F2"
     CARD = "#FFFFFF"
@@ -145,6 +281,9 @@ class SettingsWindow:
     MIN_HEIGHT = 480
     SCREEN_HORIZONTAL_MARGIN = 40
     SCREEN_VERTICAL_MARGIN = 80
+    TWO_COLUMN_BREAKPOINT = 840
+    HERO_HEIGHT = 174
+    COMPACT_HERO_HEIGHT = 156
 
     def __init__(
         self,
@@ -166,6 +305,7 @@ class SettingsWindow:
         self._preview_step = 0
         self._preview_variant = "gray"
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
+        self._layout_mode: str | None = None
 
         self.window = tk.Toplevel(parent)
         self.window.title("Cat Type Settings")
@@ -202,6 +342,10 @@ class SettingsWindow:
         self._configure_styles()
         self._load_preview_frames(icon_path)
         self._build()
+        self.window.bind("<Escape>", self._close_from_shortcut)
+        self.window.bind("<Control-s>", self._save_from_shortcut)
+        if sys.platform == "darwin":
+            self.window.bind("<Command-s>", self._save_from_shortcut)
         self._center()
         self.window.lift()
         self.window.focus_force()
@@ -229,8 +373,11 @@ class SettingsWindow:
             "TkDefaultFont",
         )
         body = pick(
-            "Comic Sans MS",
             "Trebuchet MS",
+            "Avenir Next",
+            "Helvetica Neue",
+            "Segoe UI",
+            "Arial",
             "TkDefaultFont",
         )
         badge = pick("Trebuchet MS", body)
@@ -239,7 +386,12 @@ class SettingsWindow:
             "display": tkfont.Font(
                 self.window,
                 family=display,
-                size=32,
+                size=30,
+            ),
+            "display_compact": tkfont.Font(
+                self.window,
+                family=display,
+                size=24,
             ),
             "section": tkfont.Font(
                 self.window,
@@ -275,8 +427,19 @@ class SettingsWindow:
             ),
             "button": tkfont.Font(
                 self.window,
-                family=heading,
+                family=body,
                 size=10,
+                weight="bold",
+            ),
+            "symbol": tkfont.Font(
+                self.window,
+                family=pick(
+                    "Apple Symbols",
+                    "Segoe UI Symbol",
+                    "Noto Sans Symbols",
+                    body,
+                ),
+                size=12,
             ),
         }
 
@@ -289,13 +452,36 @@ class SettingsWindow:
 
     def _configure_styles(self) -> None:
         style = ttk.Style(self.window)
-        try:
+        themes = style.theme_names()
+        if "clam" in themes:
             style.theme_use("clam")
-        except tk.TclError:
-            pass
+
+        self.combobox_style = "Cat.TCombobox"
+        self.scale_style = "Cat.Horizontal.TScale"
+        self.scrollbar_style = "Cat.Vertical.TScrollbar"
+        self.primary_button_style = "Cat.Accent.TButton"
+        self.secondary_button_style = "Cat.TButton"
+        style.configure(
+            "Cat.TRadiobutton",
+            background=self.CARD,
+            foreground=self.INK,
+            indicatorcolor=self.BLUSH,
+            font=self.fonts["control"],
+            padding=(0, 4),
+        )
+        style.map(
+            "Cat.TRadiobutton",
+            background=[("active", self.CARD)],
+            foreground=[("disabled", self.MUTED)],
+            indicatorcolor=[
+                ("selected", self.ACCENT),
+                ("active", self.PEACH),
+                ("!selected", self.BLUSH),
+            ],
+        )
         style.configure(
             "Cat.TCombobox",
-            padding=9,
+            padding=7,
             fieldbackground=self.BLUSH,
             background=self.BLUSH,
             foreground=self.INK,
@@ -313,13 +499,60 @@ class SettingsWindow:
         )
         style.configure(
             "Cat.Horizontal.TScale",
-            background=self.CARD,
-            troughcolor="#F1E3DC",
+            background=self.ACCENT,
+            troughcolor="#E8D8D0",
             bordercolor=self.CARD,
-            lightcolor=self.CARD,
-            darkcolor=self.CARD,
+            lightcolor="#E8D8D0",
+            darkcolor="#D9C5BC",
             sliderthickness=18,
+            sliderlength=18,
+            sliderrelief="flat",
             gripcount=0,
+        )
+        style.configure(
+            "Cat.Vertical.TScrollbar",
+            background=self.PEACH,
+            troughcolor=self.BACKGROUND,
+            bordercolor=self.BACKGROUND,
+            lightcolor=self.PEACH,
+            darkcolor=self.PEACH,
+            arrowcolor=self.ACCENT_DARK,
+        )
+        style.configure(
+            "Cat.TButton",
+            background="#F1E5DF",
+            foreground=self.INK,
+            bordercolor=self.BORDER,
+            lightcolor="#F1E5DF",
+            darkcolor=self.BORDER,
+            font=self.fonts["button"],
+            padding=(14, 7),
+        )
+        style.map(
+            "Cat.TButton",
+            background=[
+                ("active", self.BLUSH),
+                ("pressed", self.BORDER),
+                ("disabled", self.BLUSH),
+            ],
+            foreground=[("disabled", self.MUTED)],
+        )
+        style.configure(
+            "Cat.Accent.TButton",
+            background=self.ACCENT,
+            foreground="#FFFFFF",
+            bordercolor=self.ACCENT_DARK,
+            font=self.fonts["button"],
+            padding=(14, 7),
+        )
+        style.map(
+            "Cat.Accent.TButton",
+            background=[
+                ("active", self.ACCENT_DARK),
+                ("pressed", self.ACCENT_DARK),
+                ("disabled", "#D9D1C8"),
+            ],
+            foreground=[("disabled", "#FFFFFF")],
         )
 
     def _load_preview_frames(self, icon_path: str | None) -> None:
@@ -357,6 +590,7 @@ class SettingsWindow:
         self.scrollbar = ttk.Scrollbar(
             self.scroll_host,
             orient="vertical",
+            style=self.scrollbar_style,
         )
         self.scrollbar.pack(side="right", fill="y")
 
@@ -404,63 +638,87 @@ class SettingsWindow:
 
         self._build_header(self.scroll_content)
 
-        columns = tk.Frame(
+        self.columns = tk.Frame(
             self.scroll_content,
             background=self.BACKGROUND,
         )
-        columns.pack(fill="x", padx=26)
-        columns.grid_columnconfigure(0, weight=3, uniform="settings")
-        columns.grid_columnconfigure(1, weight=2, uniform="settings")
+        self.columns.pack(fill="x", padx=26)
+        self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
+        self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
 
-        left = tk.Frame(columns, background=self.BACKGROUND)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        right = tk.Frame(columns, background=self.BACKGROUND)
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self.left_column = tk.Frame(
+            self.columns,
+            background=self.BACKGROUND,
+        )
+        self.left_column.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
+            padx=(0, 8),
+        )
+        self.right_column = tk.Frame(
+            self.columns,
+            background=self.BACKGROUND,
+        )
+        self.right_column.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
+            padx=(8, 0),
+        )
 
-        self._build_companion_card(left)
-        self._build_appearance_card(left)
-        self._build_size_card(right)
-        self._build_timing_card(right)
-        self._build_updates_card(right)
+        self._build_companion_card(self.left_column)
+        self._build_appearance_card(self.left_column)
+        self._build_size_card(self.right_column)
+        self._build_timing_card(self.right_column)
+        self._build_updates_card(self.right_column)
 
     def _build_header(self, body: tk.Frame) -> None:
-        hero = tk.Frame(
+        self.hero = tk.Frame(
             body,
             background=self.PEACH,
             highlightbackground="#F4C6B3",
             highlightthickness=1,
-            height=174,
+            height=self.HERO_HEIGHT,
         )
-        hero.pack(fill="x", padx=26, pady=(24, 16))
-        hero.pack_propagate(False)
+        self.hero.pack(fill="x", padx=26, pady=(24, 16))
+        self.hero.pack_propagate(False)
 
-        copy = tk.Frame(hero, background=self.PEACH)
-        copy.pack(side="left", fill="both", expand=True, padx=(26, 10), pady=22)
+        self.hero_copy = tk.Frame(self.hero, background=self.PEACH)
+        self.hero_copy.pack(
+            side="left",
+            fill="both",
+            expand=True,
+            padx=(26, 10),
+            pady=22,
+        )
         badge = tk.Label(
-            copy,
+            self.hero_copy,
             text="  YOUR TINY TYPING PAL  ",
             background="#FFFFFF",
             foreground=self.ACCENT_DARK,
             font=self.fonts["badge"],
         )
         badge.pack(anchor="w")
-        tk.Label(
-            copy,
+        self.hero_headline = tk.Label(
+            self.hero_copy,
             text="Make it feel like yours.",
             background=self.PEACH,
             foreground=self.INK,
             font=self.fonts["display"],
-        ).pack(anchor="w", pady=(10, 3))
-        tk.Label(
-            copy,
+        )
+        self.hero_headline.pack(anchor="w", pady=(10, 3))
+        self.hero_description = tk.Label(
+            self.hero_copy,
             text="Choose your cat, its cozy corner, and how long it stays.",
             background=self.PEACH,
             foreground=self.MUTED,
             font=self.fonts["body"],
-        ).pack(anchor="w")
+        )
+        self.hero_description.pack(anchor="w")
 
         self.preview_canvas = tk.Canvas(
-            hero,
+            self.hero,
             width=250,
             height=166,
             background=self.PEACH,
@@ -480,14 +738,14 @@ class SettingsWindow:
             24,
             text="✦",
             fill=self.ACCENT,
-            font=("Segoe UI Symbol", 13),
+            font=self.fonts["symbol"],
         )
         self.preview_canvas.create_text(
             31,
             45,
             text="✦",
             fill="#F3A486",
-            font=("Segoe UI Symbol", 8),
+            font=self.fonts["symbol"],
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
 
@@ -497,7 +755,7 @@ class SettingsWindow:
             "Companion",
             "The important purr-t",
         )
-        Toggle(
+        self.enabled_toggle = Toggle(
             content,
             variable=self.enabled,
             title="Show my cat while I type",
@@ -508,7 +766,8 @@ class SettingsWindow:
             muted=self.MUTED,
             title_font=self.fonts["control"],
             description_font=self.fonts["small"],
-        ).pack(fill="x")
+        )
+        self.enabled_toggle.pack(fill="x")
         counter = tk.Frame(content, background=self.BLUSH)
         counter.pack(fill="x", pady=(14, 0))
         self.keystroke_count_title = tk.Label(
@@ -531,7 +790,7 @@ class SettingsWindow:
             font=self.fonts["section"],
         ).pack(side="right", padx=(6, 12), pady=8)
         self._divider(content).pack(fill="x", pady=13)
-        Toggle(
+        self.launch_at_startup_toggle = Toggle(
             content,
             variable=self.launch_at_startup,
             title="Start Cat Type when I sign in",
@@ -542,15 +801,8 @@ class SettingsWindow:
             muted=self.MUTED,
             title_font=self.fonts["control"],
             description_font=self.fonts["small"],
-        ).pack(fill="x")
-        self._divider(content).pack(fill="x", pady=13)
-        tk.Label(
-            content,
-            text="⌨  Wakes up when your keyboard does",
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-        ).pack(anchor="w")
+        )
+        self.launch_at_startup_toggle.pack(fill="x")
         card.pack(fill="x", pady=(0, 14))
 
     def _build_appearance_card(self, parent: tk.Frame) -> None:
@@ -561,6 +813,7 @@ class SettingsWindow:
         )
         choices = tk.Frame(content, background=self.CARD)
         choices.pack(fill="x", pady=(0, 16))
+        self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
         for index, label in enumerate(CAT_STYLE_LABELS):
             button = tk.Radiobutton(
                 choices,
@@ -570,8 +823,9 @@ class SettingsWindow:
                 indicatoron=False,
                 relief="flat",
                 borderwidth=0,
-                highlightthickness=1,
+                highlightthickness=2,
                 highlightbackground=self.BORDER,
+                highlightcolor=self.ACCENT,
                 background=self.BLUSH,
                 selectcolor=self.PEACH,
                 activebackground=self.PEACH,
@@ -589,6 +843,12 @@ class SettingsWindow:
                 padx=(0 if index == 0 else 4, 0),
             )
             choices.grid_columnconfigure(index, weight=1)
+            self.cat_style_buttons[label] = button
+        self.cat_style.trace_add(
+            "write",
+            lambda *_args: self._refresh_cat_style_buttons(),
+        )
+        self._refresh_cat_style_buttons()
 
         self._field_label(content, "Favorite spot").pack(anchor="w")
         ttk.Combobox(
@@ -596,12 +856,26 @@ class SettingsWindow:
             textvariable=self.placement,
             values=list(PLACEMENT_LABELS),
             state="readonly",
-            style="Cat.TCombobox",
+            style=self.combobox_style,
         ).pack(fill="x", pady=(6, 0))
         card.pack(fill="x")
 
+    def _refresh_cat_style_buttons(self) -> None:
+        selected = self.cat_style.get()
+        for label, button in self.cat_style_buttons.items():
+            is_selected = label == selected
+            button.configure(
+                background=self.PEACH if is_selected else self.BLUSH,
+                foreground=self.ACCENT_DARK if is_selected else self.INK,
+                highlightbackground=self.ACCENT if is_selected else self.BORDER,
+            )
+
     def _build_size_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(parent, "Cat size", "Tiny bean or big floof")
+        card, content = self._card(
+            parent,
+            "Cat size",
+            "Tiny bean or big floof",
+        )
         self._slider(
             content,
             "Preview scale",
@@ -623,7 +897,11 @@ class SettingsWindow:
         card.pack(fill="x", pady=(0, 14))
 
     def _build_timing_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(parent, "Timing", "Settle in, then fade")
+        card, content = self._card(
+            parent,
+            "Timing",
+            "Settle in, then fade",
+        )
         self._slider(
             content,
             "Hang around",
@@ -657,51 +935,40 @@ class SettingsWindow:
             font=self.fonts["control"],
         )
         self.update_version_label.pack(anchor="w")
-        tk.Label(
+        self.update_status_label = tk.Label(
             content,
             textvariable=self.update_status_text,
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["small"],
             justify="left",
-            wraplength=280,
-        ).pack(anchor="w", fill="x", pady=(5, 10))
-        self.check_for_updates_button = tk.Button(
-            content,
+            anchor="w",
+            wraplength=1,
+        )
+        self.update_status_label.pack(anchor="w", fill="x", pady=(5, 10))
+        content.bind("<Configure>", self._on_update_card_configure, add="+")
+        update_actions = tk.Frame(content, background=self.CARD)
+        update_actions.pack(fill="x")
+        self.check_for_updates_button = ttk.Button(
+            update_actions,
             text="Check for updates",
             command=self._on_check_for_updates,
             state="normal" if self._on_check_for_updates else "disabled",
-            relief="flat",
-            borderwidth=0,
-            background=self.PEACH,
-            activebackground="#F4C6B3",
-            foreground=self.ACCENT_DARK,
-            activeforeground=self.ACCENT_DARK,
-            disabledforeground=self.MUTED,
-            font=self.fonts["button"],
-            padx=14,
-            pady=8,
-            cursor="hand2",
+            style=self.secondary_button_style,
+            cursor="arrow",
+            takefocus=True,
         )
-        self.check_for_updates_button.pack(anchor="w")
-        self.open_release_page_button = tk.Button(
-            content,
+        self.check_for_updates_button.pack(side="left")
+        self.open_release_page_button = ttk.Button(
+            update_actions,
             text="Open release page",
             command=self._on_open_release_page,
             state="normal" if self._on_open_release_page else "disabled",
-            relief="flat",
-            borderwidth=0,
-            background=self.CARD,
-            activebackground=self.BLUSH,
-            foreground=self.ACCENT_DARK,
-            activeforeground=self.ACCENT_DARK,
-            disabledforeground=self.MUTED,
-            font=self.fonts["small"],
-            padx=0,
-            pady=6,
-            cursor="hand2",
+            style=self.secondary_button_style,
+            cursor="arrow",
+            takefocus=True,
         )
-        self.open_release_page_button.pack(anchor="w", pady=(4, 0))
+        self.open_release_page_button.pack(side="left", padx=(8, 0))
         card.pack(fill="x", pady=(0, 14))
 
     def _build_footer(self, body: tk.Frame) -> tk.Frame:
@@ -725,36 +992,24 @@ class SettingsWindow:
             background=self.BACKGROUND,
         )
         self.footer_buttons.pack(side="right")
-        tk.Button(
+        self.cancel_button = ttk.Button(
             self.footer_buttons,
-            text="Not now",
+            text="Cancel",
             command=self.close,
-            relief="flat",
-            borderwidth=0,
-            background="#F1E5DF",
-            activebackground="#E8D8D0",
-            foreground=self.INK,
-            activeforeground=self.INK,
-            font=self.fonts["button"],
-            padx=18,
-            pady=9,
-            cursor="hand2",
-        ).pack(side="left")
-        tk.Button(
+            style=self.secondary_button_style,
+            cursor="arrow",
+            takefocus=True,
+        )
+        self.cancel_button.pack(side="left")
+        self.save_button = ttk.Button(
             self.footer_buttons,
-            text="Save my setup  ♡",
+            text="Save changes",
             command=self._save,
-            relief="flat",
-            borderwidth=0,
-            background=self.ACCENT,
-            activebackground=self.ACCENT_DARK,
-            foreground="#FFFFFF",
-            activeforeground="#FFFFFF",
-            font=self.fonts["button"],
-            padx=18,
-            pady=9,
-            cursor="hand2",
-        ).pack(side="left", padx=(8, 0))
+            style=self.primary_button_style,
+            cursor="arrow",
+            takefocus=True,
+        )
+        self.save_button.pack(side="left", padx=(8, 0))
         self.footer_message.pack(side="left", anchor="center")
         footer.bind("<Configure>", self._on_footer_configure)
         return footer
@@ -843,13 +1098,16 @@ class SettingsWindow:
         def update(value: str) -> None:
             value_label.configure(text=formatter(value))
 
-        scale = ttk.Scale(
+        scale = CatScale(
             parent,
-            from_=minimum,
-            to=maximum,
             variable=variable,
+            minimum=minimum,
+            maximum=maximum,
             command=update,
-            style="Cat.Horizontal.TScale",
+            background=self.CARD,
+            trough="#E8D8D0",
+            accent=self.ACCENT,
+            accent_dark=self.ACCENT_DARK,
         )
         scale.pack(fill="x", pady=(9, 0))
         update(str(variable.get()))
@@ -861,6 +1119,7 @@ class SettingsWindow:
         bounds = self.scroll_canvas.bbox("all")
         if bounds is not None:
             self.scroll_canvas.configure(scrollregion=bounds)
+        self._sync_scrollbar_visibility()
 
     def _on_canvas_configure(
         self,
@@ -870,6 +1129,84 @@ class SettingsWindow:
             self._scroll_content_id,
             width=event.width,
         )
+        self._apply_responsive_layout(event.width)
+        self._sync_scrollbar_visibility()
+
+    @classmethod
+    def _is_narrow_layout(cls, width: int) -> bool:
+        return width < cls.TWO_COLUMN_BREAKPOINT
+
+    def _apply_responsive_layout(self, width: int) -> None:
+        mode = "narrow" if self._is_narrow_layout(width) else "wide"
+        if mode == self._layout_mode:
+            return
+        self._layout_mode = mode
+        if mode == "narrow":
+            self.columns.grid_columnconfigure(0, weight=1, uniform="")
+            self.columns.grid_columnconfigure(1, weight=0, uniform="")
+            self.left_column.grid_configure(
+                row=0,
+                column=0,
+                padx=0,
+                pady=0,
+            )
+            self.right_column.grid_configure(
+                row=1,
+                column=0,
+                padx=0,
+                pady=(14, 0),
+            )
+            self.preview_canvas.pack_forget()
+            self.hero.configure(height=self.COMPACT_HERO_HEIGHT)
+            self.hero_headline.configure(font=self.fonts["display_compact"])
+            return
+
+        self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
+        self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
+        self.left_column.grid_configure(
+            row=0,
+            column=0,
+            padx=(0, 8),
+            pady=0,
+        )
+        self.right_column.grid_configure(
+            row=0,
+            column=1,
+            padx=(8, 0),
+            pady=0,
+        )
+        self.preview_canvas.pack(
+            side="right",
+            padx=(0, 18),
+            pady=10,
+        )
+        self.hero.configure(height=self.HERO_HEIGHT)
+        self.hero_headline.configure(font=self.fonts["display"])
+
+    def _sync_scrollbar_visibility(self) -> None:
+        bounds = self.scroll_canvas.bbox("all")
+        overflows = bool(
+            bounds
+            and bounds[3] - bounds[1] > self.scroll_canvas.winfo_height()
+        )
+        is_visible = bool(self.scrollbar.winfo_manager())
+        if overflows and not is_visible:
+            self.scrollbar.pack(
+                side="right",
+                fill="y",
+                before=self.scroll_canvas,
+            )
+        elif not overflows and is_visible:
+            self.scrollbar.pack_forget()
+            self.scroll_canvas.yview_moveto(0)
+
+    def _on_update_card_configure(
+        self,
+        event: tk.Event[tk.Misc],
+    ) -> None:
+        wraplength = max(1, event.width)
+        if int(float(self.update_status_label.cget("wraplength"))) != wraplength:
+            self.update_status_label.configure(wraplength=wraplength)
 
     @staticmethod
     def _wheel_scroll_units(event: tk.Event[tk.Misc]) -> int:
@@ -942,6 +1279,14 @@ class SettingsWindow:
         self._on_save(settings)
         self.close()
 
+    def _save_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
+        self._save()
+        return "break"
+
+    def _close_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
+        self.close()
+        return "break"
+
     @classmethod
     def _fit_to_screen(
         cls,
@@ -1001,6 +1346,7 @@ class SettingsWindow:
             else "normal"
         )
         self.check_for_updates_button.configure(state=state)
+        self.check_for_updates_button.configure(cursor="arrow")
 
     def close(self) -> None:
         try:

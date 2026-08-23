@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 
 from app_version import APP_VERSION
 from cat_settings import AppSettings
-from settings_window import SettingsWindow
+from settings_window import CatScale, SettingsWindow
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
@@ -170,6 +170,39 @@ class SettingsWindowScrollingTests(unittest.TestCase):
         self.assertIsNone(result_over_footer)
         self.assertIsNone(result_when_content_fits)
 
+    def test_scrollbar_is_hidden_when_content_fits(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 300)
+        canvas.winfo_height.return_value = 400
+        scrollbar = Mock()
+        scrollbar.winfo_manager.return_value = "pack"
+        settings_window.scroll_canvas = canvas
+        settings_window.scrollbar = scrollbar
+
+        settings_window._sync_scrollbar_visibility()
+
+        scrollbar.pack_forget.assert_called_once_with()
+        canvas.yview_moveto.assert_called_once_with(0)
+
+    def test_scrollbar_is_restored_for_overflowing_content(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 900)
+        canvas.winfo_height.return_value = 400
+        scrollbar = Mock()
+        scrollbar.winfo_manager.return_value = ""
+        settings_window.scroll_canvas = canvas
+        settings_window.scrollbar = scrollbar
+
+        settings_window._sync_scrollbar_visibility()
+
+        scrollbar.pack.assert_called_once_with(
+            side="right",
+            fill="y",
+            before=canvas,
+        )
+
 
 class SettingsWindowTkLayoutTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -227,8 +260,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Checking for updates…",
         )
         self.assertEqual(
-            self.settings_window.check_for_updates_button.cget("state"),
+            str(self.settings_window.check_for_updates_button.cget("state")),
             "disabled",
+        )
+        self.assertEqual(
+            str(self.settings_window.check_for_updates_button.cget("cursor")),
+            "arrow",
         )
 
         self.settings_window.set_update_status("Cat Type is up to date.")
@@ -238,8 +275,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Cat Type is up to date.",
         )
         self.assertEqual(
-            self.settings_window.check_for_updates_button.cget("state"),
+            str(self.settings_window.check_for_updates_button.cget("state")),
             "normal",
+        )
+        self.assertEqual(
+            str(self.settings_window.check_for_updates_button.cget("cursor")),
+            "arrow",
         )
 
     def test_session_keystroke_counter_is_visible_and_updates_live(self) -> None:
@@ -313,3 +354,123 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     + self.settings_window.window.winfo_width(),
                 )
         self.assertFalse(self.settings_window.footer_message.winfo_ismapped())
+
+    def test_narrow_layout_stacks_cards_without_clipping_the_header(self) -> None:
+        self.settings_window.window.geometry("700x480")
+        self.settings_window.window.update()
+
+        self.assertEqual(self.settings_window._layout_mode, "narrow")
+        self.assertEqual(
+            int(self.settings_window.left_column.grid_info()["row"]),
+            0,
+        )
+        self.assertEqual(
+            int(self.settings_window.right_column.grid_info()["row"]),
+            1,
+        )
+        self.assertEqual(
+            int(self.settings_window.right_column.grid_info()["column"]),
+            0,
+        )
+        self.assertFalse(self.settings_window.preview_canvas.winfo_ismapped())
+        self.assertEqual(
+            self.settings_window.hero_headline.winfo_width(),
+            self.settings_window.hero_headline.winfo_reqwidth(),
+        )
+
+    def test_wide_layout_keeps_the_preview_and_two_columns(self) -> None:
+        self.settings_window.window.geometry("920x800")
+        self.settings_window.window.update()
+
+        self.assertEqual(self.settings_window._layout_mode, "wide")
+        self.assertEqual(
+            int(self.settings_window.right_column.grid_info()["row"]),
+            0,
+        )
+        self.assertEqual(
+            int(self.settings_window.right_column.grid_info()["column"]),
+            1,
+        )
+        self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
+
+    def test_update_status_wraps_to_the_available_card_width(self) -> None:
+        self.settings_window.set_update_status(
+            "A longer update status that needs to wrap cleanly inside the card."
+        )
+        self.settings_window.window.geometry("700x480")
+        self.settings_window.window.update()
+
+        self.assertEqual(
+            int(float(self.settings_window.update_status_label.cget("wraplength"))),
+            self.settings_window.update_status_label.master.winfo_width(),
+        )
+        self.assertLessEqual(
+            self.settings_window.update_status_label.winfo_reqwidth(),
+            self.settings_window.update_status_label.winfo_width(),
+        )
+
+    def test_custom_toggles_are_keyboard_focusable(self) -> None:
+        enabled_before = self.settings_window.enabled.get()
+
+        self.assertTrue(
+            bool(int(self.settings_window.enabled_toggle.cget("takefocus")))
+        )
+        self.settings_window.enabled_toggle.focus_force()
+        self.settings_window.window.update()
+        self.settings_window.enabled_toggle.event_generate("<space>")
+        self.settings_window.window.update()
+
+        self.assertEqual(
+            self.settings_window.enabled.get(),
+            not enabled_before,
+        )
+
+    def test_cat_scale_uses_the_full_clickable_range(self) -> None:
+        scales: list[CatScale] = []
+
+        def collect(widget: tk.Misc) -> None:
+            for child in widget.winfo_children():
+                if isinstance(child, CatScale):
+                    scales.append(child)
+                collect(child)
+
+        collect(self.settings_window.window)
+        self.assertEqual(len(scales), 3)
+        scale = scales[0]
+        self.settings_window.window.update()
+
+        scale.event_generate(
+            "<Button-1>",
+            x=scale.winfo_width() - 1,
+            y=12,
+        )
+        self.settings_window.window.update()
+
+        self.assertEqual(self.settings_window.size_percent.get(), 175)
+
+    def test_selected_cat_style_has_a_stable_accent_border(self) -> None:
+        widths_before = {
+            label: button.winfo_reqwidth()
+            for label, button in self.settings_window.cat_style_buttons.items()
+        }
+
+        self.settings_window.cat_style_buttons["Ginger tabby"].invoke()
+        self.settings_window.window.update()
+
+        self.assertEqual(self.settings_window.cat_style.get(), "Ginger tabby")
+        for label, button in self.settings_window.cat_style_buttons.items():
+            with self.subTest(label=label):
+                expected = (
+                    self.settings_window.ACCENT
+                    if label == "Ginger tabby"
+                    else self.settings_window.BORDER
+                )
+                self.assertEqual(button.cget("highlightbackground"), expected)
+                self.assertEqual(button.winfo_reqwidth(), widths_before[label])
+
+    def test_footer_actions_use_settings_language(self) -> None:
+        self.assertEqual(self.settings_window.cancel_button.cget("text"), "Cancel")
+        self.assertEqual(
+            self.settings_window.save_button.cget("text"),
+            "Save changes",
+        )
