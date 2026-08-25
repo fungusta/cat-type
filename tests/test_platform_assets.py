@@ -10,6 +10,7 @@ from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UPDATE_TEST_MODULES = (
+    "tests.test_usage_metrics",
     "tests.test_release_version_check",
     "tests.test_auto_update",
     "tests.test_update_controller",

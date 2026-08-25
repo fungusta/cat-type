@@ -166,6 +166,7 @@ class CatTypeShutdownSignalTests(unittest.TestCase):
         app._update_worker_active = False
         app._update_worker = None
         app._hide = Mock()
+        app.usage_tracker = Mock()
         app._tray_icon = None
         app.keyboard = Mock()
         app.tracker = Mock()
@@ -208,6 +209,7 @@ class CatTypeShutdownSignalTests(unittest.TestCase):
         app.shutdown()
 
         self.assertEqual(signal.close_calls, 1)
+        app.usage_tracker.flush.assert_called_once_with()
         app.root.destroy.assert_called_once_with()
 
 

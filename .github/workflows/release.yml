@@ -74,6 +74,7 @@ jobs:
           tests.test_macos_overlay_focus
           tests.test_behavior
           tests.test_settings
+          tests.test_usage_metrics
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
@@ -93,6 +94,7 @@ jobs:
           tests.test_macos_overlay_focus
           tests.test_behavior
           tests.test_settings
+          tests.test_usage_metrics
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check

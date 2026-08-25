@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -11,6 +12,7 @@ from PIL import Image, ImageDraw, ImageTk
 
 from app_version import APP_VERSION
 from cat_settings import AppSettings
+from usage_metrics import UsageMetrics
 
 
 CAT_STYLE_LABELS = {
@@ -292,6 +294,7 @@ class SettingsWindow:
         on_save: Callable[[AppSettings], None],
         icon_path: str | None = None,
         keystroke_count: int = 0,
+        usage_metrics: UsageMetrics | None = None,
         on_check_for_updates: Callable[[], None] | None = None,
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
@@ -306,6 +309,9 @@ class SettingsWindow:
         self._preview_variant = "gray"
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
         self._layout_mode: str | None = None
+        self.usage_metrics = (usage_metrics or UsageMetrics()).normalized()
+        if keystroke_count > self.usage_metrics.total_keystrokes:
+            self.usage_metrics.total_keystrokes = keystroke_count
 
         self.window = tk.Toplevel(parent)
         self.window.title("Cat Type Settings")
@@ -335,7 +341,14 @@ class SettingsWindow:
         )
         self.launch_at_startup = tk.BooleanVar(value=settings.launch_at_startup)
         self.keystroke_count_text = tk.StringVar(
-            value=f"{keystroke_count:,}"
+            value=f"{self.usage_metrics.total_keystrokes:,}"
+        )
+        self.active_page = tk.StringVar(value="Settings")
+        self.metrics_range_days = tk.IntVar(value=7)
+        self.metrics_today_text = tk.StringVar(value="0")
+        self.metrics_week_text = tk.StringVar(value="0")
+        self.metrics_total_text = tk.StringVar(
+            value=f"{self.usage_metrics.total_keystrokes:,}"
         )
         self.update_status_text = tk.StringVar(value=update_status)
 
@@ -637,6 +650,7 @@ class SettingsWindow:
         )
 
         self._build_header(self.scroll_content)
+        self._build_page_switcher(self.scroll_content)
 
         self.columns = tk.Frame(
             self.scroll_content,
@@ -672,6 +686,8 @@ class SettingsWindow:
         self._build_size_card(self.right_column)
         self._build_timing_card(self.right_column)
         self._build_updates_card(self.right_column)
+        self._build_metrics_page(self.scroll_content)
+        self._refresh_usage_metrics()
 
     def _build_header(self, body: tk.Frame) -> None:
         self.hero = tk.Frame(
@@ -749,6 +765,72 @@ class SettingsWindow:
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
 
+    def _build_page_switcher(self, parent: tk.Frame) -> None:
+        switcher = tk.Frame(parent, background=self.BACKGROUND)
+        switcher.pack(fill="x", padx=26, pady=(0, 14))
+        tabs = tk.Frame(switcher, background=self.BLUSH)
+        tabs.pack(anchor="w")
+        self.page_buttons: dict[str, tk.Radiobutton] = {}
+        for index, label in enumerate(("Settings", "Metrics")):
+            button = tk.Radiobutton(
+                tabs,
+                text=label,
+                variable=self.active_page,
+                value=label,
+                command=self._switch_page,
+                indicatoron=False,
+                relief="flat",
+                borderwidth=0,
+                highlightthickness=2,
+                highlightbackground=self.BORDER,
+                highlightcolor=self.ACCENT,
+                background=self.BLUSH,
+                selectcolor=self.PEACH,
+                activebackground=self.PEACH,
+                activeforeground=self.INK,
+                foreground=self.INK,
+                font=self.fonts["control"],
+                padx=22,
+                pady=8,
+                cursor="hand2",
+                takefocus=True,
+            )
+            button.grid(row=0, column=index, sticky="ew")
+            tabs.grid_columnconfigure(index, weight=1)
+            self.page_buttons[label] = button
+        self._refresh_page_buttons()
+
+    def _refresh_page_buttons(self) -> None:
+        selected = self.active_page.get()
+        for label, button in self.page_buttons.items():
+            is_selected = label == selected
+            button.configure(
+                background=self.PEACH if is_selected else self.BLUSH,
+                foreground=self.ACCENT_DARK if is_selected else self.INK,
+                highlightbackground=self.ACCENT if is_selected else self.BORDER,
+            )
+
+    def _switch_page(self) -> None:
+        show_metrics = self.active_page.get() == "Metrics"
+        self._refresh_page_buttons()
+        if show_metrics:
+            self.columns.pack_forget()
+            self.metrics_page.pack(fill="x", padx=26)
+            self.hero_headline.configure(text="See your typing rhythm.")
+            self.hero_description.configure(
+                text="A private view of when your tiny pal has been busiest."
+            )
+            self._refresh_usage_metrics()
+        else:
+            self.metrics_page.pack_forget()
+            self.columns.pack(fill="x", padx=26)
+            self.hero_headline.configure(text="Make it feel like yours.")
+            self.hero_description.configure(
+                text="Choose your cat, its cozy corner, and how long it stays."
+            )
+        self.scroll_canvas.yview_moveto(0)
+        self.window.after_idle(self._sync_scrollbar_visibility)
+
     def _build_companion_card(self, parent: tk.Frame) -> None:
         card, content = self._card(
             parent,
@@ -772,7 +854,7 @@ class SettingsWindow:
         counter.pack(fill="x", pady=(14, 0))
         self.keystroke_count_title = tk.Label(
             counter,
-            text="Keystrokes this session",
+            text="All-time keystrokes",
             background=self.BLUSH,
             foreground=self.MUTED,
             font=self.fonts["small"],
@@ -804,6 +886,322 @@ class SettingsWindow:
         )
         self.launch_at_startup_toggle.pack(fill="x")
         card.pack(fill="x", pady=(0, 14))
+
+    def _build_metrics_page(self, parent: tk.Frame) -> None:
+        self.metrics_page = tk.Frame(parent, background=self.BACKGROUND)
+
+        summary = tk.Frame(self.metrics_page, background=self.BACKGROUND)
+        summary.pack(fill="x", pady=(0, 14))
+        for column in range(3):
+            summary.grid_columnconfigure(column, weight=1, uniform="metrics")
+        self._metric_stat(
+            summary,
+            column=0,
+            label="Today",
+            value=self.metrics_today_text,
+            detail="keystrokes",
+            padx=(0, 5),
+        )
+        self._metric_stat(
+            summary,
+            column=1,
+            label="Last 7 days",
+            value=self.metrics_week_text,
+            detail="keystrokes",
+            padx=5,
+        )
+        self._metric_stat(
+            summary,
+            column=2,
+            label="All time",
+            value=self.metrics_total_text,
+            detail="keystrokes",
+            padx=(5, 0),
+        )
+
+        daily_card, daily_content = self._card(
+            self.metrics_page,
+            "Daily activity",
+            "Your typing rhythm over time",
+        )
+        ranges = tk.Frame(daily_content, background=self.CARD)
+        ranges.pack(anchor="e", pady=(0, 6))
+        self.metrics_range_buttons: dict[int, tk.Radiobutton] = {}
+        for index, (label, days) in enumerate((("7 days", 7), ("30 days", 30))):
+            button = tk.Radiobutton(
+                ranges,
+                text=label,
+                variable=self.metrics_range_days,
+                value=days,
+                command=self._change_metrics_range,
+                indicatoron=False,
+                relief="flat",
+                borderwidth=0,
+                highlightthickness=1,
+                highlightbackground=self.BORDER,
+                background=self.BLUSH,
+                selectcolor=self.PEACH,
+                activebackground=self.PEACH,
+                foreground=self.INK,
+                font=self.fonts["small"],
+                padx=12,
+                pady=5,
+                cursor="hand2",
+                takefocus=True,
+            )
+            button.grid(row=0, column=index)
+            self.metrics_range_buttons[days] = button
+        self.daily_metrics_chart = tk.Canvas(
+            daily_content,
+            height=220,
+            background=self.CARD,
+            highlightthickness=0,
+        )
+        self.daily_metrics_chart.pack(fill="x")
+        self.daily_metrics_chart.bind(
+            "<Configure>",
+            lambda _event: self._draw_daily_metrics(),
+        )
+        daily_card.pack(fill="x", pady=(0, 14))
+
+        hourly_card, hourly_content = self._card(
+            self.metrics_page,
+            "Today by hour",
+            "When the paws get busiest",
+        )
+        self.hourly_metrics_chart = tk.Canvas(
+            hourly_content,
+            height=155,
+            background=self.CARD,
+            highlightthickness=0,
+        )
+        self.hourly_metrics_chart.pack(fill="x")
+        self.hourly_metrics_chart.bind(
+            "<Configure>",
+            lambda _event: self._draw_hourly_metrics(),
+        )
+        tk.Label(
+            hourly_content,
+            text=(
+                "Only activity counts while Cat Type is enabled are stored — "
+                "never key names, text, apps, or window titles."
+            ),
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(8, 0))
+        hourly_card.pack(fill="x", pady=(0, 14))
+
+    def _metric_stat(
+        self,
+        parent: tk.Frame,
+        *,
+        column: int,
+        label: str,
+        value: tk.StringVar,
+        detail: str,
+        padx: int | tuple[int, int],
+    ) -> None:
+        card = tk.Frame(
+            parent,
+            background=self.CARD,
+            highlightbackground=self.BORDER,
+            highlightthickness=1,
+        )
+        card.grid(row=0, column=column, sticky="nsew", padx=padx)
+        tk.Label(
+            card,
+            text=label,
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        ).pack(anchor="w", padx=16, pady=(14, 4))
+        tk.Label(
+            card,
+            textvariable=value,
+            background=self.CARD,
+            foreground=self.ACCENT_DARK,
+            font=self.fonts["display_compact"],
+        ).pack(anchor="w", padx=16)
+        tk.Label(
+            card,
+            text=detail,
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["tiny"],
+        ).pack(anchor="w", padx=16, pady=(2, 14))
+
+    def _change_metrics_range(self) -> None:
+        selected = self.metrics_range_days.get()
+        for days, button in self.metrics_range_buttons.items():
+            button.configure(
+                background=self.PEACH if days == selected else self.BLUSH,
+                foreground=self.ACCENT_DARK if days == selected else self.INK,
+            )
+        self._draw_daily_metrics()
+
+    @staticmethod
+    def _metric_bar_positions(
+        values: list[int],
+        width: int,
+        height: int,
+        *,
+        left: int,
+        right: int,
+        top: int,
+        bottom: int,
+    ) -> list[tuple[float, float, float]]:
+        if not values:
+            return []
+        usable_width = max(1, width - left - right)
+        usable_height = max(1, height - top - bottom)
+        maximum = max(1, max(values))
+        step = usable_width / len(values)
+        baseline = height - bottom
+        return [
+            (
+                left + step * (index + 0.5),
+                baseline,
+                baseline - usable_height * value / maximum,
+            )
+            for index, value in enumerate(values)
+        ]
+
+    def _draw_daily_metrics(self) -> None:
+        canvas = self.daily_metrics_chart
+        canvas.delete("all")
+        today = datetime.now().astimezone().date()
+        days = self.metrics_range_days.get()
+        series = self.usage_metrics.daily_series(days, ending_on=today)
+        values = [count for _day, count in series]
+        width = max(320, canvas.winfo_width())
+        height = max(180, canvas.winfo_height())
+        positions = self._metric_bar_positions(
+            values,
+            width,
+            height,
+            left=40,
+            right=12,
+            top=22,
+            bottom=34,
+        )
+        baseline = height - 34
+        canvas.create_line(40, baseline, width - 12, baseline, fill=self.BORDER)
+        bar_width = max(3, min(22, (width - 52) / max(1, days) * 0.56))
+        for index, ((day, count), (x, bottom, top)) in enumerate(
+            zip(series, positions)
+        ):
+            color = self.ACCENT_DARK if day == today else self.ACCENT
+            if count:
+                canvas.create_line(
+                    x,
+                    bottom,
+                    x,
+                    top,
+                    fill=color,
+                    width=bar_width,
+                    capstyle="round",
+                )
+            show_label = days == 7 or index % 5 == 0 or index == days - 1
+            if show_label:
+                label = (
+                    day.strftime("%a")
+                    if days == 7
+                    else day.strftime("%d %b")
+                )
+                canvas.create_text(
+                    x,
+                    height - 13,
+                    text=label,
+                    fill=self.MUTED,
+                    font=self.fonts["tiny"],
+                )
+        maximum = max(values, default=0)
+        canvas.create_text(
+            36,
+            16,
+            text=f"{maximum:,}",
+            anchor="e",
+            fill=self.MUTED,
+            font=self.fonts["tiny"],
+        )
+        if not maximum:
+            canvas.create_text(
+                width / 2,
+                height / 2 - 8,
+                text="Start typing to see your daily rhythm",
+                fill=self.MUTED,
+                font=self.fonts["body"],
+            )
+
+    def _draw_hourly_metrics(self) -> None:
+        canvas = self.hourly_metrics_chart
+        canvas.delete("all")
+        today = datetime.now().astimezone().date()
+        values = self.usage_metrics.hourly_series(today)
+        width = max(320, canvas.winfo_width())
+        height = max(130, canvas.winfo_height())
+        positions = self._metric_bar_positions(
+            values,
+            width,
+            height,
+            left=18,
+            right=12,
+            top=18,
+            bottom=28,
+        )
+        baseline = height - 28
+        canvas.create_line(18, baseline, width - 12, baseline, fill=self.BORDER)
+        bar_width = max(3, min(13, (width - 30) / 24 * 0.55))
+        for hour, (count, (x, bottom, top)) in enumerate(zip(values, positions)):
+            if count:
+                canvas.create_line(
+                    x,
+                    bottom,
+                    x,
+                    top,
+                    fill=self.ACCENT,
+                    width=bar_width,
+                    capstyle="round",
+                )
+            if hour in (0, 6, 12, 18, 23):
+                label = {0: "12a", 6: "6a", 12: "12p", 18: "6p", 23: "11p"}[hour]
+                canvas.create_text(
+                    x,
+                    height - 10,
+                    text=label,
+                    fill=self.MUTED,
+                    font=self.fonts["tiny"],
+                )
+        if not max(values, default=0):
+            canvas.create_text(
+                width / 2,
+                height / 2 - 6,
+                text="No activity recorded today yet",
+                fill=self.MUTED,
+                font=self.fonts["body"],
+            )
+
+    def _refresh_usage_metrics(self) -> None:
+        today = datetime.now().astimezone().date()
+        week = self.usage_metrics.daily_series(7, ending_on=today)
+        today_count = self.usage_metrics.count_for_day(today)
+        self.keystroke_count_text.set(
+            f"{self.usage_metrics.total_keystrokes:,}"
+        )
+        self.metrics_today_text.set(f"{today_count:,}")
+        self.metrics_week_text.set(f"{sum(count for _day, count in week):,}")
+        self.metrics_total_text.set(
+            f"{self.usage_metrics.total_keystrokes:,}"
+        )
+        if (
+            hasattr(self, "daily_metrics_chart")
+            and self.active_page.get() == "Metrics"
+        ):
+            self._change_metrics_range()
+            self._draw_hourly_metrics()
 
     def _build_appearance_card(self, parent: tk.Frame) -> None:
         card, content = self._card(
@@ -1336,7 +1734,12 @@ class SettingsWindow:
         self.window.focus_force()
 
     def update_keystroke_count(self, count: int) -> None:
-        self.keystroke_count_text.set(f"{count:,}")
+        self.usage_metrics.total_keystrokes = max(0, count)
+        self._refresh_usage_metrics()
+
+    def update_usage_metrics(self, metrics: UsageMetrics) -> None:
+        self.usage_metrics = metrics
+        self._refresh_usage_metrics()
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)

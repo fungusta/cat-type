@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 import unittest
 from contextlib import ExitStack
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -10,6 +11,7 @@ from unittest.mock import Mock, patch
 from app_version import APP_VERSION
 from cat_settings import AppSettings
 from settings_window import CatScale, SettingsWindow
+from usage_metrics import UsageMetrics
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
@@ -283,10 +285,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "arrow",
         )
 
-    def test_session_keystroke_counter_is_visible_and_updates_live(self) -> None:
+    def test_persistent_keystroke_counter_is_visible_and_updates_live(self) -> None:
         self.assertEqual(
             self.settings_window.keystroke_count_title.cget("text"),
-            "Keystrokes this session",
+            "All-time keystrokes",
         )
         self.assertEqual(
             self.settings_window.keystroke_count_text.get(),
@@ -298,6 +300,48 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(
             self.settings_window.keystroke_count_text.get(),
             "5,678",
+        )
+
+    def test_metrics_screen_shows_aggregate_activity_and_switches_ranges(
+        self,
+    ) -> None:
+        today = datetime.now().astimezone().date()
+        yesterday = today - timedelta(days=1)
+        metrics = UsageMetrics(
+            total_keystrokes=3_000,
+            daily={
+                yesterday.isoformat(): 1_000,
+                today.isoformat(): 2_000,
+            },
+            hourly={f"{today.isoformat()}T09": 2_000},
+        )
+
+        self.settings_window.update_usage_metrics(metrics)
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+
+        self.assertTrue(self.settings_window.metrics_page.winfo_ismapped())
+        self.assertFalse(self.settings_window.columns.winfo_ismapped())
+        self.assertEqual(self.settings_window.metrics_today_text.get(), "2,000")
+        self.assertEqual(self.settings_window.metrics_week_text.get(), "3,000")
+        self.assertEqual(self.settings_window.metrics_total_text.get(), "3,000")
+        self.assertGreater(
+            len(self.settings_window.daily_metrics_chart.find_all()),
+            0,
+        )
+        self.assertGreater(
+            len(self.settings_window.hourly_metrics_chart.find_all()),
+            0,
+        )
+
+        self.settings_window.metrics_range_days.set(30)
+        self.settings_window._change_metrics_range()
+
+        self.assertEqual(self.settings_window.metrics_range_days.get(), 30)
+        self.assertEqual(
+            self.settings_window.metrics_range_buttons[30].cget("background"),
+            self.settings_window.PEACH,
         )
 
     def test_footer_is_outside_scrollable_content(self) -> None:

@@ -56,7 +56,7 @@ Settings are saved for the current user and take effect immediately:
 - Choose which corner of the caret the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
-- See how many keystrokes Cat Type has reacted to in the current session.
+- View all-time, daily, and hourly keystroke activity in the Metrics screen.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 
@@ -93,8 +93,7 @@ command-line tools included by mainstream desktop distributions.
 
 macOS updates remain manual, and apps run from source never self-install.
 Checking or downloading contacts GitHub's API and release download hosts; Cat
-Type does not include keyboard input or the session keystroke count in those
-requests.
+Type does not include keyboard input or local usage metrics in those requests.
 
 ## Run from source
 
@@ -145,16 +144,16 @@ python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
 The macOS output is `dist/Cat Type.app`; the Linux output is
-`dist/Cat Type`. Push a tag such as `v1.0.14` to build every supported
+`dist/Cat Type`. Push a tag such as `v1.0.15` to build every supported
 architecture and publish the assets together on a GitHub Release.
 
 ## Privacy behavior
 
 - The keyboard listener classifies each key as left, right, both, or an
   alternating fallback, then immediately discards the key itself.
-- Cat Type retains only the paw action, activity time, and in-memory session
-  total. It never reconstructs text, writes keystrokes to disk, or sends input
-  over the network.
+- While enabled, Cat Type persists only aggregate keystroke counts by local
+  day and hour in `usage.json`. It never stores key names, typed text, app
+  names, or window titles, and it does not send usage metrics over the network.
 - On Windows, UI Automation's password-field flag is checked before showing
   the cat.
 - The overlay is click-through and cannot take focus from the text field.

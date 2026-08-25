@@ -3,6 +3,7 @@ import queue
 import sys
 import unittest
 from dataclasses import fields
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -21,6 +22,7 @@ from cat_type import (
     classify_windows_key,
     choose_overlay_position,
 )
+from usage_metrics import UsageMetrics
 
 
 class FakePortableKey:
@@ -316,9 +318,20 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._last_key_at = 0.0
         app.keystroke_count = 0
         app._settings_window = None
+        metrics = UsageMetrics()
+        app.usage_tracker = Mock()
+        app.usage_tracker.metrics = metrics
+
+        def record_usage() -> UsageMetrics:
+            metrics.record(
+                datetime(2026, 8, 25, 10, tzinfo=timezone.utc)
+            )
+            return metrics
+
+        app.usage_tracker.record.side_effect = record_usage
         return app
 
-    def test_enabled_key_updates_animation_tracking_and_session_count(self) -> None:
+    def test_enabled_key_updates_animation_and_persistent_count(self) -> None:
         app = self.make_app()
 
         app._handle_key_activity(10.0, "left")
@@ -328,6 +341,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertEqual(app._last_key_at, 10.0)
         app.animation.record_key.assert_called_once_with(10.0, "left")
         app.tracker.notify_activity.assert_called_once_with(10.0)
+        self.assertEqual(app.usage_tracker.metrics.daily["2026-08-25"], 1)
 
     def test_disabled_key_does_not_increment_or_animate(self) -> None:
         app = self.make_app(enabled=False)
@@ -346,7 +360,11 @@ class CatTypeKeyActivityTests(unittest.TestCase):
 
         app._handle_key_activity(10.0, "both")
 
-        settings_window.update_keystroke_count.assert_called_once_with(1)
+        settings_window.update_usage_metrics.assert_called_once()
+        self.assertEqual(
+            settings_window.update_usage_metrics.call_args.args[0].total_keystrokes,
+            1,
+        )
 
     def test_repeated_keydowns_count_individually(self) -> None:
         app = self.make_app()
@@ -356,10 +374,11 @@ class CatTypeKeyActivityTests(unittest.TestCase):
 
         self.assertEqual(app.keystroke_count, 2)
 
-    def test_open_settings_receives_the_current_session_count(self) -> None:
+    def test_open_settings_receives_the_persistent_metrics(self) -> None:
         app = self.make_app()
         app.root = Mock()
         app.keystroke_count = 42
+        app.usage_tracker.metrics = UsageMetrics(total_keystrokes=42)
 
         with (
             patch("cat_type.SettingsWindow") as settings_window,
@@ -375,6 +394,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             (app.root, app.settings, app.apply_settings, None),
         )
         self.assertEqual(keywords["keystroke_count"], 42)
+        self.assertEqual(keywords["usage_metrics"].total_keystrokes, 42)
         self.assertEqual(
             keywords["update_status"],
             "Ready to check for updates.",
@@ -397,6 +417,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._tick = Mock()
         app._first_run = False
         app._platform_name = "linux"
+        app.usage_tracker = Mock()
 
         with patch("cat_type.time.monotonic", return_value=12.5):
             app.run()
@@ -405,6 +426,25 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.animation.record_key.assert_not_called()
         app.tracker.notify_activity.assert_called_once_with(12.5)
         app.root.after.assert_any_call(2000, app.check_for_updates)
+        app.root.after.assert_any_call(
+            app.USAGE_FLUSH_INTERVAL_MS,
+            app._flush_usage_periodically,
+        )
+
+    def test_periodic_usage_flush_reschedules_while_app_is_running(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.usage_tracker = Mock()
+        app.root = Mock()
+        app.root.winfo_exists.return_value = True
+        app._shutting_down = False
+
+        app._flush_usage_periodically()
+
+        app.usage_tracker.flush.assert_called_once_with()
+        app.root.after.assert_called_once_with(
+            app.USAGE_FLUSH_INTERVAL_MS,
+            app._flush_usage_periodically,
+        )
 
 
 class CatTypeTickRenderingTests(unittest.TestCase):

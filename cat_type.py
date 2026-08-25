@@ -36,6 +36,7 @@ from platform_updater import (
     WindowsShutdownSignal,
 )
 from settings_window import SettingsWindow
+from usage_metrics import UsageMetrics, UsageStore, UsageTracker
 
 
 IS_WINDOWS = sys.platform == "win32"
@@ -1475,6 +1476,7 @@ def _default_update_installer(
 class CatTypeApp:
     TRANSPARENT_COLOR = "#00ff01"
     MAX_CONTINUITY_SNAPSHOT_AGE_SECONDS = 0.25
+    USAGE_FLUSH_INTERVAL_MS = 30_000
 
     def __init__(
         self,
@@ -1493,6 +1495,7 @@ class CatTypeApp:
         frozen: bool | None = None,
         now: Callable[[], datetime] | None = None,
         shutdown_signal: ControllerShutdownSignal | None = None,
+        usage_tracker: UsageTracker | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1505,7 +1508,10 @@ class CatTypeApp:
             )
         ).normalized()
         self.events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
-        self.keystroke_count = 0
+        self.usage_tracker = usage_tracker or UsageTracker(
+            UsageStore(self.settings_store.path.with_name("usage.json"))
+        )
+        self.keystroke_count = self.usage_tracker.metrics.total_keystrokes
         self.animation = AnimationState(
             hide_after=self.settings.hold_seconds,
             fade_seconds=self.settings.fade_seconds,
@@ -1925,6 +1931,10 @@ class CatTypeApp:
         self.animation.show_startup(started_at)
         self.tracker.notify_activity(started_at)
         self.root.after(16, self._tick)
+        self.root.after(
+            self.USAGE_FLUSH_INTERVAL_MS,
+            self._flush_usage_periodically,
+        )
         platform_name = getattr(self, "_platform_name", sys.platform)
         if platform_name == "win32" or platform_name.startswith(
             "linux"
@@ -1949,6 +1959,9 @@ class CatTypeApp:
                 self._update_worker_active = False
                 self._update_worker = None
                 self._pending_manual_update_check = False
+        usage_tracker = getattr(self, "usage_tracker", None)
+        if usage_tracker is not None:
+            usage_tracker.flush()
         shutdown_signal = getattr(self, "_shutdown_signal", None)
         if shutdown_signal is not None:
             shutdown_signal.close()
@@ -1959,6 +1972,21 @@ class CatTypeApp:
         self.tracker.stop()
         try:
             self.root.destroy()
+        except tk.TclError:
+            pass
+
+    def _flush_usage_periodically(self) -> None:
+        usage_tracker = getattr(self, "usage_tracker", None)
+        if usage_tracker is not None:
+            usage_tracker.flush()
+        if self._shutting_down:
+            return
+        try:
+            if self.root.winfo_exists():
+                self.root.after(
+                    self.USAGE_FLUSH_INTERVAL_MS,
+                    self._flush_usage_periodically,
+                )
         except tk.TclError:
             pass
 
@@ -2042,16 +2070,22 @@ class CatTypeApp:
         if not self.animation.is_visible(happened_at):
             self._anchor_position = None
         self._last_key_at = happened_at
-        self.keystroke_count += 1
+        usage_tracker = getattr(self, "usage_tracker", None)
+        if usage_tracker is None:
+            self.keystroke_count += 1
+            usage_metrics = UsageMetrics(
+                total_keystrokes=self.keystroke_count,
+            )
+        else:
+            usage_metrics = usage_tracker.record()
+            self.keystroke_count = usage_metrics.total_keystrokes
         self.animation.record_key(happened_at, paw)
         self.tracker.notify_activity(happened_at)
         if (
             self._settings_window is not None
             and self._settings_window.window.winfo_exists()
         ):
-            self._settings_window.update_keystroke_count(
-                self.keystroke_count
-            )
+            self._settings_window.update_usage_metrics(usage_metrics)
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
         assert snapshot.rect is not None
@@ -2336,6 +2370,11 @@ class CatTypeApp:
             self.apply_settings,
             str(APP_ICON) if APP_ICON.exists() else None,
             keystroke_count=self.keystroke_count,
+            usage_metrics=(
+                self.usage_tracker.metrics
+                if getattr(self, "usage_tracker", None) is not None
+                else UsageMetrics(total_keystrokes=self.keystroke_count)
+            ),
             on_check_for_updates=lambda: self.check_for_updates(manual=True),
             on_open_release_page=lambda: webbrowser.open(
                 _UnavailableUpdateInstaller.RELEASES_URL
