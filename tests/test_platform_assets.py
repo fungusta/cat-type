@@ -164,6 +164,41 @@ class PackagingContractTests(unittest.TestCase):
             with self.subTest(expected=expected):
                 self.assertIn(expected, release)
 
+    def test_release_signs_and_notarizes_every_macos_disk_image(self) -> None:
+        spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
+        release = (
+            PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('os.environ.get("CAT_TYPE_CODESIGN_IDENTITY")', spec_source)
+        self.assertIn("CAT_TYPE_REQUIRE_SIGNING", spec_source)
+        self.assertIn("codesign_identity=codesign_identity", spec_source)
+
+        for credential in (
+            "secrets.APPLE_DEVELOPER_ID_CERT_BASE64",
+            "secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD",
+            "secrets.ASC_KEY_ID",
+            "secrets.ASC_ISSUER_ID",
+            "secrets.ASC_PRIVATE_KEY_B64",
+            "vars.APPLE_TEAM_ID",
+        ):
+            with self.subTest(credential=credential):
+                self.assertIn(credential, release)
+
+        for expected in (
+            "Developer ID Application:",
+            "TeamIdentifier=$EXPECTED_APPLE_TEAM_ID",
+            "Identifier=com.fungusta.cat-type",
+            "rudrankriyam/setup-asc@5358c70a27a3f0d1517604b0f1fdc43e70c1cc4d",
+            'version: "4.9.2"',
+            "asc notarization submit",
+            "xcrun stapler staple",
+            "xcrun stapler validate",
+            "spctl --assess",
+        ):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, release)
+
     def test_macos_disk_image_background_matches_finder_window(self) -> None:
         background = PROJECT_ROOT / "packaging" / "dmg-background-v3.png"
 

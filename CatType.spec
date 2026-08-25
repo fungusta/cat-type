@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sys
 
 from PyInstaller.utils.hooks import collect_submodules
@@ -8,6 +9,15 @@ from platform_assets import icon_filename, runtime_modules
 project_root = Path(SPECPATH)
 is_windows = sys.platform == "win32"
 is_macos = sys.platform == "darwin"
+codesign_identity = (
+    os.environ.get("CAT_TYPE_CODESIGN_IDENTITY") if is_macos else None
+)
+if (
+    is_macos
+    and os.environ.get("CAT_TYPE_REQUIRE_SIGNING") == "1"
+    and not codesign_identity
+):
+    raise RuntimeError("CAT_TYPE_CODESIGN_IDENTITY is required for this macOS build")
 icon_path = project_root / "assets" / icon_filename(sys.platform)
 version_path = project_root / "packaging" / "version_info.txt"
 # Do not discover these by importing pynput/pystray: their native backends
@@ -57,7 +67,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,
+    codesign_identity=codesign_identity,
     entitlements_file=None,
     icon=[str(icon_path)],
     version=str(version_path) if is_windows else None,
