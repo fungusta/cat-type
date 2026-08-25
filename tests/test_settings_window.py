@@ -327,12 +327,23 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_week_text.get(), "3,000")
         self.assertEqual(self.settings_window.metrics_total_text.get(), "3,000")
         self.assertGreater(
-            len(self.settings_window.daily_metrics_chart.find_all()),
+            len(self.settings_window.metrics_chart.find_all()),
             0,
         )
-        self.assertGreater(
-            len(self.settings_window.hourly_metrics_chart.find_all()),
-            0,
+        self.assertFalse(hasattr(self.settings_window, "daily_metrics_chart"))
+        self.assertFalse(hasattr(self.settings_window, "hourly_metrics_chart"))
+        self.assertEqual(
+            set(self.settings_window.metrics_range_buttons),
+            {1, 7, 30},
+        )
+
+        self.settings_window.metrics_range_days.set(1)
+        self.settings_window._change_metrics_range()
+
+        self.assertEqual(self.settings_window.metrics_range_days.get(), 1)
+        self.assertEqual(
+            self.settings_window.metrics_range_buttons[1].cget("background"),
+            self.settings_window.PEACH,
         )
 
         self.settings_window.metrics_range_days.set(30)

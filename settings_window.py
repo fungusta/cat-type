@@ -919,15 +919,17 @@ class SettingsWindow:
             padx=(5, 0),
         )
 
-        daily_card, daily_content = self._card(
+        activity_card, activity_content = self._card(
             self.metrics_page,
-            "Daily activity",
+            "Activity",
             "Your typing rhythm over time",
         )
-        ranges = tk.Frame(daily_content, background=self.CARD)
+        ranges = tk.Frame(activity_content, background=self.CARD)
         ranges.pack(anchor="e", pady=(0, 6))
         self.metrics_range_buttons: dict[int, tk.Radiobutton] = {}
-        for index, (label, days) in enumerate((("7 days", 7), ("30 days", 30))):
+        for index, (label, days) in enumerate(
+            (("1d", 1), ("7d", 7), ("30d", 30))
+        ):
             button = tk.Radiobutton(
                 ranges,
                 text=label,
@@ -951,37 +953,19 @@ class SettingsWindow:
             )
             button.grid(row=0, column=index)
             self.metrics_range_buttons[days] = button
-        self.daily_metrics_chart = tk.Canvas(
-            daily_content,
-            height=220,
+        self.metrics_chart = tk.Canvas(
+            activity_content,
+            height=250,
             background=self.CARD,
             highlightthickness=0,
         )
-        self.daily_metrics_chart.pack(fill="x")
-        self.daily_metrics_chart.bind(
+        self.metrics_chart.pack(fill="x")
+        self.metrics_chart.bind(
             "<Configure>",
-            lambda _event: self._draw_daily_metrics(),
-        )
-        daily_card.pack(fill="x", pady=(0, 14))
-
-        hourly_card, hourly_content = self._card(
-            self.metrics_page,
-            "Today by hour",
-            "When the paws get busiest",
-        )
-        self.hourly_metrics_chart = tk.Canvas(
-            hourly_content,
-            height=155,
-            background=self.CARD,
-            highlightthickness=0,
-        )
-        self.hourly_metrics_chart.pack(fill="x")
-        self.hourly_metrics_chart.bind(
-            "<Configure>",
-            lambda _event: self._draw_hourly_metrics(),
+            lambda _event: self._draw_metrics(),
         )
         tk.Label(
-            hourly_content,
+            activity_content,
             text=(
                 "Only activity counts while Cat Type is enabled are stored — "
                 "never key names, text, apps, or window titles."
@@ -992,7 +976,7 @@ class SettingsWindow:
             justify="left",
             anchor="w",
         ).pack(fill="x", pady=(8, 0))
-        hourly_card.pack(fill="x", pady=(0, 14))
+        activity_card.pack(fill="x", pady=(0, 14))
 
     def _metric_stat(
         self,
@@ -1040,10 +1024,10 @@ class SettingsWindow:
                 background=self.PEACH if days == selected else self.BLUSH,
                 foreground=self.ACCENT_DARK if days == selected else self.INK,
             )
-        self._draw_daily_metrics()
+        self._draw_metrics()
 
     @staticmethod
-    def _metric_bar_positions(
+    def _metric_line_positions(
         values: list[int],
         width: int,
         height: int,
@@ -1052,65 +1036,104 @@ class SettingsWindow:
         right: int,
         top: int,
         bottom: int,
-    ) -> list[tuple[float, float, float]]:
+    ) -> list[tuple[float, float]]:
         if not values:
             return []
         usable_width = max(1, width - left - right)
         usable_height = max(1, height - top - bottom)
         maximum = max(1, max(values))
-        step = usable_width / len(values)
+        step = usable_width / max(1, len(values) - 1)
         baseline = height - bottom
         return [
             (
-                left + step * (index + 0.5),
-                baseline,
+                left + step * index,
                 baseline - usable_height * value / maximum,
             )
             for index, value in enumerate(values)
         ]
 
-    def _draw_daily_metrics(self) -> None:
-        canvas = self.daily_metrics_chart
+    def _draw_metrics(self) -> None:
+        canvas = self.metrics_chart
         canvas.delete("all")
         today = datetime.now().astimezone().date()
         days = self.metrics_range_days.get()
-        series = self.usage_metrics.daily_series(days, ending_on=today)
-        values = [count for _day, count in series]
-        width = max(320, canvas.winfo_width())
-        height = max(180, canvas.winfo_height())
-        positions = self._metric_bar_positions(
-            values,
-            width,
-            height,
-            left=40,
-            right=12,
-            top=22,
-            bottom=34,
-        )
-        baseline = height - 34
-        canvas.create_line(40, baseline, width - 12, baseline, fill=self.BORDER)
-        bar_width = max(3, min(22, (width - 52) / max(1, days) * 0.56))
-        for index, ((day, count), (x, bottom, top)) in enumerate(
-            zip(series, positions)
-        ):
-            color = self.ACCENT_DARK if day == today else self.ACCENT
-            if count:
-                canvas.create_line(
-                    x,
-                    bottom,
-                    x,
-                    top,
-                    fill=color,
-                    width=bar_width,
-                    capstyle="round",
-                )
-            show_label = days == 7 or index % 5 == 0 or index == days - 1
-            if show_label:
-                label = (
+        if days == 1:
+            values = self.usage_metrics.hourly_series(today)
+            labels = [
+                {0: "12a", 6: "6a", 12: "12p", 18: "6p", 23: "11p"}.get(hour)
+                for hour in range(24)
+            ]
+            empty_message = "No activity recorded today yet"
+        else:
+            series = self.usage_metrics.daily_series(days, ending_on=today)
+            values = [count for _day, count in series]
+            labels = [
+                (
                     day.strftime("%a")
                     if days == 7
                     else day.strftime("%d %b")
+                    if index % 5 == 0 or index == days - 1
+                    else None
                 )
+                for index, (day, _count) in enumerate(series)
+            ]
+            empty_message = "Start typing to see your daily rhythm"
+        width = max(320, canvas.winfo_width())
+        height = max(180, canvas.winfo_height())
+        left = 46
+        right = 14
+        top = 24
+        bottom = 34
+        positions = self._metric_line_positions(
+            values,
+            width,
+            height,
+            left=left,
+            right=right,
+            top=top,
+            bottom=bottom,
+        )
+        maximum = max(values, default=0)
+        baseline = height - bottom
+        for fraction in (0, 0.5, 1):
+            y = baseline - (height - top - bottom) * fraction
+            canvas.create_line(
+                left,
+                y,
+                width - right,
+                y,
+                fill=self.BORDER,
+            )
+            canvas.create_text(
+                left - 8,
+                y,
+                text=f"{round(maximum * fraction):,}",
+                anchor="e",
+                fill=self.MUTED,
+                font=self.fonts["tiny"],
+            )
+        if maximum and len(positions) > 1:
+            canvas.create_line(
+                *[coordinate for point in positions for coordinate in point],
+                fill=self.ACCENT_DARK,
+                width=3,
+                smooth=days != 30,
+                splinesteps=16,
+                capstyle="round",
+                joinstyle="round",
+            )
+            for x, y in positions:
+                canvas.create_oval(
+                    x - 3,
+                    y - 3,
+                    x + 3,
+                    y + 3,
+                    fill=self.ACCENT_DARK,
+                    outline=self.CARD,
+                    width=1,
+                )
+        for (x, _y), label in zip(positions, labels):
+            if label is not None:
                 canvas.create_text(
                     x,
                     height - 13,
@@ -1118,68 +1141,11 @@ class SettingsWindow:
                     fill=self.MUTED,
                     font=self.fonts["tiny"],
                 )
-        maximum = max(values, default=0)
-        canvas.create_text(
-            36,
-            16,
-            text=f"{maximum:,}",
-            anchor="e",
-            fill=self.MUTED,
-            font=self.fonts["tiny"],
-        )
         if not maximum:
             canvas.create_text(
                 width / 2,
                 height / 2 - 8,
-                text="Start typing to see your daily rhythm",
-                fill=self.MUTED,
-                font=self.fonts["body"],
-            )
-
-    def _draw_hourly_metrics(self) -> None:
-        canvas = self.hourly_metrics_chart
-        canvas.delete("all")
-        today = datetime.now().astimezone().date()
-        values = self.usage_metrics.hourly_series(today)
-        width = max(320, canvas.winfo_width())
-        height = max(130, canvas.winfo_height())
-        positions = self._metric_bar_positions(
-            values,
-            width,
-            height,
-            left=18,
-            right=12,
-            top=18,
-            bottom=28,
-        )
-        baseline = height - 28
-        canvas.create_line(18, baseline, width - 12, baseline, fill=self.BORDER)
-        bar_width = max(3, min(13, (width - 30) / 24 * 0.55))
-        for hour, (count, (x, bottom, top)) in enumerate(zip(values, positions)):
-            if count:
-                canvas.create_line(
-                    x,
-                    bottom,
-                    x,
-                    top,
-                    fill=self.ACCENT,
-                    width=bar_width,
-                    capstyle="round",
-                )
-            if hour in (0, 6, 12, 18, 23):
-                label = {0: "12a", 6: "6a", 12: "12p", 18: "6p", 23: "11p"}[hour]
-                canvas.create_text(
-                    x,
-                    height - 10,
-                    text=label,
-                    fill=self.MUTED,
-                    font=self.fonts["tiny"],
-                )
-        if not max(values, default=0):
-            canvas.create_text(
-                width / 2,
-                height / 2 - 6,
-                text="No activity recorded today yet",
+                text=empty_message,
                 fill=self.MUTED,
                 font=self.fonts["body"],
             )
@@ -1197,11 +1163,10 @@ class SettingsWindow:
             f"{self.usage_metrics.total_keystrokes:,}"
         )
         if (
-            hasattr(self, "daily_metrics_chart")
+            hasattr(self, "metrics_chart")
             and self.active_page.get() == "Metrics"
         ):
             self._change_metrics_range()
-            self._draw_hourly_metrics()
 
     def _build_appearance_card(self, parent: tk.Frame) -> None:
         card, content = self._card(

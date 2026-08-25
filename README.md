@@ -56,7 +56,7 @@ Settings are saved for the current user and take effect immediately:
 - Choose which corner of the caret the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
-- View all-time, daily, and hourly keystroke activity in the Metrics screen.
+- View all-time activity and 1-day, 7-day, or 30-day trends in one line chart.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 
@@ -144,7 +144,7 @@ python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
 The macOS output is `dist/Cat Type.app`; the Linux output is
-`dist/Cat Type`. Push a tag such as `v1.0.15` to build every supported
+`dist/Cat Type`. Push a tag such as `v1.0.16` to build every supported
 architecture and publish the assets together on a GitHub Release.
 
 ## Privacy behavior
