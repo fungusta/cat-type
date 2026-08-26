@@ -249,8 +249,12 @@ jobs:
       - name: Build macOS disk image
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          EXPECTED_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: |
+          set -euo pipefail
           dmg_source="${RUNNER_TEMP}/cat-type-dmg-${{ matrix.package_arch }}"
+          dmg_path="dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg"
           mkdir -p "$dmg_source"
           cp -R "dist/Cat Type.app" "$dmg_source/"
           create-dmg \
@@ -265,8 +269,19 @@ jobs:
             --app-drop-link 468 182 \
             --no-internet-enable \
             --overwrite \
-            "dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg" \
+            "$dmg_path" \
             "$dmg_source"
+
+          codesign --force --timestamp \
+            --sign "$CAT_TYPE_CODESIGN_IDENTITY" \
+            "$dmg_path"
+          codesign --verify --strict --verbose=2 "$dmg_path"
+          dmg_signature_details="$(codesign --display --verbose=4 "$dmg_path" 2>&1)"
+          printf '%s\n' "$dmg_signature_details"
+          grep -Fq "Authority=Developer ID Application:" \
+            <<< "$dmg_signature_details"
+          grep -Fq "TeamIdentifier=$EXPECTED_APPLE_TEAM_ID" \
+            <<< "$dmg_signature_details"
 
       - name: Install asc for notarization
         if: runner.os == 'macOS'
