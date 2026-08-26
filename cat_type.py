@@ -2375,6 +2375,7 @@ class CatTypeApp:
                 if getattr(self, "usage_tracker", None) is not None
                 else UsageMetrics(total_keystrokes=self.keystroke_count)
             ),
+            on_metrics_view_change=self._persist_metrics_view,
             on_check_for_updates=lambda: self.check_for_updates(manual=True),
             on_open_release_page=lambda: webbrowser.open(
                 _UnavailableUpdateInstaller.RELEASES_URL
@@ -2396,6 +2397,18 @@ class CatTypeApp:
         activation_policy = _macos_activation_policy_accessors_for_app()
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
+
+    def _persist_metrics_view(self, metrics_view: str) -> None:
+        updated = AppSettings(
+            **{
+                **self.settings.__dict__,
+                "metrics_view": metrics_view,
+            }
+        ).normalized()
+        try:
+            self.settings = self.settings_store.save(updated)
+        except OSError:
+            return
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent

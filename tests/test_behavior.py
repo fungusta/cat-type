@@ -396,6 +396,10 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertEqual(keywords["keystroke_count"], 42)
         self.assertEqual(keywords["usage_metrics"].total_keystrokes, 42)
         self.assertEqual(
+            keywords["on_metrics_view_change"],
+            app._persist_metrics_view,
+        )
+        self.assertEqual(
             keywords["update_status"],
             "Ready to check for updates.",
         )
@@ -406,6 +410,35 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         open_browser.assert_called_once_with(
             "https://github.com/fungusta/cat-type/releases/latest"
         )
+
+    def test_metrics_view_persistence_preserves_saved_companion_settings(
+        self,
+    ) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(size_percent=125, metrics_view="line")
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = (
+            lambda settings: settings.normalized()
+        )
+
+        app._persist_metrics_view("columns")
+
+        saved = app.settings_store.save.call_args.args[0]
+        self.assertEqual(saved.metrics_view, "columns")
+        self.assertEqual(saved.size_percent, 125)
+        self.assertEqual(app.settings.metrics_view, "columns")
+
+    def test_metrics_view_write_failure_leaves_application_usable(
+        self,
+    ) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(metrics_view="line")
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = OSError("read-only settings")
+
+        app._persist_metrics_view("columns")
+
+        self.assertEqual(app.settings.metrics_view, "line")
 
     def test_run_uses_startup_feedback_without_recording_a_key(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
