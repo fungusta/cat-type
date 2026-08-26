@@ -84,6 +84,40 @@ class SettingsWindowSizingTests(unittest.TestCase):
         window.geometry.assert_called_once_with("600x400+20+24")
 
 
+class SettingsWindowMetricsGeometryTests(unittest.TestCase):
+    def test_line_positions_use_exact_bucket_endpoints(self) -> None:
+        self.assertEqual(
+            SettingsWindow._metric_line_positions(
+                [0, 50, 100],
+                300,
+                200,
+                left=40,
+                right=20,
+                top=20,
+                bottom=30,
+            ),
+            [(40.0, 170.0), (160.0, 95.0), (280.0, 20.0)],
+        )
+
+    def test_column_positions_center_discrete_buckets(self) -> None:
+        self.assertEqual(
+            SettingsWindow._metric_column_positions(
+                [0, 50, 100],
+                300,
+                200,
+                left=40,
+                right=20,
+                top=20,
+                bottom=30,
+            ),
+            [
+                (80.0, 170.0, 170.0),
+                (160.0, 170.0, 95.0),
+                (240.0, 170.0, 20.0),
+            ],
+        )
+
+
 class SettingsWindowCiTests(unittest.TestCase):
     def test_cross_platform_workflows_run_settings_window_tests(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
@@ -214,13 +248,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.skipTest(f"Tk display is unavailable: {error}")
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
+        self.on_save = Mock()
+        self.on_metrics_view_change = Mock()
         self.on_check_for_updates = Mock()
         self.on_open_release_page = Mock()
         self.settings_window = SettingsWindow(
             self.root,
             AppSettings(),
-            lambda _settings: None,
+            self.on_save,
             keystroke_count=1_234,
+            on_metrics_view_change=self.on_metrics_view_change,
             on_check_for_updates=self.on_check_for_updates,
             on_open_release_page=self.on_open_release_page,
             update_status="Ready to check.",
@@ -354,6 +391,87 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.metrics_range_buttons[30].cget("background"),
             self.settings_window.PEACH,
         )
+
+    def test_metrics_view_switches_without_resetting_range(self) -> None:
+        today = datetime.now().astimezone().date()
+        self.settings_window.update_usage_metrics(
+            UsageMetrics(
+                total_keystrokes=30,
+                daily={today.isoformat(): 30},
+                hourly={f"{today.isoformat()}T09": 30},
+            )
+        )
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+
+        self.assertEqual(self.settings_window.metrics_view.get(), "line")
+        self.assertEqual(
+            set(self.settings_window.metrics_view_buttons),
+            {"line", "columns"},
+        )
+        self.assertEqual(
+            self.settings_window.metrics_range_label.cget("text"),
+            "Range",
+        )
+        self.assertEqual(
+            self.settings_window.metrics_view_label.cget("text"),
+            "View",
+        )
+        line_ids = self.settings_window.metrics_chart.find_withtag(
+            "metric-line"
+        )
+        self.assertEqual(len(line_ids), 1)
+        self.assertEqual(
+            self.settings_window.metrics_chart.itemcget(
+                line_ids[0],
+                "smooth",
+            ),
+            "0",
+        )
+        self.on_metrics_view_change.assert_not_called()
+
+        self.settings_window.metrics_range_days.set(1)
+        self.settings_window.metrics_view.set("columns")
+        self.settings_window._change_metrics_view()
+
+        self.assertEqual(self.settings_window.metrics_range_days.get(), 1)
+        self.on_metrics_view_change.assert_called_once_with("columns")
+        self.assertTrue(
+            self.settings_window.metrics_chart.find_withtag("metric-column")
+        )
+        self.assertFalse(
+            self.settings_window.metrics_chart.find_withtag("metric-line")
+        )
+
+        self.settings_window.metrics_range_days.set(30)
+        self.settings_window._change_metrics_range()
+
+        self.assertEqual(self.settings_window.metrics_view.get(), "columns")
+        self.on_metrics_view_change.assert_called_once_with("columns")
+
+    def test_saved_metrics_view_is_restored_and_included_on_save(self) -> None:
+        on_save = Mock()
+        on_metrics_view_change = Mock()
+        saved_window = SettingsWindow(
+            self.root,
+            AppSettings(metrics_view="columns"),
+            on_save,
+            on_metrics_view_change=on_metrics_view_change,
+        )
+        self.addCleanup(saved_window.close)
+
+        self.assertEqual(saved_window.metrics_view.get(), "columns")
+        self.assertEqual(
+            saved_window.metrics_view_buttons["columns"].cget("background"),
+            saved_window.PEACH,
+        )
+        on_metrics_view_change.assert_not_called()
+
+        saved_window._save()
+
+        saved_settings = on_save.call_args.args[0]
+        self.assertEqual(saved_settings.metrics_view, "columns")
 
     def test_footer_is_outside_scrollable_content(self) -> None:
         self.assertTrue(hasattr(self.settings_window, "footer"))

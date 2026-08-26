@@ -295,12 +295,14 @@ class SettingsWindow:
         icon_path: str | None = None,
         keystroke_count: int = 0,
         usage_metrics: UsageMetrics | None = None,
+        on_metrics_view_change: Callable[[str], None] | None = None,
         on_check_for_updates: Callable[[], None] | None = None,
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
         on_close: Callable[[], None] | None = None,
     ) -> None:
         self._on_save = on_save
+        self._on_metrics_view_change = on_metrics_view_change
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
         self._on_close = on_close
@@ -345,6 +347,7 @@ class SettingsWindow:
         )
         self.active_page = tk.StringVar(value="Settings")
         self.metrics_range_days = tk.IntVar(value=7)
+        self.metrics_view = tk.StringVar(value=settings.metrics_view)
         self.metrics_today_text = tk.StringVar(value="0")
         self.metrics_week_text = tk.StringVar(value="0")
         self.metrics_total_text = tk.StringVar(
@@ -923,9 +926,49 @@ class SettingsWindow:
             self.metrics_page,
             "Activity",
             "Your typing rhythm over time",
+            heading_actions=self._build_metrics_controls,
         )
-        ranges = tk.Frame(activity_content, background=self.CARD)
-        ranges.pack(anchor="e", pady=(0, 6))
+        self.metrics_chart = tk.Canvas(
+            activity_content,
+            height=250,
+            background=self.CARD,
+            highlightthickness=0,
+        )
+        self.metrics_chart.pack(fill="x")
+        self.metrics_chart.bind(
+            "<Configure>",
+            lambda _event: self._draw_metrics(),
+        )
+        tk.Label(
+            activity_content,
+            text=(
+                "Only activity counts while Cat Type is enabled are stored — "
+                "never key names, text, apps, or window titles."
+            ),
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(8, 0))
+        activity_card.pack(fill="x", pady=(0, 14))
+
+    def _build_metrics_controls(self, parent: tk.Frame) -> None:
+        controls = tk.Frame(parent, background=self.CARD)
+        controls.pack(side="right")
+
+        range_control = tk.Frame(controls, background=self.CARD)
+        range_control.pack(side="left", padx=(0, 12))
+        self.metrics_range_label = tk.Label(
+            range_control,
+            text="Range",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["tiny"],
+        )
+        self.metrics_range_label.pack(anchor="w", pady=(0, 4))
+        ranges = tk.Frame(range_control, background=self.CARD)
+        ranges.pack()
         self.metrics_range_buttons: dict[int, tk.Radiobutton] = {}
         for index, (label, days) in enumerate(
             (("1d", 1), ("7d", 7), ("30d", 30))
@@ -953,30 +996,49 @@ class SettingsWindow:
             )
             button.grid(row=0, column=index)
             self.metrics_range_buttons[days] = button
-        self.metrics_chart = tk.Canvas(
-            activity_content,
-            height=250,
-            background=self.CARD,
-            highlightthickness=0,
-        )
-        self.metrics_chart.pack(fill="x")
-        self.metrics_chart.bind(
-            "<Configure>",
-            lambda _event: self._draw_metrics(),
-        )
-        tk.Label(
-            activity_content,
-            text=(
-                "Only activity counts while Cat Type is enabled are stored — "
-                "never key names, text, apps, or window titles."
-            ),
+
+        view_control = tk.Frame(controls, background=self.CARD)
+        view_control.pack(side="left")
+        self.metrics_view_label = tk.Label(
+            view_control,
+            text="View",
             background=self.CARD,
             foreground=self.MUTED,
-            font=self.fonts["small"],
-            justify="left",
-            anchor="w",
-        ).pack(fill="x", pady=(8, 0))
-        activity_card.pack(fill="x", pady=(0, 14))
+            font=self.fonts["tiny"],
+        )
+        self.metrics_view_label.pack(anchor="w", pady=(0, 4))
+        views = tk.Frame(view_control, background=self.CARD)
+        views.pack()
+        self.metrics_view_buttons: dict[str, tk.Radiobutton] = {}
+        for index, (label, view) in enumerate(
+            (("Line", "line"), ("Columns", "columns"))
+        ):
+            button = tk.Radiobutton(
+                views,
+                text=label,
+                variable=self.metrics_view,
+                value=view,
+                command=self._change_metrics_view,
+                indicatoron=False,
+                relief="flat",
+                borderwidth=0,
+                highlightthickness=1,
+                highlightbackground=self.BORDER,
+                background=self.BLUSH,
+                selectcolor=self.PEACH,
+                activebackground=self.PEACH,
+                foreground=self.INK,
+                font=self.fonts["small"],
+                padx=12,
+                pady=5,
+                cursor="hand2",
+                takefocus=True,
+            )
+            button.grid(row=0, column=index)
+            self.metrics_view_buttons[view] = button
+
+        self._refresh_metrics_range_buttons()
+        self._refresh_metrics_view_buttons()
 
     def _metric_stat(
         self,
@@ -1018,13 +1080,31 @@ class SettingsWindow:
         ).pack(anchor="w", padx=16, pady=(2, 14))
 
     def _change_metrics_range(self) -> None:
+        self._refresh_metrics_range_buttons()
+        self._draw_metrics()
+
+    def _refresh_metrics_range_buttons(self) -> None:
         selected = self.metrics_range_days.get()
         for days, button in self.metrics_range_buttons.items():
             button.configure(
                 background=self.PEACH if days == selected else self.BLUSH,
                 foreground=self.ACCENT_DARK if days == selected else self.INK,
             )
+
+    def _change_metrics_view(self) -> None:
+        self._refresh_metrics_view_buttons()
         self._draw_metrics()
+
+        if self._on_metrics_view_change is not None:
+            self._on_metrics_view_change(self.metrics_view.get())
+
+    def _refresh_metrics_view_buttons(self) -> None:
+        selected = self.metrics_view.get()
+        for view, button in self.metrics_view_buttons.items():
+            button.configure(
+                background=self.PEACH if view == selected else self.BLUSH,
+                foreground=self.ACCENT_DARK if view == selected else self.INK,
+            )
 
     @staticmethod
     def _metric_line_positions(
@@ -1047,6 +1127,33 @@ class SettingsWindow:
         return [
             (
                 left + step * index,
+                baseline - usable_height * value / maximum,
+            )
+            for index, value in enumerate(values)
+        ]
+
+    @staticmethod
+    def _metric_column_positions(
+        values: list[int],
+        width: int,
+        height: int,
+        *,
+        left: int,
+        right: int,
+        top: int,
+        bottom: int,
+    ) -> list[tuple[float, float, float]]:
+        if not values:
+            return []
+        usable_width = max(1, width - left - right)
+        usable_height = max(1, height - top - bottom)
+        maximum = max(1, max(values))
+        step = usable_width / len(values)
+        baseline = height - bottom
+        return [
+            (
+                left + step * (index + 0.5),
+                baseline,
                 baseline - usable_height * value / maximum,
             )
             for index, value in enumerate(values)
@@ -1084,15 +1191,6 @@ class SettingsWindow:
         right = 14
         top = 24
         bottom = 34
-        positions = self._metric_line_positions(
-            values,
-            width,
-            height,
-            left=left,
-            right=right,
-            top=top,
-            bottom=bottom,
-        )
         maximum = max(values, default=0)
         baseline = height - bottom
         for fraction in (0, 0.5, 1):
@@ -1112,27 +1210,74 @@ class SettingsWindow:
                 fill=self.MUTED,
                 font=self.fonts["tiny"],
             )
-        if maximum and len(positions) > 1:
-            canvas.create_line(
-                *[coordinate for point in positions for coordinate in point],
-                fill=self.ACCENT_DARK,
-                width=3,
-                smooth=days != 30,
-                splinesteps=16,
-                capstyle="round",
-                joinstyle="round",
+        if self.metrics_view.get() == "columns":
+            column_positions = self._metric_column_positions(
+                values,
+                width,
+                height,
+                left=left,
+                right=right,
+                top=top,
+                bottom=bottom,
             )
-            for x, y in positions:
-                canvas.create_oval(
-                    x - 3,
-                    y - 3,
-                    x + 3,
-                    y + 3,
+            label_positions = [
+                (x, y) for x, _column_baseline, y in column_positions
+            ]
+            step = (width - left - right) / max(1, len(values))
+            bar_width = max(3, min(22, step * 0.56))
+            if maximum:
+                for value, (x, column_baseline, y) in zip(
+                    values,
+                    column_positions,
+                ):
+                    if value:
+                        canvas.create_line(
+                            x,
+                            column_baseline,
+                            x,
+                            y,
+                            fill=self.ACCENT_DARK,
+                            width=bar_width,
+                            capstyle="round",
+                            tags=("metric-column",),
+                        )
+        else:
+            line_positions = self._metric_line_positions(
+                values,
+                width,
+                height,
+                left=left,
+                right=right,
+                top=top,
+                bottom=bottom,
+            )
+            label_positions = line_positions
+            if maximum and len(line_positions) > 1:
+                canvas.create_line(
+                    *[
+                        coordinate
+                        for point in line_positions
+                        for coordinate in point
+                    ],
                     fill=self.ACCENT_DARK,
-                    outline=self.CARD,
-                    width=1,
+                    width=3,
+                    smooth=False,
+                    capstyle="round",
+                    joinstyle="round",
+                    tags=("metric-line",),
                 )
-        for (x, _y), label in zip(positions, labels):
+                for x, y in line_positions:
+                    canvas.create_oval(
+                        x - 3,
+                        y - 3,
+                        x + 3,
+                        y + 3,
+                        fill=self.ACCENT_DARK,
+                        outline=self.CARD,
+                        width=1,
+                        tags=("metric-point",),
+                    )
+        for (x, _y), label in zip(label_positions, labels):
             if label is not None:
                 canvas.create_text(
                     x,
@@ -1396,6 +1541,7 @@ class SettingsWindow:
         parent: tk.Misc,
         title: str,
         eyebrow: str,
+        heading_actions: Callable[[tk.Frame], None] | None = None,
     ) -> tuple[tk.Frame, tk.Frame]:
         outer = tk.Frame(
             parent,
@@ -1405,6 +1551,8 @@ class SettingsWindow:
         )
         heading = tk.Frame(outer, background=self.CARD)
         heading.pack(fill="x", padx=18, pady=(15, 11))
+        if heading_actions is not None:
+            heading_actions(heading)
         tk.Label(
             heading,
             text=title,
@@ -1638,6 +1786,7 @@ class SettingsWindow:
             fade_seconds=round(self.fade_seconds.get(), 1),
             placement=PLACEMENT_LABELS[self.placement.get()],
             launch_at_startup=self.launch_at_startup.get(),
+            metrics_view=self.metrics_view.get(),
         ).normalized()
         self._on_save(settings)
         self.close()
