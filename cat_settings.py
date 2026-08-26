@@ -13,6 +13,7 @@ APP_NAME = "Cat Type"
 SETTINGS_VERSION = 1
 VALID_CAT_STYLES = ("alternate", "gray", "ginger")
 VALID_PLACEMENTS = ("above-right", "above-left", "below-right", "below-left")
+VALID_METRICS_VIEWS = ("line", "columns")
 
 
 @dataclass
@@ -24,6 +25,7 @@ class AppSettings:
     fade_seconds: float = 0.35
     placement: str = "above-right"
     launch_at_startup: bool = False
+    metrics_view: str = "line"
 
     def normalized(self) -> "AppSettings":
         cat_style = (
@@ -36,6 +38,11 @@ class AppSettings:
             if self.placement in VALID_PLACEMENTS
             else AppSettings.placement
         )
+        metrics_view = (
+            self.metrics_view
+            if self.metrics_view in VALID_METRICS_VIEWS
+            else AppSettings.metrics_view
+        )
         hold_seconds = min(5.0, max(0.5, float(self.hold_seconds)))
         fade_seconds = min(1.5, max(0.0, float(self.fade_seconds)))
         fade_seconds = min(fade_seconds, hold_seconds)
@@ -47,6 +54,7 @@ class AppSettings:
             fade_seconds=round(fade_seconds, 2),
             placement=placement,
             launch_at_startup=bool(self.launch_at_startup),
+            metrics_view=metrics_view,
         )
 
 
