@@ -80,7 +80,7 @@ if is_macos:
         name="Cat Type.app",
         icon=str(icon_path),
         bundle_identifier="com.fungusta.cat-type",
-        version="1.0.16",
+        version="1.0.17",
         info_plist={
             "LSUIElement": True,
             "NSHighResolutionCapable": True,
