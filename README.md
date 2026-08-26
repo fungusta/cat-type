@@ -56,7 +56,8 @@ Settings are saved for the current user and take effect immediately:
 - Choose which corner of the caret the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
-- View all-time activity and 1-day, 7-day, or 30-day trends in one line chart.
+- View all-time activity and 1-day, 7-day, or 30-day trends as an exact line
+  or columns; Cat Type remembers the selected chart view.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 
