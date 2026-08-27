@@ -275,6 +275,7 @@ class SettingsWindow:
     TWO_COLUMN_BREAKPOINT = 840
     CONTENT_LAYOUT_SETTLE_PASSES = 2
     CONTENT_FIT_SETTLE_PASSES = 4
+    FOOTER_VERTICAL_PADDING: tuple[int, int] = (12, 14)
 
     def __init__(
         self,
@@ -1391,7 +1392,7 @@ class SettingsWindow:
             side="bottom",
             fill="x",
             padx=28,
-            pady=(12, 14),
+            pady=self.FOOTER_VERTICAL_PADDING,
         )
         self.footer_buttons = tk.Frame(
             footer,
@@ -1558,11 +1559,19 @@ class SettingsWindow:
             pady=0,
         )
 
-    def _sync_scrollbar_visibility(self) -> None:
+    def _sync_scrollbar_visibility(
+        self,
+        viewport_height: int | None = None,
+    ) -> None:
         bounds = self.scroll_canvas.bbox("all")
+        available_height = (
+            self.scroll_canvas.winfo_height()
+            if viewport_height is None
+            else viewport_height
+        )
         overflows = bool(
             bounds
-            and bounds[3] - bounds[1] > self.scroll_canvas.winfo_height()
+            and bounds[3] - bounds[1] > available_height
         )
         is_visible = bool(self.scrollbar.winfo_manager())
         if overflows and not is_visible:
@@ -1675,6 +1684,19 @@ class SettingsWindow:
         return min(max(opening_height, required_height), available_height)
 
     @classmethod
+    def _content_viewport_height(
+        cls,
+        window_height: int,
+        footer_height: int,
+    ) -> int:
+        return max(
+            1,
+            window_height
+            - footer_height
+            - sum(cls.FOOTER_VERTICAL_PADDING),
+        )
+
+    @classmethod
     def _fit_to_screen(
         cls,
         width: int,
@@ -1692,7 +1714,11 @@ class SettingsWindow:
         )
         return min(width, available_width), min(height, available_height)
 
-    def _settle_content_layout(self, window_width: int) -> None:
+    def _settle_content_layout(
+        self,
+        window_width: int,
+        viewport_height: int,
+    ) -> None:
         """Synchronize width-driven layout before measuring its height."""
         for _ in range(self.CONTENT_LAYOUT_SETTLE_PASSES):
             scrollbar_width = (
@@ -1707,7 +1733,7 @@ class SettingsWindow:
             )
             self._apply_responsive_layout(canvas_width)
             self.window.update_idletasks()
-            self._sync_scrollbar_visibility()
+            self._sync_scrollbar_visibility(viewport_height)
             self.window.update_idletasks()
 
     def _center(self) -> None:
@@ -1738,15 +1764,19 @@ class SettingsWindow:
         for _ in range(self.CONTENT_FIT_SETTLE_PASSES):
             self.window.geometry(f"{width}x{height}")
             self.window.update_idletasks()
-            self._settle_content_layout(width)
             measured_height = self.window.winfo_height()
+            viewport_height = self._content_viewport_height(
+                measured_height,
+                self.footer.winfo_reqheight(),
+            )
+            self._settle_content_layout(width, viewport_height)
             bounds = self.scroll_canvas.bbox("all")
             content_height = bounds[3] - bounds[1] if bounds is not None else 0
             fitted_height = self._content_fitted_height(
                 opening_height,
                 measured_height,
                 content_height,
-                self.scroll_canvas.winfo_height(),
+                viewport_height,
                 available_height,
             )
             if fitted_height == measured_height:

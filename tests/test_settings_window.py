@@ -80,6 +80,18 @@ class SettingsWindowSizingTests(unittest.TestCase):
         self.assertEqual(fitted_height(800, 800, 1228, 736, 1120), 1120)
         self.assertEqual(fitted_height(600, 1268, 667, 1205, 1920), 730)
 
+    def test_content_viewport_height_excludes_footer_and_padding(self) -> None:
+        viewport_height = getattr(
+            SettingsWindow,
+            "_content_viewport_height",
+            lambda *_args: None,
+        )
+
+        self.assertEqual(viewport_height(300, 35), 239)
+        self.assertEqual(viewport_height(514, 35), 453)
+        self.assertEqual(viewport_height(363, 35), 302)
+        self.assertEqual(viewport_height(20, 35), 1)
+
     def test_center_reduces_minimum_when_screen_is_too_small(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         window = Mock()
@@ -94,11 +106,13 @@ class SettingsWindowSizingTests(unittest.TestCase):
         scroll_canvas.winfo_height.return_value = 400
         settings_window.scroll_canvas = scroll_canvas
         settings_window._settle_content_layout = Mock()
+        settings_window.footer = Mock()
+        settings_window.footer.winfo_reqheight.return_value = 35
 
         settings_window._center()
 
         window.minsize.assert_called_once_with(600, 400)
-        settings_window._settle_content_layout.assert_called_once_with(600)
+        settings_window._settle_content_layout.assert_called_once_with(600, 339)
         self.assertEqual(
             window.geometry.call_args_list,
             [call("600x400"), call("600x400+20+24")],
@@ -123,11 +137,13 @@ class SettingsWindowSizingTests(unittest.TestCase):
             events.append(("idle", None))
         )
         settings_window._sync_scrollbar_visibility = Mock(
-            side_effect=lambda: events.append(("scrollbar", None))
+            side_effect=lambda viewport_height: events.append(
+                ("scrollbar", viewport_height)
+            )
         )
 
         try:
-            settings_window._settle_content_layout(855)
+            settings_window._settle_content_layout(855, 453)
         except TypeError as error:
             self.fail(
                 "_settle_content_layout must accept the target window width: "
@@ -141,7 +157,7 @@ class SettingsWindowSizingTests(unittest.TestCase):
                     ("canvas", width),
                     ("layout", width),
                     ("idle", None),
-                    ("scrollbar", None),
+                    ("scrollbar", 453),
                     ("idle", None),
                 ]
             )
@@ -284,6 +300,27 @@ class SettingsWindowScrollingTests(unittest.TestCase):
         settings_window.scrollbar = scrollbar
 
         settings_window._sync_scrollbar_visibility()
+
+        scrollbar.pack_forget.assert_called_once_with()
+        canvas.yview_moveto.assert_called_once_with(0)
+
+    def test_scrollbar_uses_deterministic_viewport_during_opening(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 453)
+        canvas.winfo_height.return_value = 239
+        scrollbar = Mock()
+        scrollbar.winfo_manager.return_value = "pack"
+        settings_window.scroll_canvas = canvas
+        settings_window.scrollbar = scrollbar
+
+        try:
+            settings_window._sync_scrollbar_visibility(453)
+        except TypeError as error:
+            self.fail(
+                "_sync_scrollbar_visibility must accept viewport height: "
+                f"{error}"
+            )
 
         scrollbar.pack_forget.assert_called_once_with()
         canvas.yview_moveto.assert_called_once_with(0)
