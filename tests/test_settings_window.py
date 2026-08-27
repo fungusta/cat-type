@@ -387,20 +387,44 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
         self.assertFalse(hasattr(self.settings_window, "hero"))
 
-    def test_opening_height_grows_to_remove_avoidable_scrolling(self) -> None:
-        with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
-            fitted_window = SettingsWindow(
-                self.root,
-                AppSettings(),
-                Mock(),
-            )
+    def test_scaled_opening_grows_to_remove_avoidable_scrolling(self) -> None:
+        self.root.tk.call("tk", "scaling", 2.5)
+        fitted_window = SettingsWindow(
+            self.root,
+            AppSettings(),
+            Mock(),
+        )
         self.addCleanup(fitted_window.close)
+        fitted_window.window.geometry("920x800")
+        fitted_window.window.minsize(
+            fitted_window.MIN_WIDTH,
+            fitted_window.MIN_HEIGHT,
+        )
+        fitted_window.window.update()
+        opening_bounds = fitted_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(opening_bounds)
+        assert opening_bounds is not None
+        opening_content_height = opening_bounds[3] - opening_bounds[1]
+        opening_viewport_height = fitted_window.scroll_canvas.winfo_height()
+        fitted_window.window.winfo_screenwidth = lambda: 1920
+        fitted_window.window.winfo_screenheight = lambda: 1200
+        fitted_window.window.maxsize = lambda: (5000, 5000)
+
+        fitted_window._center()
         fitted_window.window.update()
 
         bounds = fitted_window.scroll_canvas.bbox("all")
         self.assertIsNotNone(bounds)
         assert bounds is not None
-        self.assertGreater(fitted_window.window.winfo_height(), 600)
+        expected_height = fitted_window._content_fitted_height(
+            800,
+            800,
+            opening_content_height,
+            opening_viewport_height,
+            1120,
+        )
+        self.assertGreater(fitted_window.window.winfo_height(), 800)
+        self.assertEqual(fitted_window.window.winfo_height(), expected_height)
         self.assertLessEqual(
             bounds[3] - bounds[1],
             fitted_window.scroll_canvas.winfo_height(),
@@ -410,6 +434,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_narrow_opening_uses_available_height_and_keeps_needed_scroll(
         self,
     ) -> None:
+        self.root.tk.call("tk", "scaling", 1.0)
         with (
             patch.object(SettingsWindow, "PREFERRED_WIDTH", 760),
             patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600),
@@ -420,23 +445,27 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 Mock(),
             )
         self.addCleanup(fitted_window.close)
+        fitted_window.window.geometry("760x600")
+        fitted_window.window.minsize(
+            fitted_window.MIN_WIDTH,
+            fitted_window.MIN_HEIGHT,
+        )
+        fitted_window.window.update()
+        fitted_window.window.winfo_screenwidth = lambda: 800
+        fitted_window.window.winfo_screenheight = lambda: 800
+        fitted_window.window.maxsize = lambda: (5000, 5000)
+
+        fitted_window._center()
         fitted_window.window.update()
 
-        available_height = (
-            fitted_window.window.winfo_screenheight()
-            - fitted_window.SCREEN_VERTICAL_MARGIN
-        )
-        maximum_height = fitted_window.window.maxsize()[1]
-        if maximum_height > 0:
-            available_height = min(available_height, maximum_height)
-
         self.assertEqual(fitted_window._layout_mode, "narrow")
-        self.assertEqual(fitted_window.window.winfo_height(), available_height)
+        self.assertEqual(fitted_window.window.winfo_height(), 720)
         self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
 
     def test_opening_measures_after_reducing_minimum_for_small_screen(
         self,
     ) -> None:
+        self.root.tk.call("tk", "scaling", 1.0)
         with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
             fitted_window = SettingsWindow(
                 self.root,
@@ -475,18 +504,26 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_opening_remeasures_after_scrollbar_changes_layout_mode(
         self,
     ) -> None:
-        with (
-            patch.object(SettingsWindow, "PREFERRED_WIDTH", 853),
-            patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600),
-        ):
+        self.root.tk.call("tk", "scaling", 1.0)
+        with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
             fitted_window = SettingsWindow(
                 self.root,
                 AppSettings(),
                 Mock(),
             )
         self.addCleanup(fitted_window.close)
-        fitted_window.window.geometry("853x600")
+        scrollbar_width = fitted_window.scrollbar.winfo_reqwidth()
+        opening_width = (
+            fitted_window.TWO_COLUMN_BREAKPOINT + scrollbar_width - 1
+        )
+        fitted_window.window.geometry(f"{opening_width}x600")
         fitted_window.window.update()
+        self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
+        self.assertEqual(fitted_window._layout_mode, "narrow")
+        self.assertLess(
+            fitted_window.scroll_canvas.winfo_width(),
+            fitted_window.TWO_COLUMN_BREAKPOINT,
+        )
         fitted_window.window.winfo_screenwidth = lambda: 1920
         fitted_window.window.winfo_screenheight = lambda: 2000
         fitted_window.window.maxsize = lambda: (5000, 5000)
