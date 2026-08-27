@@ -93,6 +93,7 @@ class SettingsWindowSizingTests(unittest.TestCase):
         scroll_canvas.bbox.return_value = None
         scroll_canvas.winfo_height.return_value = 400
         settings_window.scroll_canvas = scroll_canvas
+        settings_window._settle_content_layout = Mock()
 
         settings_window._center()
 
@@ -100,6 +101,47 @@ class SettingsWindowSizingTests(unittest.TestCase):
         self.assertEqual(
             window.geometry.call_args_list,
             [call("600x400"), call("600x400+20+24")],
+        )
+
+    def test_content_layout_settles_canvas_width_before_measurement(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        events: list[tuple[str, int | None]] = []
+        widths = iter((839, 855))
+        settings_window.window = Mock()
+        settings_window.scroll_canvas = Mock()
+        settings_window.scroll_canvas.winfo_width.side_effect = lambda: next(
+            widths
+        )
+        settings_window.scroll_canvas.itemconfigure.side_effect = (
+            lambda _item, *, width: events.append(("canvas", width))
+        )
+        settings_window._scroll_content_id = 42
+        settings_window._apply_responsive_layout = Mock(
+            side_effect=lambda width: events.append(("layout", width))
+        )
+        settings_window.window.update_idletasks.side_effect = lambda: (
+            events.append(("idle", None))
+        )
+        settings_window._sync_scrollbar_visibility = Mock(
+            side_effect=lambda: events.append(("scrollbar", None))
+        )
+
+        settings_window._settle_content_layout()
+
+        expected_events: list[tuple[str, int | None]] = []
+        for width in (839, 855):
+            expected_events.extend(
+                [
+                    ("canvas", width),
+                    ("layout", width),
+                    ("idle", None),
+                    ("scrollbar", None),
+                    ("idle", None),
+                ]
+            )
+        self.assertEqual(
+            events,
+            expected_events,
         )
 
 

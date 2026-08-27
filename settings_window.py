@@ -273,6 +273,7 @@ class SettingsWindow:
     SCREEN_HORIZONTAL_MARGIN = 40
     SCREEN_VERTICAL_MARGIN = 80
     TWO_COLUMN_BREAKPOINT = 840
+    CONTENT_LAYOUT_SETTLE_PASSES = 2
     CONTENT_FIT_SETTLE_PASSES = 4
 
     def __init__(
@@ -1691,6 +1692,19 @@ class SettingsWindow:
         )
         return min(width, available_width), min(height, available_height)
 
+    def _settle_content_layout(self) -> None:
+        """Synchronize width-driven layout before measuring its height."""
+        for _ in range(self.CONTENT_LAYOUT_SETTLE_PASSES):
+            canvas_width = max(1, self.scroll_canvas.winfo_width())
+            self.scroll_canvas.itemconfigure(
+                self._scroll_content_id,
+                width=canvas_width,
+            )
+            self._apply_responsive_layout(canvas_width)
+            self.window.update_idletasks()
+            self._sync_scrollbar_visibility()
+            self.window.update_idletasks()
+
     def _center(self) -> None:
         self.window.update_idletasks()
         screen_width = self.window.winfo_screenwidth()
@@ -1719,6 +1733,7 @@ class SettingsWindow:
         for _ in range(self.CONTENT_FIT_SETTLE_PASSES):
             self.window.geometry(f"{width}x{height}")
             self.window.update_idletasks()
+            self._settle_content_layout()
             measured_height = self.window.winfo_height()
             bounds = self.scroll_canvas.bbox("all")
             content_height = bounds[3] - bounds[1] if bounds is not None else 0
