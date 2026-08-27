@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tkinter as tk
 import unittest
 from contextlib import ExitStack
@@ -585,8 +586,136 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 fitted_window.TWO_COLUMN_BREAKPOINT,
             )
 
+            trace_context: dict[str, int | None] = {
+                "height_pass": None,
+                "settle_pass": None,
+                "requested_width": None,
+                "requested_height": None,
+            }
+
+            def trace(event: str, **extra: object) -> None:
+                bounds = fitted_window.scroll_canvas.bbox("all")
+                state = {
+                    "event": event,
+                    "height_pass": trace_context["height_pass"],
+                    "settle_pass": trace_context["settle_pass"],
+                    "requested": {
+                        "width": trace_context["requested_width"],
+                        "height": trace_context["requested_height"],
+                    },
+                    "top_level": {
+                        "width": fitted_window.window.winfo_width(),
+                        "height": fitted_window.window.winfo_height(),
+                    },
+                    "scrollbar": {
+                        "manager": fitted_window.scrollbar.winfo_manager(),
+                        "requested_width": fitted_window.scrollbar.winfo_reqwidth(),
+                        "mapped": bool(fitted_window.scrollbar.winfo_ismapped()),
+                    },
+                    "canvas": {
+                        "width": fitted_window.scroll_canvas.winfo_width(),
+                        "height": fitted_window.scroll_canvas.winfo_height(),
+                    },
+                    "responsive_mode": fitted_window._layout_mode,
+                    "content_bbox_height": (
+                        bounds[3] - bounds[1] if bounds is not None else None
+                    ),
+                    "minsize": fitted_window.window.minsize(),
+                    "maxsize": fitted_window.window.maxsize(),
+                }
+                state.update(extra)
+                print(
+                    f"[DEBUG-winh] {json.dumps(state, sort_keys=True)}",
+                    flush=True,
+                )
+
+            original_geometry = fitted_window.window.geometry
+
+            def traced_geometry(geometry: str | None = None) -> str:
+                if geometry and "+" not in geometry:
+                    requested_width, requested_height = geometry.split("x")
+                    trace_context["height_pass"] = (
+                        (trace_context["height_pass"] or 0) + 1
+                    )
+                    trace_context["settle_pass"] = None
+                    trace_context["requested_width"] = int(requested_width)
+                    trace_context["requested_height"] = int(requested_height)
+                    trace("height_geometry_request", geometry=geometry)
+                elif geometry:
+                    trace("final_geometry_request", geometry=geometry)
+                return original_geometry(geometry)
+
+            original_itemconfigure = fitted_window.scroll_canvas.itemconfigure
+
+            def traced_itemconfigure(
+                item: int,
+                **kwargs: object,
+            ) -> object:
+                if item == fitted_window._scroll_content_id and "width" in kwargs:
+                    trace_context["settle_pass"] = (
+                        (trace_context["settle_pass"] or 0) + 1
+                    )
+                    trace(
+                        "settle_canvas_width",
+                        derived_canvas_width=kwargs["width"],
+                    )
+                return original_itemconfigure(item, **kwargs)
+
+            original_apply_responsive_layout = (
+                fitted_window._apply_responsive_layout
+            )
+
+            def traced_apply_responsive_layout(canvas_width: int) -> None:
+                original_apply_responsive_layout(canvas_width)
+                trace(
+                    "responsive_layout_applied",
+                    derived_canvas_width=canvas_width,
+                )
+
+            original_update_idletasks = fitted_window.window.update_idletasks
+
+            def traced_update_idletasks() -> None:
+                original_update_idletasks()
+                trace("after_idle_flush")
+
+            original_fitted_height = SettingsWindow._content_fitted_height
+
+            def traced_fitted_height(
+                opening_height: int,
+                measured_height: int,
+                content_height: int,
+                viewport_height: int,
+                available_height: int,
+            ) -> int:
+                result = original_fitted_height(
+                    opening_height,
+                    measured_height,
+                    content_height,
+                    viewport_height,
+                    available_height,
+                )
+                trace(
+                    "fitted_height",
+                    fitted_height_inputs={
+                        "opening_height": opening_height,
+                        "measured_height": measured_height,
+                        "content_height": content_height,
+                        "viewport_height": viewport_height,
+                        "available_height": available_height,
+                    },
+                    fitted_height_result=result,
+                )
+                return result
+
+            fitted_window.window.geometry = traced_geometry
+            fitted_window.scroll_canvas.itemconfigure = traced_itemconfigure
+            fitted_window._apply_responsive_layout = traced_apply_responsive_layout
+            fitted_window.window.update_idletasks = traced_update_idletasks
+            fitted_window._content_fitted_height = traced_fitted_height
             original_center(fitted_window)
+            trace("before_full_window_update")
             fitted_window.window.update()
+            trace("after_full_window_update")
 
         bounds = fitted_window.scroll_canvas.bbox("all")
         self.assertIsNotNone(bounds)
