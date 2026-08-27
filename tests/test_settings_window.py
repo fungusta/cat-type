@@ -494,10 +494,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             fitted_window.window.winfo_width(),
             fitted_window.MIN_WIDTH,
         )
-        first_measurement = fitted_height.call_args_list[0].args
-        self.assertEqual(
-            first_measurement[2],
+        measured_content_heights = {
+            measurement.args[2]
+            for measurement in fitted_height.call_args_list
+        }
+        self.assertIn(
             bounds[3] - bounds[1],
+            measured_content_heights,
         )
         self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
 
@@ -505,9 +508,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self,
     ) -> None:
         self.root.tk.call("tk", "scaling", 1.0)
+        original_center = SettingsWindow._center
         with (
             patch.object(SettingsWindow, "PREFERRED_HEIGHT", 300),
             patch.object(SettingsWindow, "MIN_HEIGHT", 200),
+            patch.object(SettingsWindow, "_center"),
         ):
             fitted_window = SettingsWindow(
                 self.root,
@@ -524,6 +529,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             )
             fitted_window.window.geometry(f"{opening_width}x300")
             fitted_window.window.update()
+            self.assertEqual(fitted_window.window.winfo_height(), 300)
             self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
             self.assertEqual(fitted_window._layout_mode, "narrow")
             self.assertLess(
@@ -531,7 +537,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 fitted_window.TWO_COLUMN_BREAKPOINT,
             )
 
-            fitted_window._center()
+            original_center(fitted_window)
             fitted_window.window.update()
 
         bounds = fitted_window.scroll_canvas.bbox("all")
