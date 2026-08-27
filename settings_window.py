@@ -1692,10 +1692,15 @@ class SettingsWindow:
         )
         return min(width, available_width), min(height, available_height)
 
-    def _settle_content_layout(self) -> None:
+    def _settle_content_layout(self, window_width: int) -> None:
         """Synchronize width-driven layout before measuring its height."""
         for _ in range(self.CONTENT_LAYOUT_SETTLE_PASSES):
-            canvas_width = max(1, self.scroll_canvas.winfo_width())
+            scrollbar_width = (
+                self.scrollbar.winfo_reqwidth()
+                if self.scrollbar.winfo_manager()
+                else 0
+            )
+            canvas_width = max(1, window_width - scrollbar_width)
             self.scroll_canvas.itemconfigure(
                 self._scroll_content_id,
                 width=canvas_width,
@@ -1733,7 +1738,7 @@ class SettingsWindow:
         for _ in range(self.CONTENT_FIT_SETTLE_PASSES):
             self.window.geometry(f"{width}x{height}")
             self.window.update_idletasks()
-            self._settle_content_layout()
+            self._settle_content_layout(width)
             measured_height = self.window.winfo_height()
             bounds = self.scroll_canvas.bbox("all")
             content_height = bounds[3] - bounds[1] if bounds is not None else 0

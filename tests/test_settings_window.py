@@ -98,6 +98,7 @@ class SettingsWindowSizingTests(unittest.TestCase):
         settings_window._center()
 
         window.minsize.assert_called_once_with(600, 400)
+        settings_window._settle_content_layout.assert_called_once_with(600)
         self.assertEqual(
             window.geometry.call_args_list,
             [call("600x400"), call("600x400+20+24")],
@@ -106,12 +107,11 @@ class SettingsWindowSizingTests(unittest.TestCase):
     def test_content_layout_settles_canvas_width_before_measurement(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         events: list[tuple[str, int | None]] = []
-        widths = iter((839, 855))
         settings_window.window = Mock()
         settings_window.scroll_canvas = Mock()
-        settings_window.scroll_canvas.winfo_width.side_effect = lambda: next(
-            widths
-        )
+        settings_window.scrollbar = Mock()
+        settings_window.scrollbar.winfo_manager.side_effect = ["pack", ""]
+        settings_window.scrollbar.winfo_reqwidth.return_value = 16
         settings_window.scroll_canvas.itemconfigure.side_effect = (
             lambda _item, *, width: events.append(("canvas", width))
         )
@@ -126,7 +126,13 @@ class SettingsWindowSizingTests(unittest.TestCase):
             side_effect=lambda: events.append(("scrollbar", None))
         )
 
-        settings_window._settle_content_layout()
+        try:
+            settings_window._settle_content_layout(855)
+        except TypeError as error:
+            self.fail(
+                "_settle_content_layout must accept the target window width: "
+                f"{error}"
+            )
 
         expected_events: list[tuple[str, int | None]] = []
         for width in (839, 855):
