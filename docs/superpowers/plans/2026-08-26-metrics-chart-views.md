@@ -1,8 +1,8 @@
-# Metrics Chart Views and v1.0.17 Release Implementation Plan
+# Metrics Chart Views and v1.0.18 Release Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let users switch the Metrics chart between an exact straight line and columns, remember that choice, and publish the verified change as Cat Type v1.0.17.
+**Goal:** Let users switch the Metrics chart between an exact straight line and columns, remember that choice, and publish the verified change as Cat Type v1.0.18.
 
 **Architecture:** Add the view preference to the existing normalized `AppSettings` model. Keep one Metrics canvas and one range/data path, then select a focused line or column mark renderer after shared axis scaling. `SettingsWindow` redraws immediately and sends only the view value to `CatTypeApp`, which persists it without capturing unrelated unsaved controls.
 
@@ -16,7 +16,7 @@
 - Switching views persists only `metrics_view` immediately and does not save unrelated Settings controls.
 - The Metrics data format and privacy behavior do not change.
 - Do not add tooltips, per-point labels, new ranges, persisted range selection, export, new metrics, or a third chart style.
-- Release version is `1.0.17` with annotated tag `v1.0.17`.
+- Release version is `1.0.18` with annotated tag `v1.0.18`.
 
 ---
 
@@ -29,8 +29,8 @@
 - Modify `tests/test_settings_window.py`: cover control independence, exact line geometry, column geometry, rendering tags, and save behavior.
 - Modify `tests/test_behavior.py`: cover the narrow persistence callback and Settings-window wiring.
 - Modify `README.md`: describe the selectable Metrics views and update the release-tag example.
-- Modify `app_version.py`, `CatType.spec`, `packaging/CatType.iss`, and `packaging/version_info.txt`: align runtime and package metadata to v1.0.17.
-- Modify `tests/test_release_version_check.py`: make v1.0.17 the accepted version and v1.0.16 the rejected prior version.
+- Modify `app_version.py`, `CatType.spec`, `packaging/CatType.iss`, and `packaging/version_info.txt`: align runtime and package metadata to v1.0.18.
+- Modify `tests/test_release_version_check.py`: make v1.0.18 the accepted version and v1.0.17 the rejected prior version.
 
 ---
 
@@ -549,7 +549,7 @@ with a focused `fix:` message.
 
 ---
 
-### Task 5: Prepare v1.0.17 metadata
+### Task 5: Prepare v1.0.18 metadata
 
 **Files:**
 - Modify: `app_version.py`
@@ -560,74 +560,74 @@ with a focused `fix:` message.
 - Modify: `README.md`
 
 **Interfaces:**
-- Produces: all package metadata accepted by `python scripts/check_release_version.py v1.0.17`.
+- Produces: all package metadata accepted by `python scripts/check_release_version.py v1.0.18`.
 
 - [ ] **Step 1: Update the release-check test first**
 
-Change accepted values in `tests/test_release_version_check.py` to `1.0.17`
-and prior-version rejection values to `1.0.16`:
+Change accepted values in `tests/test_release_version_check.py` to `1.0.18`
+and prior-version rejection values to `1.0.17`:
 
 ```python
 def test_current_version_matches_every_platform_marker(self) -> None:
-    self.assertEqual(APP_VERSION, "1.0.17")
-    self.assertEqual(metadata_mismatches("1.0.17", PROJECT_ROOT), [])
-    self.assertNotEqual(metadata_mismatches("1.0.16", PROJECT_ROOT), [])
+    self.assertEqual(APP_VERSION, "1.0.18")
+    self.assertEqual(metadata_mismatches("1.0.18", PROJECT_ROOT), [])
+    self.assertNotEqual(metadata_mismatches("1.0.17", PROJECT_ROOT), [])
 ```
 
 - [ ] **Step 2: Run the release-check test and confirm the red state**
 
 Run: `python -m unittest tests.test_release_version_check -v`
 
-Expected: current version and metadata assertions fail at `1.0.16`.
+Expected: current version and metadata assertions fail at `1.0.17`.
 
 - [ ] **Step 3: Align every version-bearing file**
 
 Set these exact values:
 
 ```text
-app_version.py: APP_VERSION: str = "1.0.17"
-CatType.spec: version="1.0.17"
-packaging/CatType.iss: #define MyAppVersion "1.0.17"
-packaging/version_info.txt: filevers=(1, 0, 17, 0)
-packaging/version_info.txt: prodvers=(1, 0, 17, 0)
-packaging/version_info.txt: StringStruct('FileVersion', '1.0.17')
-packaging/version_info.txt: StringStruct('ProductVersion', '1.0.17')
-README.md: example tag v1.0.17
+app_version.py: APP_VERSION: str = "1.0.18"
+CatType.spec: version="1.0.18"
+packaging/CatType.iss: #define MyAppVersion "1.0.18"
+packaging/version_info.txt: filevers=(1, 0, 18, 0)
+packaging/version_info.txt: prodvers=(1, 0, 18, 0)
+packaging/version_info.txt: StringStruct('FileVersion', '1.0.18')
+packaging/version_info.txt: StringStruct('ProductVersion', '1.0.18')
+README.md: example tag v1.0.18
 ```
 
 - [ ] **Step 4: Verify release metadata and the complete suite**
 
-Run: `python scripts/check_release_version.py v1.0.17`
+Run: `python scripts/check_release_version.py v1.0.18`
 
 Expected: exit 0 with no output.
 
-Run: `python scripts/check_release_version.py v1.0.16`
+Run: `python scripts/check_release_version.py v1.0.17`
 
 Expected: non-zero exit listing every version-bearing metadata file.
 
 Run the complete Linux CI-equivalent test selection from Task 4 again.
 
-Expected: every selected test passes with version 1.0.17.
+Expected: every selected test passes with version 1.0.18.
 
 - [ ] **Step 5: Commit release preparation**
 
 ```bash
 git add app_version.py CatType.spec packaging/CatType.iss \
   packaging/version_info.txt tests/test_release_version_check.py README.md
-git commit -m "release: prepare Cat Type 1.0.17"
+git commit -m "release: prepare Cat Type 1.0.18"
 ```
 
 ---
 
-### Task 6: Integrate, push, and publish v1.0.17
+### Task 6: Integrate, push, and publish v1.0.18
 
 **Files:**
 - No source changes expected.
-- External state: `origin/main`, annotated tag `v1.0.17`, GitHub Actions, and GitHub Release.
+- External state: `origin/main`, annotated tag `v1.0.18`, GitHub Actions, and GitHub Release.
 
 **Interfaces:**
-- Consumes: reviewed, locally verified v1.0.17 release commit.
-- Produces: successful cross-platform main build and published v1.0.17 release with six expected assets.
+- Consumes: reviewed, locally verified v1.0.18 release commit.
+- Produces: successful cross-platform main build and published v1.0.18 release with six expected assets.
 
 - [ ] **Step 1: Integrate the isolated branch into local main**
 
@@ -639,7 +639,7 @@ git switch main
 git merge --ff-only feature/metrics-chart-views
 ```
 
-Expected: `main` points at the verified v1.0.17 release commit and remains clean.
+Expected: `main` points at the verified v1.0.18 release commit and remains clean.
 
 - [ ] **Step 2: Push main and verify the cross-platform build**
 
@@ -658,8 +658,8 @@ Confirm `git rev-parse HEAD`, `git rev-parse origin/main`, and the successful
 workflow `headSha` are identical. Then run:
 
 ```bash
-git tag -a v1.0.17 -m "Cat Type v1.0.17"
-git push origin v1.0.17
+git tag -a v1.0.18 -m "Cat Type v1.0.18"
+git push origin v1.0.18
 ```
 
 Expected: the tag is created once on the exact tested main commit.
@@ -667,7 +667,7 @@ Expected: the tag is created once on the exact tested main commit.
 - [ ] **Step 4: Verify the tag-triggered Release workflow**
 
 Use `gh run list` to identify the `Release` run whose `headBranch` is
-`v1.0.17`, then run `gh run watch <run-id> --exit-status`.
+`v1.0.18`, then run `gh run watch <run-id> --exit-status`.
 
 Expected: all five build-matrix jobs and the publish job succeed. Do not move,
 delete, or recreate the tag if a post-tag job fails.
@@ -677,11 +677,11 @@ delete, or recreate the tag if a post-tag job fails.
 Run:
 
 ```bash
-gh release view v1.0.17 \
+gh release view v1.0.18 \
   --json tagName,isDraft,isPrerelease,url,assets
 ```
 
-Expected: `tagName` is `v1.0.17`, `isDraft` and `isPrerelease` are false, and
+Expected: `tagName` is `v1.0.18`, `isDraft` and `isPrerelease` are false, and
 the asset names are exactly:
 
 ```text
@@ -695,7 +695,7 @@ SHA256SUMS.txt
 
 - [ ] **Step 6: Final completion audit**
 
-Confirm the local worktree is clean, `main`, `origin/main`, and `v1.0.17`
+Confirm the local worktree is clean, `main`, `origin/main`, and `v1.0.18`
 resolve to the same commit, the cross-platform build and release workflows are
 successful, and the public release has all six assets. Only then report the
 implementation, tests, push, and release as complete.
