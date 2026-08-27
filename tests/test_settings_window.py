@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from app_version import APP_VERSION
 from cat_settings import AppSettings
@@ -68,6 +68,17 @@ class SettingsWindowSizingTests(unittest.TestCase):
             (600, 400),
         )
 
+    def test_content_fitted_height_adds_only_overflow_within_screen(self) -> None:
+        fitted_height = getattr(
+            SettingsWindow,
+            "_content_fitted_height",
+            lambda *_args: None,
+        )
+
+        self.assertEqual(fitted_height(800, 775, 724, 1120), 851)
+        self.assertEqual(fitted_height(800, 677, 736, 1120), 800)
+        self.assertEqual(fitted_height(800, 1228, 736, 1120), 1120)
+
     def test_center_reduces_minimum_when_screen_is_too_small(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         window = Mock()
@@ -77,11 +88,18 @@ class SettingsWindowSizingTests(unittest.TestCase):
         window.winfo_screenheight.return_value = 480
         window.maxsize.return_value = (625, 450)
         settings_window.window = window
+        scroll_canvas = Mock()
+        scroll_canvas.bbox.return_value = None
+        scroll_canvas.winfo_height.return_value = 400
+        settings_window.scroll_canvas = scroll_canvas
 
         settings_window._center()
 
         window.minsize.assert_called_once_with(600, 400)
-        window.geometry.assert_called_once_with("600x400+20+24")
+        self.assertEqual(
+            window.geometry.call_args_list,
+            [call("600x400"), call("600x400+20+24")],
+        )
 
 
 class SettingsWindowMetricsGeometryTests(unittest.TestCase):
@@ -367,6 +385,53 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.cat_style_content,
         )
         self.assertFalse(hasattr(self.settings_window, "hero"))
+
+    def test_opening_height_grows_to_remove_avoidable_scrolling(self) -> None:
+        with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
+            fitted_window = SettingsWindow(
+                self.root,
+                AppSettings(),
+                Mock(),
+            )
+        self.addCleanup(fitted_window.close)
+        fitted_window.window.update()
+
+        bounds = fitted_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(bounds)
+        assert bounds is not None
+        self.assertGreater(fitted_window.window.winfo_height(), 600)
+        self.assertLessEqual(
+            bounds[3] - bounds[1],
+            fitted_window.scroll_canvas.winfo_height(),
+        )
+        self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
+
+    def test_narrow_opening_uses_available_height_and_keeps_needed_scroll(
+        self,
+    ) -> None:
+        with (
+            patch.object(SettingsWindow, "PREFERRED_WIDTH", 760),
+            patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600),
+        ):
+            fitted_window = SettingsWindow(
+                self.root,
+                AppSettings(),
+                Mock(),
+            )
+        self.addCleanup(fitted_window.close)
+        fitted_window.window.update()
+
+        available_height = (
+            fitted_window.window.winfo_screenheight()
+            - fitted_window.SCREEN_VERTICAL_MARGIN
+        )
+        maximum_height = fitted_window.window.maxsize()[1]
+        if maximum_height > 0:
+            available_height = min(available_height, maximum_height)
+
+        self.assertEqual(fitted_window._layout_mode, "narrow")
+        self.assertEqual(fitted_window.window.winfo_height(), available_height)
+        self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
 
     def test_updates_card_shows_version_status_and_invokes_callback_once(
         self,
