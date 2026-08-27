@@ -37,13 +37,10 @@ class Toggle(tk.Frame):
         *,
         variable: tk.BooleanVar,
         title: str,
-        description: str,
         background: str,
         accent: str,
         ink: str,
-        muted: str,
         title_font: tkfont.Font,
-        description_font: tkfont.Font,
     ) -> None:
         super().__init__(
             parent,
@@ -67,14 +64,6 @@ class Toggle(tk.Frame):
             font=title_font,
             cursor="hand2",
         ).pack(anchor="w")
-        tk.Label(
-            copy,
-            text=description,
-            background=background,
-            foreground=muted,
-            font=description_font,
-            cursor="hand2",
-        ).pack(anchor="w", pady=(2, 0))
 
         self.switch = tk.Canvas(
             self,
@@ -284,8 +273,6 @@ class SettingsWindow:
     SCREEN_HORIZONTAL_MARGIN = 40
     SCREEN_VERTICAL_MARGIN = 80
     TWO_COLUMN_BREAKPOINT = 840
-    HERO_HEIGHT = 174
-    COMPACT_HERO_HEIGHT = 156
 
     def __init__(
         self,
@@ -396,14 +383,7 @@ class SettingsWindow:
             "Arial",
             "TkDefaultFont",
         )
-        badge = pick("Trebuchet MS", body)
-
         self.fonts = {
-            "display": tkfont.Font(
-                self.window,
-                family=display,
-                size=30,
-            ),
             "display_compact": tkfont.Font(
                 self.window,
                 family=display,
@@ -434,12 +414,6 @@ class SettingsWindow:
                 self.window,
                 family=body,
                 size=8,
-            ),
-            "badge": tkfont.Font(
-                self.window,
-                family=badge,
-                size=9,
-                weight="bold",
             ),
             "button": tkfont.Font(
                 self.window,
@@ -652,7 +626,6 @@ class SettingsWindow:
             add="+",
         )
 
-        self._build_header(self.scroll_content)
         self._build_page_switcher(self.scroll_content)
 
         self.columns = tk.Frame(
@@ -692,86 +665,10 @@ class SettingsWindow:
         self._build_metrics_page(self.scroll_content)
         self._refresh_usage_metrics()
 
-    def _build_header(self, body: tk.Frame) -> None:
-        self.hero = tk.Frame(
-            body,
-            background=self.PEACH,
-            highlightbackground="#F4C6B3",
-            highlightthickness=1,
-            height=self.HERO_HEIGHT,
-        )
-        self.hero.pack(fill="x", padx=26, pady=(24, 16))
-        self.hero.pack_propagate(False)
-
-        self.hero_copy = tk.Frame(self.hero, background=self.PEACH)
-        self.hero_copy.pack(
-            side="left",
-            fill="both",
-            expand=True,
-            padx=(26, 10),
-            pady=22,
-        )
-        badge = tk.Label(
-            self.hero_copy,
-            text="  YOUR TINY TYPING PAL  ",
-            background="#FFFFFF",
-            foreground=self.ACCENT_DARK,
-            font=self.fonts["badge"],
-        )
-        badge.pack(anchor="w")
-        self.hero_headline = tk.Label(
-            self.hero_copy,
-            text="Make it feel like yours.",
-            background=self.PEACH,
-            foreground=self.INK,
-            font=self.fonts["display"],
-        )
-        self.hero_headline.pack(anchor="w", pady=(10, 3))
-        self.hero_description = tk.Label(
-            self.hero_copy,
-            text="Choose your cat, its cozy corner, and how long it stays.",
-            background=self.PEACH,
-            foreground=self.MUTED,
-            font=self.fonts["body"],
-        )
-        self.hero_description.pack(anchor="w")
-
-        self.preview_canvas = tk.Canvas(
-            self.hero,
-            width=250,
-            height=166,
-            background=self.PEACH,
-            highlightthickness=0,
-        )
-        self.preview_canvas.pack(side="right", padx=(0, 18), pady=10)
-        self.preview_canvas.create_oval(
-            24,
-            132,
-            228,
-            160,
-            fill="#F4C7B5",
-            outline="",
-        )
-        self.preview_canvas.create_text(
-            218,
-            24,
-            text="✦",
-            fill=self.ACCENT,
-            font=self.fonts["symbol"],
-        )
-        self.preview_canvas.create_text(
-            31,
-            45,
-            text="✦",
-            fill="#F3A486",
-            font=self.fonts["symbol"],
-        )
-        self._preview_image = self.preview_canvas.create_image(126, 84)
-
     def _build_page_switcher(self, parent: tk.Frame) -> None:
-        switcher = tk.Frame(parent, background=self.BACKGROUND)
-        switcher.pack(fill="x", padx=26, pady=(0, 14))
-        tabs = tk.Frame(switcher, background=self.BLUSH)
+        self.page_switcher = tk.Frame(parent, background=self.BACKGROUND)
+        self.page_switcher.pack(fill="x", padx=26, pady=(24, 14))
+        tabs = tk.Frame(self.page_switcher, background=self.BLUSH)
         tabs.pack(anchor="w")
         self.page_buttons: dict[str, tk.Radiobutton] = {}
         for index, label in enumerate(("Settings", "Metrics")):
@@ -819,38 +716,23 @@ class SettingsWindow:
         if show_metrics:
             self.columns.pack_forget()
             self.metrics_page.pack(fill="x", padx=26)
-            self.hero_headline.configure(text="See your typing rhythm.")
-            self.hero_description.configure(
-                text="A private view of when your tiny pal has been busiest."
-            )
             self._refresh_usage_metrics()
         else:
             self.metrics_page.pack_forget()
             self.columns.pack(fill="x", padx=26)
-            self.hero_headline.configure(text="Make it feel like yours.")
-            self.hero_description.configure(
-                text="Choose your cat, its cozy corner, and how long it stays."
-            )
         self.scroll_canvas.yview_moveto(0)
         self.window.after_idle(self._sync_scrollbar_visibility)
 
     def _build_companion_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(
-            parent,
-            "Companion",
-            "The important purr-t",
-        )
+        card, content = self._card(parent, "Companion")
         self.enabled_toggle = Toggle(
             content,
             variable=self.enabled,
             title="Show my cat while I type",
-            description="Pause anytime without quitting Cat Type.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
-            muted=self.MUTED,
             title_font=self.fonts["control"],
-            description_font=self.fonts["small"],
         )
         self.enabled_toggle.pack(fill="x")
         counter = tk.Frame(content, background=self.BLUSH)
@@ -879,13 +761,10 @@ class SettingsWindow:
             content,
             variable=self.launch_at_startup,
             title="Start Cat Type when I sign in",
-            description="Your typing pal will be ready and waiting.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
-            muted=self.MUTED,
             title_font=self.fonts["control"],
-            description_font=self.fonts["small"],
         )
         self.launch_at_startup_toggle.pack(fill="x")
         card.pack(fill="x", pady=(0, 14))
@@ -925,7 +804,6 @@ class SettingsWindow:
         activity_card, activity_content = self._card(
             self.metrics_page,
             "Activity",
-            "Your typing rhythm over time",
             heading_actions=self._build_metrics_controls,
         )
         self.metrics_chart = tk.Canvas(
@@ -939,18 +817,6 @@ class SettingsWindow:
             "<Configure>",
             lambda _event: self._draw_metrics(),
         )
-        tk.Label(
-            activity_content,
-            text=(
-                "Only activity counts while Cat Type is enabled are stored — "
-                "never key names, text, apps, or window titles."
-            ),
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-            justify="left",
-            anchor="w",
-        ).pack(fill="x", pady=(8, 0))
         activity_card.pack(fill="x", pady=(0, 14))
 
     def _build_metrics_controls(self, parent: tk.Frame) -> None:
@@ -1343,11 +1209,42 @@ class SettingsWindow:
             self._change_metrics_range()
 
     def _build_appearance_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(
+        self.cat_style_card, self.cat_style_content = self._card(
             parent,
             "Cat style",
-            "Pick a favorite fluff",
         )
+        content = self.cat_style_content
+        self.preview_canvas = tk.Canvas(
+            content,
+            width=250,
+            height=166,
+            background=self.PEACH,
+            highlightthickness=0,
+        )
+        self.preview_canvas.pack(anchor="center", pady=(0, 16))
+        self.preview_canvas.create_oval(
+            24,
+            132,
+            228,
+            160,
+            fill="#F4C7B5",
+            outline="",
+        )
+        self.preview_canvas.create_text(
+            218,
+            24,
+            text="✦",
+            fill=self.ACCENT,
+            font=self.fonts["symbol"],
+        )
+        self.preview_canvas.create_text(
+            31,
+            45,
+            text="✦",
+            fill="#F3A486",
+            font=self.fonts["symbol"],
+        )
+        self._preview_image = self.preview_canvas.create_image(126, 84)
         choices = tk.Frame(content, background=self.CARD)
         choices.pack(fill="x", pady=(0, 16))
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
@@ -1395,7 +1292,7 @@ class SettingsWindow:
             state="readonly",
             style=self.combobox_style,
         ).pack(fill="x", pady=(6, 0))
-        card.pack(fill="x")
+        self.cat_style_card.pack(fill="x")
 
     def _refresh_cat_style_buttons(self) -> None:
         selected = self.cat_style.get()
@@ -1408,11 +1305,7 @@ class SettingsWindow:
             )
 
     def _build_size_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(
-            parent,
-            "Cat size",
-            "Tiny bean or big floof",
-        )
+        card, content = self._card(parent, "Cat size")
         self._slider(
             content,
             "Preview scale",
@@ -1421,24 +1314,10 @@ class SettingsWindow:
             175,
             lambda value: f"{round(float(value))}%",
         )
-        scale_labels = tk.Frame(content, background=self.CARD)
-        scale_labels.pack(fill="x", pady=(5, 0))
-        for side, label in (("left", "smol"), ("right", "chonky")):
-            tk.Label(
-                scale_labels,
-                text=label,
-                background=self.CARD,
-                foreground=self.MUTED,
-                font=self.fonts["tiny"],
-            ).pack(side=side)
         card.pack(fill="x", pady=(0, 14))
 
     def _build_timing_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(
-            parent,
-            "Timing",
-            "Settle in, then fade",
-        )
+        card, content = self._card(parent, "Timing")
         self._slider(
             content,
             "Hang around",
@@ -1459,11 +1338,7 @@ class SettingsWindow:
         card.pack(fill="x", pady=(0, 14))
 
     def _build_updates_card(self, parent: tk.Frame) -> None:
-        card, content = self._card(
-            parent,
-            "Updates",
-            "Keep your typing pal current",
-        )
+        card, content = self._card(parent, "Updates")
         self.update_version_label = tk.Label(
             content,
             text=f"Version {APP_VERSION}",
@@ -1516,14 +1391,6 @@ class SettingsWindow:
             padx=28,
             pady=(12, 14),
         )
-        self.footer_message = tk.Label(
-            footer,
-            text="♡  Only keyboard activity is detected — never what you type.",
-            background=self.BACKGROUND,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-        )
-
         self.footer_buttons = tk.Frame(
             footer,
             background=self.BACKGROUND,
@@ -1547,29 +1414,12 @@ class SettingsWindow:
             takefocus=True,
         )
         self.save_button.pack(side="left", padx=(8, 0))
-        self.footer_message.pack(side="left", anchor="center")
-        footer.bind("<Configure>", self._on_footer_configure)
         return footer
-
-    def _on_footer_configure(
-        self,
-        event: tk.Event[tk.Misc],
-    ) -> None:
-        message_fits = event.width >= (
-            self.footer_message.winfo_reqwidth()
-            + self.footer_buttons.winfo_reqwidth()
-        )
-        message_is_visible = bool(self.footer_message.winfo_manager())
-        if message_fits and not message_is_visible:
-            self.footer_message.pack(side="left", anchor="center")
-        elif not message_fits and message_is_visible:
-            self.footer_message.pack_forget()
 
     def _card(
         self,
         parent: tk.Misc,
         title: str,
-        eyebrow: str,
         heading_actions: Callable[[tk.Frame], None] | None = None,
     ) -> tuple[tk.Frame, tk.Frame]:
         outer = tk.Frame(
@@ -1589,13 +1439,6 @@ class SettingsWindow:
             foreground=self.INK,
             font=self.fonts["section"],
         ).pack(anchor="w")
-        tk.Label(
-            heading,
-            text=eyebrow,
-            background=self.CARD,
-            foreground=self.ACCENT,
-            font=self.fonts["small"],
-        ).pack(anchor="w", pady=(1, 0))
         content = tk.Frame(outer, background=self.CARD)
         content.pack(fill="x", padx=18, pady=(0, 16))
         return outer, content
@@ -1696,9 +1539,6 @@ class SettingsWindow:
                 padx=0,
                 pady=(14, 0),
             )
-            self.preview_canvas.pack_forget()
-            self.hero.configure(height=self.COMPACT_HERO_HEIGHT)
-            self.hero_headline.configure(font=self.fonts["display_compact"])
             return
 
         self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
@@ -1715,13 +1555,6 @@ class SettingsWindow:
             padx=(8, 0),
             pady=0,
         )
-        self.preview_canvas.pack(
-            side="right",
-            padx=(0, 18),
-            pady=10,
-        )
-        self.hero.configure(height=self.HERO_HEIGHT)
-        self.hero_headline.configure(font=self.fonts["display"])
 
     def _sync_scrollbar_visibility(self) -> None:
         bounds = self.scroll_canvas.bbox("all")

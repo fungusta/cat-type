@@ -264,6 +264,69 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
         self.addCleanup(self.settings_window.close)
 
+    @staticmethod
+    def _widget_texts(widget: tk.Misc) -> set[str]:
+        texts: set[str] = set()
+        for child in widget.winfo_children():
+            try:
+                text = child.cget("text")
+            except tk.TclError:
+                text = ""
+            if text:
+                texts.add(str(text))
+            texts.update(SettingsWindowTkLayoutTests._widget_texts(child))
+        return texts
+
+    def test_settings_uses_only_functional_copy_and_starts_with_switcher(
+        self,
+    ) -> None:
+        texts = self._widget_texts(self.settings_window.window)
+        filler_copy = {
+            "  YOUR TINY TYPING PAL  ",
+            "Make it feel like yours.",
+            "Choose your cat, its cozy corner, and how long it stays.",
+            "The important purr-t",
+            "Pause anytime without quitting Cat Type.",
+            "Your typing pal will be ready and waiting.",
+            "Pick a favorite fluff",
+            "Tiny bean or big floof",
+            "smol",
+            "chonky",
+            "Settle in, then fade",
+            "Keep your typing pal current",
+            "Your typing rhythm over time",
+            (
+                "Only activity counts while Cat Type is enabled are stored — "
+                "never key names, text, apps, or window titles."
+            ),
+            "♡  Only keyboard activity is detected — never what you type.",
+        }
+        functional_copy = {
+            "Settings",
+            "Metrics",
+            "Companion",
+            "Cat style",
+            "Cat size",
+            "Timing",
+            "Updates",
+            "Activity",
+            "Show my cat while I type",
+            "Start Cat Type when I sign in",
+            "Save changes",
+        }
+
+        self.assertTrue(filler_copy.isdisjoint(texts))
+        self.assertTrue(functional_copy.issubset(texts))
+        self.assertIs(
+            self.settings_window.scroll_content.winfo_children()[0],
+            self.settings_window.page_switcher,
+        )
+        self.assertIs(
+            self.settings_window.preview_canvas.master,
+            self.settings_window.cat_style_content,
+        )
+        self.assertFalse(hasattr(self.settings_window, "hero"))
+
     def test_updates_card_shows_version_status_and_invokes_callback_once(
         self,
     ) -> None:
@@ -716,16 +779,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     + self.settings_window.window.winfo_width(),
                 )
 
-        required_width = (
-            self.settings_window.footer_message.winfo_reqwidth()
-            + self.settings_window.footer_buttons.winfo_reqwidth()
-        )
-        self.settings_window._on_footer_configure(
-            SimpleNamespace(width=required_width - 1)
-        )
-        self.assertFalse(self.settings_window.footer_message.winfo_ismapped())
+        self.assertFalse(hasattr(self.settings_window, "footer_message"))
+        self.assertFalse(hasattr(self.settings_window, "_on_footer_configure"))
 
-    def test_narrow_layout_stacks_cards_without_clipping_the_header(self) -> None:
+    def test_narrow_layout_stacks_cards_and_keeps_preview_visible(self) -> None:
         self.settings_window.window.geometry("700x480")
         self.settings_window.window.update()
 
@@ -742,11 +799,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             int(self.settings_window.right_column.grid_info()["column"]),
             0,
         )
-        self.assertFalse(self.settings_window.preview_canvas.winfo_ismapped())
-        self.assertEqual(
-            self.settings_window.hero_headline.winfo_width(),
-            self.settings_window.hero_headline.winfo_reqwidth(),
-        )
+        self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
+        self.assertFalse(hasattr(self.settings_window, "hero_headline"))
 
     def test_wide_layout_keeps_the_preview_and_two_columns(self) -> None:
         self.settings_window.window.geometry("920x800")
