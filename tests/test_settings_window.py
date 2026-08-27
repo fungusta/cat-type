@@ -269,7 +269,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         texts: set[str] = set()
         for child in widget.winfo_children():
             try:
-                text = child.cget("text")
+                textvariable = (
+                    child.cget("textvariable")
+                    if "textvariable" in child.keys()
+                    else ""
+                )
+                text = (
+                    child.getvar(textvariable)
+                    if textvariable
+                    else child.cget("text")
+                )
             except tk.TclError:
                 text = ""
             if text:
@@ -285,6 +294,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "  YOUR TINY TYPING PAL  ",
             "Make it feel like yours.",
             "Choose your cat, its cozy corner, and how long it stays.",
+            "See your typing rhythm.",
+            "A private view of when your tiny pal has been busiest.",
             "The important purr-t",
             "Pause anytime without quitting Cat Type.",
             "Your typing pal will be ready and waiting.",
@@ -301,7 +312,15 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             ),
             "♡  Only keyboard activity is detected — never what you type.",
         }
-        functional_copy = {
+        expected_texts = {
+            "0",
+            "0.3s",
+            "1,234",
+            "1.5s",
+            "100%",
+            "1d",
+            "7d",
+            "30d",
             "Settings",
             "Metrics",
             "Companion",
@@ -310,13 +329,35 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Timing",
             "Updates",
             "Activity",
+            "Above · right",
+            "All time",
+            "All-time keystrokes",
+            "Cancel",
+            "Check for updates",
+            "Columns",
+            "Favorite spot",
+            "Ginger tabby",
+            "Gray tabby",
+            "Hang around",
+            "Last 7 days",
+            "Line",
+            "Mix it up",
+            "Open release page",
+            "Preview scale",
+            "Range",
+            "Ready to check.",
             "Show my cat while I type",
+            "Soft fade",
             "Start Cat Type when I sign in",
             "Save changes",
+            "Today",
+            f"Version {APP_VERSION}",
+            "View",
+            "keystrokes",
         }
 
         self.assertTrue(filler_copy.isdisjoint(texts))
-        self.assertTrue(functional_copy.issubset(texts))
+        self.assertEqual(texts, expected_texts)
         self.assertIs(
             self.settings_window.scroll_content.winfo_children()[0],
             self.settings_window.page_switcher,
@@ -833,21 +874,42 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.update_status_label.winfo_width(),
         )
 
-    def test_custom_toggles_are_keyboard_focusable(self) -> None:
-        enabled_before = self.settings_window.enabled.get()
-
-        self.assertTrue(
-            bool(int(self.settings_window.enabled_toggle.cget("takefocus")))
+    def test_custom_toggles_are_keyboard_focusable_and_title_only(self) -> None:
+        cases = (
+            (
+                self.settings_window.enabled_toggle,
+                self.settings_window.enabled,
+                "Show my cat while I type",
+            ),
+            (
+                self.settings_window.launch_at_startup_toggle,
+                self.settings_window.launch_at_startup,
+                "Start Cat Type when I sign in",
+            ),
         )
-        self.settings_window.enabled_toggle.focus_force()
-        self.settings_window.window.update()
-        self.settings_window.enabled_toggle.event_generate("<space>")
-        self.settings_window.window.update()
 
-        self.assertEqual(
-            self.settings_window.enabled.get(),
-            not enabled_before,
-        )
+        for toggle, variable, title in cases:
+            with self.subTest(title=title):
+                copy = next(
+                    child
+                    for child in toggle.winfo_children()
+                    if isinstance(child, tk.Frame)
+                )
+                labels = copy.winfo_children()
+                self.assertEqual(
+                    [label.cget("text") for label in labels],
+                    [title],
+                )
+                self.assertEqual(copy.winfo_reqheight(), labels[0].winfo_reqheight())
+                self.assertTrue(bool(int(toggle.cget("takefocus"))))
+
+                value_before = variable.get()
+                toggle.focus_force()
+                self.settings_window.window.update()
+                toggle.event_generate("<space>")
+                self.settings_window.window.update()
+
+                self.assertEqual(variable.get(), not value_before)
 
     def test_cat_scale_uses_the_full_clickable_range(self) -> None:
         scales: list[CatScale] = []
