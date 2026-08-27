@@ -75,15 +75,16 @@ class SettingsWindowSizingTests(unittest.TestCase):
             lambda *_args: None,
         )
 
-        self.assertEqual(fitted_height(800, 775, 724, 1120), 851)
-        self.assertEqual(fitted_height(800, 677, 736, 1120), 800)
-        self.assertEqual(fitted_height(800, 1228, 736, 1120), 1120)
+        self.assertEqual(fitted_height(800, 800, 775, 724, 1120), 851)
+        self.assertEqual(fitted_height(800, 800, 677, 736, 1120), 800)
+        self.assertEqual(fitted_height(800, 800, 1228, 736, 1120), 1120)
+        self.assertEqual(fitted_height(600, 1268, 667, 1205, 1920), 730)
 
     def test_center_reduces_minimum_when_screen_is_too_small(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         window = Mock()
         window.winfo_width.return_value = 920
-        window.winfo_height.return_value = 800
+        window.winfo_height.side_effect = [800, 400]
         window.winfo_screenwidth.return_value = 640
         window.winfo_screenheight.return_value = 480
         window.maxsize.return_value = (625, 450)
@@ -432,6 +433,80 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(fitted_window._layout_mode, "narrow")
         self.assertEqual(fitted_window.window.winfo_height(), available_height)
         self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
+
+    def test_opening_measures_after_reducing_minimum_for_small_screen(
+        self,
+    ) -> None:
+        with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
+            fitted_window = SettingsWindow(
+                self.root,
+                AppSettings(),
+                Mock(),
+                update_status="Status " * 100,
+            )
+        self.addCleanup(fitted_window.close)
+        fitted_window.window.geometry("920x600")
+        fitted_window.window.minsize(
+            fitted_window.MIN_WIDTH,
+            fitted_window.MIN_HEIGHT,
+        )
+        fitted_window.window.update()
+        fitted_window.window.winfo_screenwidth = lambda: 660
+        fitted_window.window.winfo_screenheight = lambda: 2000
+        fitted_window.window.maxsize = lambda: (5000, 5000)
+
+        fitted_window._center()
+        fitted_window.window.update()
+
+        bounds = fitted_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(bounds)
+        assert bounds is not None
+        self.assertEqual(fitted_window.window.winfo_width(), 620)
+        self.assertLess(
+            fitted_window.window.winfo_width(),
+            fitted_window.MIN_WIDTH,
+        )
+        self.assertLessEqual(
+            bounds[3] - bounds[1],
+            fitted_window.scroll_canvas.winfo_height(),
+        )
+        self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
+
+    def test_opening_remeasures_after_scrollbar_changes_layout_mode(
+        self,
+    ) -> None:
+        with (
+            patch.object(SettingsWindow, "PREFERRED_WIDTH", 853),
+            patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600),
+        ):
+            fitted_window = SettingsWindow(
+                self.root,
+                AppSettings(),
+                Mock(),
+            )
+        self.addCleanup(fitted_window.close)
+        fitted_window.window.geometry("853x600")
+        fitted_window.window.update()
+        fitted_window.window.winfo_screenwidth = lambda: 1920
+        fitted_window.window.winfo_screenheight = lambda: 2000
+        fitted_window.window.maxsize = lambda: (5000, 5000)
+
+        fitted_window._center()
+        fitted_window.window.update()
+
+        bounds = fitted_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(bounds)
+        assert bounds is not None
+        actual_height = fitted_window.window.winfo_height()
+        viewport_height = fitted_window.scroll_canvas.winfo_height()
+        content_height = bounds[3] - bounds[1]
+        non_scroll_height = actual_height - viewport_height
+        self.assertEqual(fitted_window._layout_mode, "wide")
+        self.assertEqual(
+            actual_height,
+            max(600, content_height + non_scroll_height),
+        )
+        self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
 
     def test_updates_card_shows_version_status_and_invokes_callback_once(
         self,

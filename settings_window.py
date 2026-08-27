@@ -273,6 +273,7 @@ class SettingsWindow:
     SCREEN_HORIZONTAL_MARGIN = 40
     SCREEN_VERTICAL_MARGIN = 80
     TWO_COLUMN_BREAKPOINT = 840
+    CONTENT_FIT_SETTLE_PASSES = 4
 
     def __init__(
         self,
@@ -1664,12 +1665,13 @@ class SettingsWindow:
     @staticmethod
     def _content_fitted_height(
         opening_height: int,
+        measured_height: int,
         content_height: int,
         viewport_height: int,
         available_height: int,
     ) -> int:
-        overflow = max(0, content_height - viewport_height)
-        return min(opening_height + overflow, available_height)
+        required_height = measured_height + content_height - viewport_height
+        return min(max(opening_height, required_height), available_height)
 
     @classmethod
     def _fit_to_screen(
@@ -1704,26 +1706,34 @@ class SettingsWindow:
             available_width = min(available_width, maximum_width)
         if maximum_height > 0:
             available_height = min(available_height, maximum_height)
-        width = min(self.window.winfo_width(), available_width)
-        opening_height = min(self.window.winfo_height(), available_height)
-
-        # Settle the responsive layout at its final width before measuring
-        # how much vertical space the scrollable content needs.
-        self.window.geometry(f"{width}x{opening_height}")
-        self.window.update_idletasks()
-
-        bounds = self.scroll_canvas.bbox("all")
-        content_height = bounds[3] - bounds[1] if bounds is not None else 0
-        height = self._content_fitted_height(
-            opening_height,
-            content_height,
-            self.scroll_canvas.winfo_height(),
-            available_height,
-        )
         self.window.minsize(
             min(self.MIN_WIDTH, available_width),
             min(self.MIN_HEIGHT, available_height),
         )
+        width = min(self.window.winfo_width(), available_width)
+        opening_height = min(self.window.winfo_height(), available_height)
+        height = opening_height
+
+        # Scrollbar visibility can change the responsive layout width. Settle
+        # and remeasure until the content-fit height stabilizes.
+        for _ in range(self.CONTENT_FIT_SETTLE_PASSES):
+            self.window.geometry(f"{width}x{height}")
+            self.window.update_idletasks()
+            measured_height = self.window.winfo_height()
+            bounds = self.scroll_canvas.bbox("all")
+            content_height = bounds[3] - bounds[1] if bounds is not None else 0
+            fitted_height = self._content_fitted_height(
+                opening_height,
+                measured_height,
+                content_height,
+                self.scroll_canvas.winfo_height(),
+                available_height,
+            )
+            if fitted_height == measured_height:
+                height = fitted_height
+                break
+            height = fitted_height
+
         x = max(4, (screen_width - width) // 2)
         y = max(4, (screen_height - height - 32) // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
