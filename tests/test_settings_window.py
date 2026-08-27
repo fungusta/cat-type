@@ -450,6 +450,195 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_view.get(), "columns")
         self.on_metrics_view_change.assert_called_once_with("columns")
 
+    def test_columns_cover_every_bucket_with_exact_scaled_bounds(self) -> None:
+        today = datetime.now().astimezone().date()
+        daily = {
+            (today - timedelta(days=offset)).isoformat(): offset + 1
+            for offset in range(30)
+        }
+        hourly = {
+            f"{today.isoformat()}T{hour:02d}": hour + 1
+            for hour in range(24)
+        }
+        metrics = UsageMetrics(
+            total_keystrokes=sum(daily.values()) + sum(hourly.values()),
+            daily=daily,
+            hourly=hourly,
+        )
+        self.settings_window.update_usage_metrics(metrics)
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+        canvas = self.settings_window.metrics_chart
+
+        for days, expected_count in ((1, 24), (7, 7), (30, 30)):
+            with self.subTest(days=days):
+                self.settings_window.metrics_range_days.set(days)
+                self.settings_window.metrics_view.set("columns")
+                self.settings_window._draw_metrics()
+
+                width = max(320, canvas.winfo_width())
+                height = max(180, canvas.winfo_height())
+                values = (
+                    metrics.hourly_series(today)
+                    if days == 1
+                    else [
+                        count
+                        for _day, count in metrics.daily_series(
+                            days,
+                            ending_on=today,
+                        )
+                    ]
+                )
+                expected_positions = SettingsWindow._metric_column_positions(
+                    values,
+                    width,
+                    height,
+                    left=46,
+                    right=14,
+                    top=24,
+                    bottom=34,
+                )
+                expected_width = max(
+                    3,
+                    min(22, ((width - 46 - 14) / expected_count) * 0.56),
+                )
+                column_ids = canvas.find_withtag("metric-column")
+
+                self.assertEqual(len(column_ids), expected_count)
+                for item_id, (x, baseline, value_y) in zip(
+                    column_ids,
+                    expected_positions,
+                ):
+                    self.assertEqual(canvas.type(item_id), "polygon")
+                    coordinates = canvas.coords(item_id)
+                    x_coordinates = coordinates[::2]
+                    y_coordinates = coordinates[1::2]
+                    self.assertAlmostEqual(
+                        min(x_coordinates),
+                        x - expected_width / 2,
+                    )
+                    self.assertAlmostEqual(
+                        max(x_coordinates),
+                        x + expected_width / 2,
+                    )
+                    self.assertAlmostEqual(min(y_coordinates), value_y)
+                    self.assertAlmostEqual(max(y_coordinates), baseline)
+
+    def test_line_points_and_columns_share_each_range_scale(self) -> None:
+        today = datetime.now().astimezone().date()
+        daily = {
+            (today - timedelta(days=offset)).isoformat(): offset + 1
+            for offset in range(30)
+        }
+        hourly = {
+            f"{today.isoformat()}T{hour:02d}": hour + 1
+            for hour in range(24)
+        }
+        self.settings_window.update_usage_metrics(
+            UsageMetrics(
+                total_keystrokes=sum(daily.values()) + sum(hourly.values()),
+                daily=daily,
+                hourly=hourly,
+            )
+        )
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+        canvas = self.settings_window.metrics_chart
+
+        for days, expected_count in ((1, 24), (7, 7), (30, 30)):
+            with self.subTest(days=days):
+                self.settings_window.metrics_range_days.set(days)
+                self.settings_window.metrics_view.set("line")
+                self.settings_window._draw_metrics()
+                line_id = canvas.find_withtag("metric-line")[0]
+                line_coordinates = canvas.coords(line_id)
+                line_points = list(
+                    zip(line_coordinates[::2], line_coordinates[1::2])
+                )
+                marker_centers = []
+                for marker_id in canvas.find_withtag("metric-point"):
+                    x0, y0, x1, y1 = canvas.coords(marker_id)
+                    marker_centers.append(((x0 + x1) / 2, (y0 + y1) / 2))
+
+                self.assertEqual(len(line_points), expected_count)
+                self.assertEqual(marker_centers, line_points)
+
+                self.settings_window.metrics_view.set("columns")
+                self.settings_window._draw_metrics()
+                column_tops = []
+                column_baselines = []
+                for column_id in canvas.find_withtag("metric-column"):
+                    coordinates = canvas.coords(column_id)
+                    column_tops.append(min(coordinates[1::2]))
+                    column_baselines.append(max(coordinates[1::2]))
+
+                self.assertEqual(column_tops, [y for _x, y in line_points])
+                self.assertEqual(len(set(column_baselines)), 1)
+
+    def test_both_views_keep_empty_labels_resize_and_live_refresh(self) -> None:
+        today = datetime.now().astimezone().date()
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+        canvas = self.settings_window.metrics_chart
+
+        for days, empty_message in (
+            (1, "No activity recorded today yet"),
+            (7, "Start typing to see your daily rhythm"),
+            (30, "Start typing to see your daily rhythm"),
+        ):
+            texts_by_view: dict[str, set[str]] = {}
+            for view in ("line", "columns"):
+                with self.subTest(days=days, view=view):
+                    self.settings_window.update_usage_metrics(UsageMetrics())
+                    self.settings_window.metrics_range_days.set(days)
+                    self.settings_window.metrics_view.set(view)
+                    self.settings_window._draw_metrics()
+
+                    self.assertFalse(canvas.find_withtag("metric-line"))
+                    self.assertFalse(canvas.find_withtag("metric-point"))
+                    self.assertFalse(canvas.find_withtag("metric-column"))
+                    texts = {
+                        canvas.itemcget(item_id, "text")
+                        for item_id in canvas.find_all()
+                        if canvas.type(item_id) == "text"
+                    }
+                    self.assertIn(empty_message, texts)
+                    texts_by_view[view] = texts
+
+                    previous_item_ids = set(canvas.find_all())
+                    canvas.event_generate("<Configure>")
+                    self.settings_window.window.update()
+                    self.assertTrue(
+                        set(canvas.find_all()).isdisjoint(previous_item_ids)
+                    )
+                    self.assertEqual(
+                        self.settings_window.metrics_range_days.get(),
+                        days,
+                    )
+                    self.assertEqual(self.settings_window.metrics_view.get(), view)
+
+                    updated = UsageMetrics(
+                        total_keystrokes=9,
+                        daily={today.isoformat(): 9},
+                        hourly={f"{today.isoformat()}T09": 9},
+                    )
+                    self.settings_window.update_usage_metrics(updated)
+                    self.assertEqual(
+                        self.settings_window.metrics_range_days.get(),
+                        days,
+                    )
+                    self.assertEqual(self.settings_window.metrics_view.get(), view)
+                    self.assertTrue(
+                        canvas.find_withtag(
+                            "metric-line" if view == "line" else "metric-column"
+                        )
+                    )
+
+            self.assertEqual(texts_by_view["line"], texts_by_view["columns"])
+
     def test_saved_metrics_view_is_restored_and_included_on_save(self) -> None:
         on_save = Mock()
         on_metrics_view_change = Mock()

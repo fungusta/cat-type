@@ -1231,14 +1231,43 @@ class SettingsWindow:
                     column_positions,
                 ):
                     if value:
-                        canvas.create_line(
-                            x,
+                        half_width = bar_width / 2
+                        corner_radius = min(
+                            4.0,
+                            half_width,
+                            (column_baseline - y) / 2,
+                        )
+                        column_left = x - half_width
+                        column_right = x + half_width
+                        canvas.create_polygon(
+                            column_left + corner_radius,
+                            y,
+                            column_right - corner_radius,
+                            y,
+                            column_right,
+                            y,
+                            column_right,
+                            y + corner_radius,
+                            column_right,
+                            column_baseline - corner_radius,
+                            column_right,
                             column_baseline,
-                            x,
+                            column_right - corner_radius,
+                            column_baseline,
+                            column_left + corner_radius,
+                            column_baseline,
+                            column_left,
+                            column_baseline,
+                            column_left,
+                            column_baseline - corner_radius,
+                            column_left,
+                            y + corner_radius,
+                            column_left,
                             y,
                             fill=self.ACCENT_DARK,
-                            width=bar_width,
-                            capstyle="round",
+                            outline="",
+                            smooth=True,
+                            splinesteps=12,
                             tags=("metric-column",),
                         )
         else:
