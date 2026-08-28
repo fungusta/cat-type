@@ -344,6 +344,18 @@ class SettingsWindowScrollingTests(unittest.TestCase):
         )
 
 
+class SettingsWindowUpdateCardTests(unittest.TestCase):
+    def test_one_pixel_wraplength_jitter_does_not_reconfigure_label(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        label = Mock()
+        label.cget.return_value = "381"
+        settings_window.update_status_label = label
+
+        settings_window._on_update_card_configure(SimpleNamespace(width=380))
+
+        label.configure.assert_not_called()
+
+
 class SettingsWindowTkLayoutTests(unittest.TestCase):
     def setUp(self) -> None:
         try:

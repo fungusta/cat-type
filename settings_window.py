@@ -1589,7 +1589,10 @@ class SettingsWindow:
         event: tk.Event[tk.Misc],
     ) -> None:
         wraplength = max(1, event.width)
-        if int(float(self.update_status_label.cget("wraplength"))) != wraplength:
+        current_wraplength = int(
+            float(self.update_status_label.cget("wraplength"))
+        )
+        if abs(current_wraplength - wraplength) > 1:
             self.update_status_label.configure(wraplength=wraplength)
 
     @staticmethod
