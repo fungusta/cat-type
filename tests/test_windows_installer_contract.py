@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import re
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from auto_update import AvailableUpdate, ReleaseAsset
 from platform_updater import WindowsControllerInstaller, WindowsInstaller
@@ -53,19 +55,37 @@ class RecordingPopen:
 
 
 class WindowsInstallerTests(unittest.TestCase):
-    def test_starts_verified_installer_with_exact_silent_flags_and_no_shell(
+    def test_starts_verified_installer_with_fresh_pyinstaller_environment(
         self,
     ) -> None:
         popen = RecordingPopen()
         installer = WindowsInstaller(popen=popen)
         package = Path("/verified") / INSTALLER_NAME
 
-        result = installer.start(package)
+        with patch.dict(
+            os.environ,
+            {
+                "CAT_TYPE_ENV_SENTINEL": "preserved",
+                "PYINSTALLER_RESET_ENVIRONMENT": "stale",
+            },
+        ):
+            result = installer.start(package)
+            self.assertEqual(
+                os.environ["PYINSTALLER_RESET_ENVIRONMENT"],
+                "stale",
+            )
 
         self.assertIsNone(result)
+        self.assertEqual(len(popen.calls), 1)
+        args, kwargs = popen.calls[0]
+        self.assertEqual(args, [str(package), *EXPECTED_FLAGS])
+        self.assertFalse(kwargs["shell"])
+        self.assertIn("env", kwargs)
+        environment = kwargs["env"]
+        self.assertEqual(environment["CAT_TYPE_ENV_SENTINEL"], "preserved")
         self.assertEqual(
-            popen.calls,
-            [([str(package), *EXPECTED_FLAGS], {"shell": False})],
+            environment["PYINSTALLER_RESET_ENVIRONMENT"],
+            "1",
         )
 
     def test_popen_failure_propagates_instead_of_permitting_shutdown(self) -> None:

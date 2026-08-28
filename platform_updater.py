@@ -216,7 +216,13 @@ class WindowsInstaller:
 
     def start(self, package: Path) -> None:
         package = _validated_windows_installer(package)
-        self._popen([str(package), *self.FLAGS], shell=False)
+        environment = os.environ.copy()
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        self._popen(
+            [str(package), *self.FLAGS],
+            shell=False,
+            env=environment,
+        )
 
 
 class WindowsControllerInstaller:
