@@ -1589,7 +1589,20 @@ class SettingsWindow:
         event: tk.Event[tk.Misc],
     ) -> None:
         wraplength = max(1, event.width)
-        if int(float(self.update_status_label.cget("wraplength"))) != wraplength:
+        current_wraplength = int(
+            float(self.update_status_label.cget("wraplength"))
+        )
+        if sys.platform == "darwin" and len(self.update_status_text.get()) > 100:
+            diagnostic_count = getattr(self, "_macos_wrap_diagnostic_count", 0)
+            if diagnostic_count < 50:
+                print(
+                    "[macOS-wrap] "
+                    f"window={self.window} "
+                    f"event={event.width} current={current_wraplength}",
+                    flush=True,
+                )
+            self._macos_wrap_diagnostic_count = diagnostic_count + 1
+        if current_wraplength != wraplength:
             self.update_status_label.configure(wraplength=wraplength)
 
     @staticmethod
