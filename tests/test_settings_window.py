@@ -585,6 +585,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
         fitted_window.window.update()
         fitted_window.window.winfo_screenwidth = lambda: 660
+        fitted_window.window.winfo_screenheight = lambda: 800
+        fitted_window.window.maxsize = lambda: (5000, 5000)
 
         original_fitted_height = SettingsWindow._content_fitted_height
         with patch.object(
@@ -599,6 +601,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIsNotNone(bounds)
         assert bounds is not None
         self.assertEqual(fitted_window.window.winfo_width(), 620)
+        self.assertEqual(fitted_window.window.winfo_height(), 720)
         self.assertLess(
             fitted_window.window.winfo_width(),
             fitted_window.MIN_WIDTH,
@@ -610,6 +613,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIn(
             bounds[3] - bounds[1],
             measured_content_heights,
+        )
+        self.assertGreater(
+            bounds[3] - bounds[1],
+            fitted_window.scroll_canvas.winfo_height(),
         )
         self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
 
