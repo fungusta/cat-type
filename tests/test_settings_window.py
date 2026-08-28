@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import faulthandler
+import sys
 import tkinter as tk
 import unittest
 from contextlib import ExitStack
@@ -12,6 +14,10 @@ from app_version import APP_VERSION
 from cat_settings import AppSettings
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
+
+
+if sys.platform == "darwin":
+    faulthandler.dump_traceback_later(90, exit=True)
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
