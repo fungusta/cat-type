@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -21,6 +22,10 @@ def _script(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
+@unittest.skipUnless(
+    sys.platform.startswith("linux"),
+    "Linux helper integration requires Linux process and filesystem semantics",
+)
 class LinuxHelperContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -208,6 +213,10 @@ class LinuxHelperContractTests(unittest.TestCase):
         popen.assert_not_called()
 
 
+@unittest.skipUnless(
+    sys.platform.startswith("linux"),
+    "Linux helper integration requires Linux process and filesystem semantics",
+)
 class LinuxHelperIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
