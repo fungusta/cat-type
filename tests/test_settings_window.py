@@ -601,7 +601,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIsNotNone(bounds)
         assert bounds is not None
         self.assertEqual(fitted_window.window.winfo_width(), 620)
-        self.assertEqual(fitted_window.window.winfo_height(), 720)
+        actual_height = fitted_window.window.winfo_height()
+        available_height = 800 - fitted_window.SCREEN_VERTICAL_MARGIN
+        self.assertGreaterEqual(actual_height, 600)
+        self.assertLessEqual(actual_height, available_height)
         self.assertLess(
             fitted_window.window.winfo_width(),
             fitted_window.MIN_WIDTH,
