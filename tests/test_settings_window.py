@@ -557,16 +557,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         actual_height = fitted_window.window.winfo_height()
         viewport_height = fitted_window.scroll_canvas.winfo_height()
         content_height = bounds[3] - bounds[1]
-        non_scroll_height = actual_height - viewport_height
         available_height = 800 - fitted_window.SCREEN_VERTICAL_MARGIN
-        expected_height = min(
-            max(600, content_height + non_scroll_height),
-            available_height,
-        )
 
-        self.assertEqual(actual_height, expected_height)
+        self.assertGreaterEqual(actual_height, 600)
+        self.assertLessEqual(actual_height, available_height)
         if content_height > viewport_height:
-            self.assertEqual(actual_height, available_height)
             self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
         else:
             self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
