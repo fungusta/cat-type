@@ -351,17 +351,29 @@ class SettingsWindowScrollingTests(unittest.TestCase):
 
 
 class SettingsWindowTkLayoutTests(unittest.TestCase):
+    def _macos_hang_checkpoint(self, stage: str) -> None:
+        if (
+            sys.platform == "darwin"
+            and self._testMethodName
+            == "test_opening_measures_after_reducing_minimum_for_small_screen"
+        ):
+            print(f"[macOS-hang] {stage}", flush=True)
+
     def setUp(self) -> None:
+        self._macos_hang_checkpoint("setUp before tk.Tk")
         try:
             self.root = tk.Tk()
         except tk.TclError as error:
             self.skipTest(f"Tk display is unavailable: {error}")
+        self._macos_hang_checkpoint("setUp after tk.Tk")
         self.root.withdraw()
+        self._macos_hang_checkpoint("setUp after root.withdraw")
         self.addCleanup(self.root.destroy)
         self.on_save = Mock()
         self.on_metrics_view_change = Mock()
         self.on_check_for_updates = Mock()
         self.on_open_release_page = Mock()
+        self._macos_hang_checkpoint("setUp before SettingsWindow")
         self.settings_window = SettingsWindow(
             self.root,
             AppSettings(),
@@ -372,6 +384,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             on_open_release_page=self.on_open_release_page,
             update_status="Ready to check.",
         )
+        self._macos_hang_checkpoint("setUp after SettingsWindow")
         self.addCleanup(self.settings_window.close)
 
     @staticmethod
@@ -551,21 +564,27 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_opening_measures_after_reducing_minimum_for_small_screen(
         self,
     ) -> None:
+        self._macos_hang_checkpoint("test body start")
         self.root.tk.call("tk", "scaling", 1.0)
+        self._macos_hang_checkpoint("after scaling")
         with patch.object(SettingsWindow, "PREFERRED_HEIGHT", 600):
+            self._macos_hang_checkpoint("before fitted SettingsWindow")
             fitted_window = SettingsWindow(
                 self.root,
                 AppSettings(),
                 Mock(),
                 update_status="Status " * 100,
             )
+        self._macos_hang_checkpoint("after fitted SettingsWindow")
         self.addCleanup(fitted_window.close)
         fitted_window.window.geometry("920x600")
         fitted_window.window.minsize(
             fitted_window.MIN_WIDTH,
             fitted_window.MIN_HEIGHT,
         )
+        self._macos_hang_checkpoint("before first window.update")
         fitted_window.window.update()
+        self._macos_hang_checkpoint("after first window.update")
         fitted_window.window.winfo_screenwidth = lambda: 660
 
         original_fitted_height = SettingsWindow._content_fitted_height
@@ -574,8 +593,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "_content_fitted_height",
             wraps=original_fitted_height,
         ) as fitted_height:
+            self._macos_hang_checkpoint("before _center")
             fitted_window._center()
+            self._macos_hang_checkpoint("after _center")
+        self._macos_hang_checkpoint("before second window.update")
         fitted_window.window.update()
+        self._macos_hang_checkpoint("after second window.update")
 
         bounds = fitted_window.scroll_canvas.bbox("all")
         self.assertIsNotNone(bounds)
