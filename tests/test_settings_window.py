@@ -523,7 +523,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         else:
             self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
 
-    def test_narrow_opening_uses_available_height_and_keeps_needed_scroll(
+    def test_narrow_opening_fits_content_within_available_height(
         self,
     ) -> None:
         self.root.tk.call("tk", "scaling", 1.0)
@@ -551,8 +551,25 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         fitted_window.window.update()
 
         self.assertEqual(fitted_window._layout_mode, "narrow")
-        self.assertEqual(fitted_window.window.winfo_height(), 720)
-        self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
+        bounds = fitted_window.scroll_canvas.bbox("all")
+        self.assertIsNotNone(bounds)
+        assert bounds is not None
+        actual_height = fitted_window.window.winfo_height()
+        viewport_height = fitted_window.scroll_canvas.winfo_height()
+        content_height = bounds[3] - bounds[1]
+        non_scroll_height = actual_height - viewport_height
+        available_height = 800 - fitted_window.SCREEN_VERTICAL_MARGIN
+        expected_height = min(
+            max(600, content_height + non_scroll_height),
+            available_height,
+        )
+
+        self.assertEqual(actual_height, expected_height)
+        if content_height > viewport_height:
+            self.assertEqual(actual_height, available_height)
+            self.assertTrue(fitted_window.scrollbar.winfo_ismapped())
+        else:
+            self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
 
     def test_opening_measures_after_reducing_minimum_for_small_screen(
         self,
