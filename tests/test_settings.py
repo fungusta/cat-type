@@ -7,6 +7,12 @@ from cat_settings import AppSettings, SettingsStore
 
 
 class AppSettingsTests(unittest.TestCase):
+    def test_monitoring_consent_defaults_off_and_round_trips(self) -> None:
+        self.assertFalse(AppSettings().monitoring_consent)
+        self.assertTrue(
+            AppSettings(monitoring_consent=True).normalized().monitoring_consent
+        )
+
     def test_metrics_view_defaults_to_line_and_normalizes_invalid_values(
         self,
     ) -> None:

@@ -29,6 +29,11 @@ from auto_update import (
     UpdateStateStore,
 )
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
+from distribution_channel import is_app_store_build
+from macos_input_monitoring import (
+    preflight_input_monitoring,
+    request_input_monitoring,
+)
 from platform_assets import icon_filename
 from platform_updater import (
     LinuxControllerInstaller,
@@ -1496,6 +1501,10 @@ class CatTypeApp:
         now: Callable[[], datetime] | None = None,
         shutdown_signal: ControllerShutdownSignal | None = None,
         usage_tracker: UsageTracker | None = None,
+        app_store_distribution: bool | None = None,
+        confirm_monitoring: Callable[[], bool] | None = None,
+        input_monitoring_preflight: Callable[[], bool] | None = None,
+        input_monitoring_request: Callable[[], bool] | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1507,6 +1516,31 @@ class CatTypeApp:
                 fade_seconds=fade_seconds,
             )
         ).normalized()
+        self._app_store_distribution = (
+            is_app_store_build()
+            if app_store_distribution is None
+            else app_store_distribution
+        )
+        if self._app_store_distribution and not self.settings.monitoring_consent:
+            self.settings = replace(self.settings, enabled=False)
+        self._confirm_monitoring = (
+            self._show_monitoring_consent
+            if confirm_monitoring is None
+            else confirm_monitoring
+        )
+        self._input_monitoring_preflight = (
+            preflight_input_monitoring
+            if input_monitoring_preflight is None
+            else input_monitoring_preflight
+        )
+        self._input_monitoring_request = (
+            request_input_monitoring
+            if input_monitoring_request is None
+            else input_monitoring_request
+        )
+        self._activity_monitoring_started = False
+        self._input_monitoring_requested = False
+        self._monitoring_permission_poll_id: str | None = None
         self.events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
         self.usage_tracker = usage_tracker or UsageTracker(
             UsageStore(self.settings_store.path.with_name("usage.json"))
@@ -1923,8 +1957,15 @@ class CatTypeApp:
 
     def run(self) -> None:
         self._start_tray()
-        self.keyboard.start()
-        self.tracker.start()
+        app_store_distribution = getattr(
+            self,
+            "_app_store_distribution",
+            False,
+        )
+        if app_store_distribution and not self.settings.monitoring_consent:
+            self.root.after(300, self._request_monitoring_consent)
+        else:
+            self._ensure_activity_monitoring()
         # Give immediate visual confirmation when the app starts while a text
         # field is already focused.
         started_at = time.monotonic()
@@ -1943,6 +1984,101 @@ class CatTypeApp:
         if self._first_run:
             self.root.after(400, self.open_settings)
         self.root.mainloop()
+
+    def _start_activity_monitoring(self) -> None:
+        if getattr(self, "_activity_monitoring_started", False):
+            return
+        self.keyboard.start()
+        self.tracker.start()
+        self._activity_monitoring_started = True
+        self._update_tray_monitoring_status()
+
+    def _tray_title(self) -> str:
+        if not getattr(self, "_app_store_distribution", False):
+            return "Cat Type"
+        monitoring_active = (
+            self.settings.enabled
+            and getattr(self, "_activity_monitoring_started", False)
+        )
+        status = "active" if monitoring_active else "paused"
+        return f"Cat Type — Input monitoring {status}"
+
+    def _update_tray_monitoring_status(self) -> None:
+        tray_icon = getattr(self, "_tray_icon", None)
+        if tray_icon is not None:
+            tray_icon.title = self._tray_title()
+
+    def _ensure_activity_monitoring(self) -> None:
+        app_store_distribution = getattr(
+            self,
+            "_app_store_distribution",
+            False,
+        )
+        if getattr(self, "_activity_monitoring_started", False):
+            return
+        if app_store_distribution and not self.settings.enabled:
+            return
+        if (
+            app_store_distribution and self._platform_name == "darwin"
+        ):
+            if not self._input_monitoring_preflight():
+                if not self._input_monitoring_requested:
+                    self._input_monitoring_requested = True
+                    self._input_monitoring_request()
+                if self._monitoring_permission_poll_id is None:
+                    self._monitoring_permission_poll_id = self.root.after(
+                        1000,
+                        self._poll_input_monitoring_permission,
+                    )
+                return
+        self._start_activity_monitoring()
+
+    def _poll_input_monitoring_permission(self) -> None:
+        self._monitoring_permission_poll_id = None
+        if self._shutting_down:
+            return
+        self._ensure_activity_monitoring()
+
+    def _show_monitoring_consent(self) -> bool:
+        self._restore_macos_activation_policy()
+        return messagebox.askokcancel(
+            "Privacy & Input Monitoring",
+            (
+                "Cat Type listens for key-press events across apps to animate "
+                "the cat and count aggregate activity by hour and day.\n\n"
+                "It never stores key names, typed text, app names, or window "
+                "titles, and it never sends usage data. The cat appears while "
+                "monitoring is active.\n\n"
+                "Continue and ask macOS for Input Monitoring access?"
+            ),
+            parent=self.root,
+            icon="info",
+        )
+
+    def _request_monitoring_consent(self) -> bool:
+        if self.settings.monitoring_consent:
+            self._ensure_activity_monitoring()
+            return True
+        accepted = bool(self._confirm_monitoring())
+        updated = replace(
+            self.settings,
+            monitoring_consent=accepted,
+            enabled=accepted,
+            launch_at_startup=False,
+        )
+        try:
+            self.settings = self.settings_store.save(updated)
+        except OSError:
+            self.settings = updated.normalized()
+        if getattr(self, "_settings_window", None) is not None:
+            self._settings_window.enabled.set(self.settings.enabled)
+        if accepted:
+            self._ensure_activity_monitoring()
+        else:
+            self._hide()
+        if getattr(self, "_tray_icon", None) is not None:
+            self._tray_icon.update_menu()
+        return accepted
 
     def shutdown(self) -> None:
         lifecycle_lock = getattr(self, "_update_lifecycle_lock", None)
@@ -1966,6 +2102,17 @@ class CatTypeApp:
         if shutdown_signal is not None:
             shutdown_signal.close()
         self._hide()
+        permission_poll_id = getattr(
+            self,
+            "_monitoring_permission_poll_id",
+            None,
+        )
+        if permission_poll_id is not None:
+            try:
+                self.root.after_cancel(permission_poll_id)
+            except tk.TclError:
+                pass
+            self._monitoring_permission_poll_id = None
         if self._tray_icon is not None:
             self._tray_icon.stop()
         self.keyboard.stop()
@@ -2338,7 +2485,7 @@ class CatTypeApp:
         self._tray_icon = pystray.Icon(
             "cat-type",
             tray_image,
-            "Cat Type",
+            self._tray_title(),
             menu,
         )
         if IS_MACOS:
@@ -2364,6 +2511,11 @@ class CatTypeApp:
         ):
             self._settings_window.show()
             return
+        app_store_distribution = getattr(
+            self,
+            "_app_store_distribution",
+            False,
+        )
         self._settings_window = SettingsWindow(
             self.root,
             self.settings,
@@ -2376,9 +2528,17 @@ class CatTypeApp:
                 else UsageMetrics(total_keystrokes=self.keystroke_count)
             ),
             on_metrics_view_change=self._persist_metrics_view,
-            on_check_for_updates=lambda: self.check_for_updates(manual=True),
-            on_open_release_page=lambda: webbrowser.open(
-                _UnavailableUpdateInstaller.RELEASES_URL
+            on_check_for_updates=(
+                None
+                if app_store_distribution
+                else lambda: self.check_for_updates(manual=True)
+            ),
+            on_open_release_page=(
+                None
+                if app_store_distribution
+                else lambda: webbrowser.open(
+                    _UnavailableUpdateInstaller.RELEASES_URL
+                )
             ),
             update_status=getattr(
                 self,
@@ -2386,6 +2546,7 @@ class CatTypeApp:
                 "Ready to check for updates.",
             ),
             on_close=self._return_to_macos_background_policy,
+            app_store_distribution=app_store_distribution,
         )
         if getattr(self, "_update_worker_active", False):
             self._settings_window.set_update_status(
@@ -2412,8 +2573,19 @@ class CatTypeApp:
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent
+        app_store_distribution = getattr(
+            self,
+            "_app_store_distribution",
+            False,
+        )
+        if app_store_distribution:
+            settings = replace(settings, launch_at_startup=False)
+            if settings.enabled and not settings.monitoring_consent:
+                self._request_monitoring_consent()
+                settings = self.settings
         self.settings = self.settings_store.save(settings)
-        set_launch_at_startup(self.settings.launch_at_startup)
+        if not app_store_distribution:
+            set_launch_at_startup(self.settings.launch_at_startup)
         self.animation.hide_after = self.settings.hold_seconds
         self.animation.fade_seconds = min(
             self.settings.fade_seconds,
@@ -2432,10 +2604,20 @@ class CatTypeApp:
         self._anchor_position = None
         if not self.settings.enabled:
             self._hide()
+        else:
+            self._ensure_activity_monitoring()
         if self._tray_icon is not None:
+            self._update_tray_monitoring_status()
             self._tray_icon.update_menu()
 
     def _set_enabled(self, enabled: bool) -> None:
+        if (
+            enabled
+            and getattr(self, "_app_store_distribution", False)
+            and not self.settings.monitoring_consent
+        ):
+            self._request_monitoring_consent()
+            return
         updated = AppSettings(
             **{
                 **self.settings.__dict__,

@@ -290,12 +290,15 @@ class SettingsWindow:
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
         on_close: Callable[[], None] | None = None,
+        app_store_distribution: bool = False,
     ) -> None:
         self._on_save = on_save
         self._on_metrics_view_change = on_metrics_view_change
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
         self._on_close = on_close
+        self._app_store_distribution = app_store_distribution
+        self._monitoring_consent = settings.monitoring_consent
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -770,6 +773,21 @@ class SettingsWindow:
             title_font=self.fonts["control"],
         )
         self.launch_at_startup_toggle.pack(fill="x")
+        if self._app_store_distribution:
+            self.launch_at_startup_toggle.pack_forget()
+            tk.Label(
+                content,
+                text=(
+                    "Privacy: Cat Type observes key-press events only to animate "
+                    "the cat and count aggregate activity. It never stores key "
+                    "names or typed text, and it never sends usage data."
+                ),
+                background=self.CARD,
+                foreground=self.MUTED,
+                font=self.fonts["small"],
+                justify="left",
+                wraplength=330,
+            ).pack(fill="x")
         card.pack(fill="x", pady=(0, 14))
 
     def _build_metrics_page(self, parent: tk.Frame) -> None:
@@ -1663,6 +1681,7 @@ class SettingsWindow:
             placement=PLACEMENT_LABELS[self.placement.get()],
             launch_at_startup=self.launch_at_startup.get(),
             metrics_view=self.metrics_view.get(),
+            monitoring_consent=self._monitoring_consent,
         ).normalized()
         self._on_save(settings)
         self.close()

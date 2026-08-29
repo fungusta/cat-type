@@ -148,6 +148,9 @@ The macOS output is `dist/Cat Type.app`; the Linux output is
 `dist/Cat Type`. Push a tag such as `v1.0.29` to build every supported
 architecture and publish the assets together on a GitHub Release.
 
+For the separately sandboxed Mac App Store package and upload workflow, see
+[`docs/app-store-release.md`](docs/app-store-release.md).
+
 ## Privacy behavior
 
 - The keyboard listener classifies each key as left, right, both, or an

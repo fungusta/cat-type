@@ -11,6 +11,7 @@ from PIL import Image
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UPDATE_TEST_MODULES = (
     "tests.test_usage_metrics",
+    "tests.test_distribution_channel",
     "tests.test_release_version_check",
     "tests.test_auto_update",
     "tests.test_update_controller",
@@ -101,6 +102,30 @@ class PlatformBackendTests(unittest.TestCase):
 
 
 class PackagingContractTests(unittest.TestCase):
+    def test_app_store_build_is_sandboxed_and_separate_from_dmg_release(self) -> None:
+        spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
+        entitlements = (
+            PROJECT_ROOT / "packaging" / "macos-app-store.entitlements"
+        ).read_text(encoding="utf-8")
+        script = (
+            PROJECT_ROOT / "scripts" / "build_macos_app_store.sh"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("CAT_TYPE_APP_STORE_BUILD", spec_source)
+        self.assertIn("CatTypeDistributionChannel", spec_source)
+        self.assertIn("CFBundleVersion", spec_source)
+        self.assertIn("CAT_TYPE_BUILD_NUMBER is required", spec_source)
+        self.assertIn("COLLECT(", spec_source)
+        self.assertIn("exclude_binaries=is_app_store", spec_source)
+        self.assertIn("com.apple.security.app-sandbox", entitlements)
+        self.assertIn("9B98U2J5Q2.com.fungusta.cat-type", entitlements)
+        self.assertIn("embedded.provisionprofile", script)
+        self.assertIn("productbuild", script)
+        self.assertIn("positive integer", script)
+        self.assertIn("retry codesign", script)
+        self.assertIn("retry productbuild", script)
+        self.assertIn("Cat-Type-macOS-App-Store.pkg", script)
+
     def test_pyinstaller_explicitly_bundles_update_runtime_modules(self) -> None:
         spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
 

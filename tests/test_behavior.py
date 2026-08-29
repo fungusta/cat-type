@@ -450,6 +450,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._tick = Mock()
         app._first_run = False
         app._platform_name = "linux"
+        app.settings = AppSettings()
         app.usage_tracker = Mock()
 
         with patch("cat_type.time.monotonic", return_value=12.5):
@@ -463,6 +464,112 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             app.USAGE_FLUSH_INTERVAL_MS,
             app._flush_usage_periodically,
         )
+
+    def test_app_store_first_run_waits_for_explicit_monitoring_consent(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._start_tray = Mock()
+        app.keyboard = Mock()
+        app.tracker = Mock()
+        app.animation = Mock()
+        app.root = Mock()
+        app._tick = Mock()
+        app._first_run = False
+        app._platform_name = "darwin"
+        app._app_store_distribution = True
+        app.settings = AppSettings(
+            enabled=False,
+            monitoring_consent=False,
+        )
+        app._request_monitoring_consent = Mock()
+        app.usage_tracker = Mock()
+
+        app.run()
+
+        app.keyboard.start.assert_not_called()
+        app.tracker.start.assert_not_called()
+        app.root.after.assert_any_call(300, app._request_monitoring_consent)
+
+    def test_direct_distribution_preserves_disabled_global_hotkey_listener(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=False)
+        app._app_store_distribution = False
+        app._activity_monitoring_started = False
+        app._tray_icon = None
+        app.keyboard = Mock()
+        app.tracker = Mock()
+
+        app._ensure_activity_monitoring()
+
+        app.keyboard.start.assert_called_once_with()
+        app.tracker.start.assert_called_once_with()
+
+    def test_app_store_permission_poll_starts_monitoring_after_access(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=True, monitoring_consent=True)
+        app._app_store_distribution = True
+        app._platform_name = "darwin"
+        app._activity_monitoring_started = False
+        app._input_monitoring_requested = False
+        app._monitoring_permission_poll_id = None
+        app._input_monitoring_preflight = Mock(side_effect=[False, True])
+        app._input_monitoring_request = Mock(return_value=False)
+        app.keyboard = Mock()
+        app.tracker = Mock()
+        app._tray_icon = None
+        app.root = Mock()
+        app.root.after.return_value = "permission-poll"
+        app._shutting_down = False
+
+        app._ensure_activity_monitoring()
+
+        app._input_monitoring_request.assert_called_once_with()
+        app.keyboard.start.assert_not_called()
+        self.assertEqual(
+            app._monitoring_permission_poll_id,
+            "permission-poll",
+        )
+
+        app._poll_input_monitoring_permission()
+
+        app.keyboard.start.assert_called_once_with()
+        app.tracker.start.assert_called_once_with()
+        self.assertTrue(app._activity_monitoring_started)
+
+    def test_app_store_tray_title_indicates_monitoring_status(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._app_store_distribution = True
+        app._activity_monitoring_started = False
+        app.settings = AppSettings(enabled=True, monitoring_consent=True)
+
+        self.assertEqual(
+            app._tray_title(),
+            "Cat Type — Input monitoring paused",
+        )
+
+        app._activity_monitoring_started = True
+
+        self.assertEqual(
+            app._tray_title(),
+            "Cat Type — Input monitoring active",
+        )
+
+    def test_app_store_consent_is_persisted_before_monitoring_starts(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=False, monitoring_consent=False)
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = lambda value: value.normalized()
+        app._confirm_monitoring = Mock(return_value=True)
+        app._ensure_activity_monitoring = Mock()
+        app._settings_window = None
+        app._tray_icon = None
+        app._hide = Mock()
+
+        self.assertTrue(app._request_monitoring_consent())
+
+        saved = app.settings_store.save.call_args.args[0]
+        self.assertTrue(saved.monitoring_consent)
+        self.assertTrue(saved.enabled)
+        app._ensure_activity_monitoring.assert_called_once_with()
 
     def test_periodic_usage_flush_reschedules_while_app_is_running(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
