@@ -2533,14 +2533,23 @@ class CatTypeApp:
                 ),
             ),
         )
+        tray_options = {}
+        if IS_MACOS:
+            from AppKit import NSApplication
+
+            tray_options["darwin_nsapplication"] = (
+                NSApplication.sharedApplication()
+            )
         self._tray_icon = pystray.Icon(
             "cat-type",
             tray_image,
             self._tray_title(),
             menu,
+            **tray_options,
         )
         if IS_MACOS:
-            self._tray_icon.run_detached()
+            self._tray_icon.run_detached(setup=lambda _icon: None)
+            self._tray_icon.visible = True
             return
         self._tray_thread = threading.Thread(
             target=self._tray_icon.run,

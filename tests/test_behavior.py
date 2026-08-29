@@ -471,6 +471,57 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             app._flush_usage_periodically,
         )
 
+    def test_macos_tray_visibility_is_initialized_on_the_main_thread(
+        self,
+    ) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.events = queue.SimpleQueue()
+        app.settings = AppSettings(enabled=False)
+        app._tray_icon = None
+        app._tray_thread = None
+        shared_application = object()
+        ns_application = Mock()
+        ns_application.sharedApplication.return_value = shared_application
+        appkit = SimpleNamespace(NSApplication=ns_application)
+        created_icons = []
+
+        class FakeIcon:
+            def __init__(self, *args: object, **options: object) -> None:
+                self.args = args
+                self.options = options
+                self.visible = False
+                self.detached_setup = None
+                self.visible_during_setup = None
+                created_icons.append(self)
+
+            def run_detached(self, setup: object = None) -> None:
+                self.detached_setup = setup
+                if callable(setup):
+                    setup(self)
+                self.visible_during_setup = self.visible
+
+        with (
+            patch.object(cat_type, "IS_MACOS", True),
+            patch.object(cat_type.Image, "open") as image_open,
+            patch("pystray.Icon", FakeIcon),
+            patch.dict(sys.modules, {"AppKit": appkit}),
+        ):
+            converted_image = (
+                image_open.return_value.__enter__.return_value.convert.return_value
+            )
+            converted_image.copy.return_value = Mock()
+            app._start_tray()
+
+        self.assertEqual(len(created_icons), 1)
+        icon = created_icons[0]
+        self.assertIs(
+            icon.options["darwin_nsapplication"],
+            shared_application,
+        )
+        self.assertIsNotNone(icon.detached_setup)
+        self.assertFalse(icon.visible_during_setup)
+        self.assertTrue(icon.visible)
+
     def test_app_store_first_run_waits_for_explicit_monitoring_consent(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app._start_tray = Mock()
