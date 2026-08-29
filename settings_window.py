@@ -1368,6 +1368,10 @@ class SettingsWindow:
             font=self.fonts["control"],
         )
         self.update_version_label.pack(anchor="w")
+        if self._app_store_distribution:
+            self.update_status_text.set(
+                "Updates are delivered automatically by the App Store."
+            )
         self.update_status_label = tk.Label(
             content,
             textvariable=self.update_status_text,
@@ -1380,6 +1384,9 @@ class SettingsWindow:
         )
         self.update_status_label.pack(anchor="w", fill="x", pady=(5, 10))
         content.bind("<Configure>", self._on_update_card_configure, add="+")
+        if self._app_store_distribution:
+            card.pack(fill="x", pady=(0, 14))
+            return
         update_actions = tk.Frame(content, background=self.CARD)
         update_actions.pack(fill="x")
         self.check_for_updates_button = ttk.Button(
@@ -1825,6 +1832,8 @@ class SettingsWindow:
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)
+        if not hasattr(self, "check_for_updates_button"):
+            return
         state = (
             "disabled"
             if checking or self._on_check_for_updates is None

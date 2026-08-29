@@ -695,6 +695,26 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.on_check_for_updates.assert_called_once_with()
         self.on_open_release_page.assert_called_once_with()
 
+    def test_app_store_updates_card_has_no_direct_download_controls(self) -> None:
+        app_store_window = SettingsWindow(
+            self.root,
+            AppSettings(),
+            Mock(),
+            app_store_distribution=True,
+        )
+        self.addCleanup(app_store_window.close)
+
+        texts = self._widget_texts(app_store_window.window)
+
+        self.assertIn(
+            "Updates are delivered automatically by the App Store.",
+            texts,
+        )
+        self.assertNotIn("Check for updates", texts)
+        self.assertNotIn("Open release page", texts)
+        self.assertFalse(hasattr(app_store_window, "check_for_updates_button"))
+        app_store_window.set_update_status("A harmless late update event.")
+
     def test_update_status_changes_live_and_disables_button_while_checking(
         self,
     ) -> None:
