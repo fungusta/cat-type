@@ -649,6 +649,16 @@ def _raise_macos_window_without_activation(title: str) -> bool:
     return False
 
 
+def _activate_macos_application() -> bool:
+    """Bring the current Aqua application to the foreground."""
+    if not IS_MACOS:
+        return False
+    from AppKit import NSApplication
+
+    NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+    return True
+
+
 class _MacOSNativeOverlaySurface:
     """Temporarily replace Tk's opaque overlay view with a native image view."""
 
@@ -2087,21 +2097,31 @@ class CatTypeApp:
 
     def _show_monitoring_consent(self) -> bool:
         self._restore_macos_activation_policy()
-        return messagebox.askokcancel(
-            "Privacy & Input Monitoring",
-            (
-                "Cat Type listens for key-press events and primary mouse "
-                "clicks across apps to animate and position the cat. It also "
-                "counts aggregate activity by hour and day.\n\n"
-                "It keeps only the latest click coordinate for up to eight "
-                "seconds. It never stores key names, typed text, app names, "
-                "control names, or window titles, and it never sends usage "
-                "data. The cat appears while monitoring is active.\n\n"
-                "Continue and ask macOS for Input Monitoring access?"
-            ),
-            parent=self.root,
-            icon="info",
-        )
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        previous_policy = None
+        if activation_policy is not None:
+            previous_policy = activation_policy[0]()
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
+        _activate_macos_application()
+        try:
+            return messagebox.askokcancel(
+                "Privacy & Input Monitoring",
+                (
+                    "Cat Type listens for key-press events and primary mouse "
+                    "clicks across apps to animate and position the cat. It also "
+                    "counts aggregate activity by hour and day.\n\n"
+                    "It keeps only the latest click coordinate for up to eight "
+                    "seconds. It never stores key names, typed text, app names, "
+                    "control names, or window titles, and it never sends usage "
+                    "data. The cat appears while monitoring is active.\n\n"
+                    "Continue and ask macOS for Input Monitoring access?"
+                ),
+                parent=self.root,
+                icon="info",
+            )
+        finally:
+            if activation_policy is not None and previous_policy is not None:
+                activation_policy[1](previous_policy)
 
     def _request_monitoring_consent(self) -> bool:
         if self.settings.monitoring_consent:

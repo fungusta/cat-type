@@ -631,6 +631,42 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertTrue(saved.enabled)
         app._ensure_activity_monitoring.assert_called_once_with()
 
+    def test_macos_monitoring_consent_activates_app_before_modal(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        events = []
+        app.root = Mock()
+        app._restore_macos_activation_policy = Mock(
+            side_effect=lambda: events.append("restore")
+        )
+        set_policy = Mock(
+            side_effect=lambda policy: events.append(f"policy:{policy}")
+        )
+
+        with (
+            patch.object(cat_type, "IS_MACOS", True),
+            patch(
+                "cat_type._macos_activation_policy_accessors_for_app",
+                return_value=(Mock(return_value=2), set_policy, Mock()),
+            ),
+            patch(
+                "cat_type._activate_macos_application",
+                side_effect=lambda: events.append("activate"),
+            ),
+            patch.object(
+                cat_type.messagebox,
+                "askokcancel",
+                side_effect=lambda *args, **kwargs: (
+                    events.append("prompt") or True
+                ),
+            ),
+        ):
+            self.assertTrue(app._show_monitoring_consent())
+
+        self.assertEqual(
+            events,
+            ["restore", "policy:1", "activate", "prompt", "policy:2"],
+        )
+
     def test_periodic_usage_flush_reschedules_while_app_is_running(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.usage_tracker = Mock()
