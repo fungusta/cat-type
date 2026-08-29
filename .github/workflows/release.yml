@@ -72,6 +72,7 @@ jobs:
         run: >-
           python -m unittest
           tests.test_macos_overlay_focus
+          tests.test_macos_caret_integration
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics
@@ -93,6 +94,7 @@ jobs:
           xvfb-run --auto-servernum
           python -m unittest
           tests.test_macos_overlay_focus
+          tests.test_macos_caret_integration
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics

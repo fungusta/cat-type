@@ -1,11 +1,17 @@
 import ctypes
+import sys
 import time
 import tkinter as tk
 import unittest
 
-import win32gui
-import win32ui
 from PIL import Image
+
+if sys.platform == "win32":
+    import win32gui
+    import win32ui
+else:
+    win32gui = None
+    win32ui = None
 
 from cat_type import (
     CAT_VARIANTS,
@@ -18,6 +24,10 @@ from cat_type import (
 )
 
 
+@unittest.skipUnless(
+    sys.platform == "win32",
+    "Windows-only rendering integration",
+)
 class OverlayRenderingTests(unittest.TestCase):
     def test_keystroke_counter_is_not_rendered_in_the_cat_overlay(self) -> None:
         app = CatTypeApp(hold_seconds=10.0)
@@ -222,6 +232,8 @@ class OverlayRenderingTests(unittest.TestCase):
 
     @staticmethod
     def _capture_window(hwnd: int, width: int, height: int) -> Image.Image:
+        assert win32gui is not None
+        assert win32ui is not None
         window_dc = win32gui.GetWindowDC(hwnd)
         source_dc = win32ui.CreateDCFromHandle(window_dc)
         memory_dc = source_dc.CreateCompatibleDC()

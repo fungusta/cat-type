@@ -9,10 +9,10 @@ Cat Type was inspired by [Bongo Cat on Steam](https://store.steampowered.com/app
 I loved the idea of a tiny companion that reacts as you type and wanted to
 create my own take on it.
 
-On Windows, Cat Type puts the companion beside the place where text is being
-inserted rather than on the taskbar. Its four-frame gray and ginger tabby
-sprite sheets are original artwork created for this project; it does not
-extract or redistribute Bongo Cat's game assets.
+On Windows and direct-distribution macOS builds, Cat Type puts the companion
+beside the place where text is being inserted rather than on the taskbar. Its
+four-frame gray and ginger tabby sprite sheets are original artwork created
+for this project; it does not extract or redistribute Bongo Cat's game assets.
 
 ## Install on Windows
 
@@ -32,7 +32,8 @@ Download **Cat-Type-macOS-arm64.dmg** for Apple Silicon (M1 and newer), or
 **Cat-Type-macOS-x64.dmg** for an Intel Mac, then drag Cat Type to
 Applications. These community builds are not notarized, so the first launch
 may require right clicking the app and choosing **Open**. Allow Cat Type under
-**System Settings > Privacy & Security > Input Monitoring** when macOS asks.
+**System Settings > Privacy & Security > Input Monitoring** and
+**Accessibility** when macOS asks.
 
 ## Install on Linux
 
@@ -41,10 +42,11 @@ Download **Cat-Type-Linux-x64.tar.gz** for most PCs or
 `Cat Type`. The overlay and global keyboard listener require X11 or XWayland.
 A system tray implementation such as AppIndicator is also recommended.
 
-On Windows, Cat Type uses native accessibility APIs to place the cat beside the
-text caret when that geometry is available. If no usable caret can be detected,
-it falls back to the current mouse pointer. macOS and Linux currently use the
-mouse pointer directly.
+On Windows and direct-distribution macOS builds, Cat Type uses native
+accessibility APIs to place the cat beside the text caret when that geometry is
+available. If no usable caret can be detected, it falls back to the current
+mouse pointer. Linux and the sandboxed Mac App Store build use the mouse
+pointer directly.
 
 ## Settings
 
@@ -158,23 +160,29 @@ For the separately sandboxed Mac App Store package and upload workflow, see
 - While enabled, Cat Type persists only aggregate keystroke counts by local
   day and hour in `usage.json`. It never stores key names, typed text, app
   names, or window titles, and it does not send usage metrics over the network.
-- On Windows, UI Automation's password-field flag is checked before showing
+- On Windows and macOS, accessible password fields are detected before showing
   the cat.
 - The overlay is click-through and cannot take focus from the text field.
 
-## How caret tracking works on Windows
+## How caret tracking works
 
-Cat Type combines two Windows mechanisms:
+On Windows, Cat Type combines two mechanisms:
 
 1. UI Automation `TextPattern2.GetCaretRange` for modern accessible text
    controls.
 2. `GetGUIThreadInfo` and `rcCaret` as a fallback for traditional Win32
    controls.
 
+On direct-distribution macOS builds, Cat Type reads the focused editable
+control through the macOS Accessibility API, obtains its selected text range,
+and asks for the on-screen bounds of the insertion point. macOS requests
+Accessibility permission the first time this provider is needed. The Mac App
+Store build cannot use this provider because it runs inside App Sandbox.
+
 Some canvas-based editors, terminals, games, elevated applications, or other
 controls do not publish a usable caret. In those cases, Cat Type falls back to
-the current mouse pointer. Password fields detected through UI Automation stay
-hidden and never use the pointer fallback.
+the current mouse pointer. Password fields detected through the platform
+accessibility provider stay hidden and never use the pointer fallback.
 
 ## Tests
 

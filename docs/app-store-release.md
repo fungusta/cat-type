@@ -3,7 +3,9 @@
 The App Store build is a separate distribution channel from the GitHub DMG.
 It enables App Sandbox, asks for explicit consent before requesting Input
 Monitoring access, disables the direct-download updater, and packages the app
-as a signed installer.
+as a signed installer. Because App Sandbox does not permit Cat Type to inspect
+other applications through the macOS Accessibility API, this distribution
+uses the mouse-pointer placement fallback rather than native caret tracking.
 
 ## Account resources
 

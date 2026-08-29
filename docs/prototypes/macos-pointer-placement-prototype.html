@@ -1,0 +1,903 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PROTOTYPE — Cat Type macOS pointer placement</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #d8dee9;
+      --panel: #ffffff;
+      --page: #f4f6fa;
+      --accent: #6b57d9;
+      --accent-soft: #eeeafd;
+      --success: #18794e;
+      --warning: #9a6700;
+      --shadow: 0 14px 34px rgba(23, 32, 51, 0.1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+
+    button, select { font: inherit; }
+
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 28px auto 56px;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 10px;
+      border-radius: 999px;
+      background: #fff1c2;
+      color: #714b00;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { max-width: 820px; margin-bottom: 10px; font-size: clamp(28px, 4vw, 46px); line-height: 1.06; }
+    h2 { margin-bottom: 16px; font-size: 20px; }
+    h3 { margin-bottom: 8px; font-size: 16px; }
+    .lede { max-width: 850px; color: var(--muted); font-size: 17px; }
+
+    .recommendation {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      margin: 22px 0;
+      padding: 16px 18px;
+      border: 1px solid #b9dfca;
+      border-radius: 14px;
+      background: #effaf4;
+    }
+
+    .recommendation strong { color: var(--success); }
+    .recommendation p { margin: 3px 0 0; }
+    .recommendation .mark { font-size: 24px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(280px, 0.85fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-body { padding: 20px; }
+
+    .strategy-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .strategy {
+      min-height: 72px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--ink);
+      padding: 10px 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .strategy strong, .strategy small { display: block; }
+    .strategy small { margin-top: 4px; color: var(--muted); line-height: 1.3; }
+    .strategy.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+
+    .desktop {
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      min-height: 340px;
+      border: 1px solid #aeb7c7;
+      border-radius: 14px;
+      background:
+        linear-gradient(150deg, rgba(255,255,255,.78), rgba(237,242,251,.92)),
+        radial-gradient(circle at 70% 20%, #c9d8f2, transparent 42%);
+      cursor: crosshair;
+    }
+
+    .menubar {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 28px;
+      border-bottom: 1px solid rgba(80, 90, 110, .18);
+      background: rgba(255, 255, 255, .72);
+      padding: 5px 12px;
+      color: #3f4757;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .fake-window {
+      position: absolute;
+      left: 14%;
+      top: 20%;
+      width: 68%;
+      height: 58%;
+      border: 1px solid #bdc5d3;
+      border-radius: 12px;
+      background: rgba(255,255,255,.94);
+      box-shadow: 0 18px 40px rgba(55, 67, 92, .16);
+    }
+
+    .window-title {
+      height: 34px;
+      border-bottom: 1px solid #e1e5ec;
+      padding: 8px 12px;
+      color: #6e7685;
+      font-size: 12px;
+    }
+
+    .field-label {
+      position: absolute;
+      left: 13%;
+      top: 35%;
+      color: #606a7b;
+      font-size: 12px;
+    }
+
+    .input-box {
+      position: absolute;
+      left: 13%;
+      top: 45%;
+      width: 74%;
+      height: 48px;
+      border: 2px solid #8c7be2;
+      border-radius: 9px;
+      background: white;
+      padding: 12px 14px;
+      color: #3f4757;
+      font-size: 14px;
+    }
+
+    .caret {
+      display: inline-block;
+      width: 2px;
+      height: 18px;
+      margin-left: 2px;
+      vertical-align: -4px;
+      background: #3d2fb0;
+    }
+
+    .pointer {
+      position: absolute;
+      z-index: 4;
+      width: 0;
+      height: 0;
+      border-top: 18px solid #111827;
+      border-right: 8px solid transparent;
+      filter: drop-shadow(0 1px 1px rgba(255,255,255,.9));
+      transform: rotate(-18deg);
+      transform-origin: top left;
+      transition: left .12s ease, top .12s ease;
+    }
+
+    .click-ring {
+      position: absolute;
+      z-index: 2;
+      width: 22px;
+      height: 22px;
+      border: 2px solid #d14d72;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(209, 77, 114, .08);
+      transition: left .12s ease, top .12s ease;
+    }
+
+    .cat {
+      position: absolute;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      width: 110px;
+      height: 78px;
+      border: 1px solid #b3a9ec;
+      border-radius: 22px;
+      background: #f0edff;
+      box-shadow: 0 9px 22px rgba(77, 61, 170, .2);
+      font-size: 38px;
+      transition: left .12s ease, top .12s ease, opacity .15s ease;
+    }
+
+    .cat::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: 5px;
+      color: #5846c5;
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: .02em;
+    }
+
+    .desktop-help {
+      position: absolute;
+      right: 10px;
+      bottom: 8px;
+      color: #657087;
+      font-size: 11px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    button.action, select {
+      border: 1px solid #c6ceda;
+      border-radius: 9px;
+      background: #fff;
+      color: var(--ink);
+      padding: 8px 11px;
+    }
+
+    button.action { cursor: pointer; }
+    button.action:hover { border-color: var(--accent); }
+    button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    button.danger { color: #8c2d45; }
+
+    .placement-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .state-list {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0;
+      margin: 0;
+    }
+
+    .state-list dt, .state-list dd {
+      margin: 0;
+      border-bottom: 1px solid #edf0f5;
+      padding: 9px 0;
+      font-size: 13px;
+    }
+
+    .state-list dt { color: var(--muted); }
+    .state-list dd { max-width: 190px; text-align: right; font-weight: 650; }
+    .state-list dd.long { font-weight: 550; }
+
+    .last-change {
+      margin: 14px 0 0;
+      border-radius: 10px;
+      background: #f6f4ff;
+      padding: 10px 12px;
+      color: #5143a3;
+      font-size: 13px;
+    }
+
+    .walkthroughs { margin-top: 20px; }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--line);
+      padding: 0 20px;
+    }
+
+    .tab {
+      flex: none;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 13px 10px 11px;
+      cursor: pointer;
+    }
+
+    .tab.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 750; }
+
+    .scenario { display: grid; grid-template-columns: minmax(250px, .75fr) 1.5fr; gap: 22px; padding: 20px; }
+    .scenario p { color: var(--muted); }
+    .scenario-callout { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 13px; }
+
+    .steps { display: grid; gap: 8px; }
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 9px 10px;
+      background: #fff;
+    }
+
+    .step.current { border-color: var(--accent); background: var(--accent-soft); }
+    .step.done { opacity: .6; }
+    .step-number { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 50%; background: #edf0f5; font-size: 12px; font-weight: 750; }
+    .step.current .step-number { background: var(--accent); color: white; }
+    .step button { border: 0; border-radius: 8px; background: var(--accent); color: white; padding: 6px 9px; cursor: pointer; }
+    .step button:disabled { background: #c7ccd6; cursor: default; }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .note { border: 1px solid var(--line); border-radius: 13px; background: white; padding: 15px; }
+    .note p { margin-bottom: 0; color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 860px) {
+      .grid, .scenario, .notes { grid-template-columns: 1fr; }
+      .strategy-row { grid-template-columns: 1fr; }
+      .placement-control { width: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="eyebrow">Throwaway prototype — not production</span>
+    <h1>Where should the cat appear when macOS cannot see the text caret?</h1>
+    <p class="lede">
+      This demo tests a pointer-only state model for the Mac App Store build. The design question is whether the cat should use a recent click, the pointer at the first keystroke, or continuously follow the pointer—and when that position should be allowed to change.
+    </p>
+
+    <div class="recommendation">
+      <div class="mark">✓</div>
+      <div>
+        <strong>Working recommendation: recent click, then freeze for one typing burst.</strong>
+        <p>Use a click from the last eight seconds because it often represents the field the user focused. Otherwise use the pointer at the first keystroke. Once visible, keep the cat still until it fades, then choose a fresh anchor for the next burst.</p>
+      </div>
+    </div>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="panel-body">
+          <h2>Free play</h2>
+          <div class="strategy-row" id="strategies"></div>
+          <div class="desktop" id="desktop" aria-label="Simulated Mac desktop; click to move and click the pointer">
+            <div class="menubar">● ● ● &nbsp;&nbsp; Notes</div>
+            <div class="fake-window">
+              <div class="window-title">A simulated writing window</div>
+              <div class="field-label">Message</div>
+              <div class="input-box">Write something<span class="caret"></span></div>
+            </div>
+            <div class="click-ring" id="clickRing" hidden></div>
+            <div class="cat" id="cat" data-label="hidden" hidden>🐱</div>
+            <div class="pointer" id="pointer"></div>
+            <div class="desktop-help">Click anywhere to simulate pointer movement + click</div>
+          </div>
+          <div class="controls">
+            <button class="action" data-action="move-input">Move to input</button>
+            <button class="action" data-action="move-away">Move away</button>
+            <button class="action" data-action="click">Click / focus</button>
+            <button class="action primary" data-action="key">Type a key</button>
+            <button class="action" data-action="burst">Type 5 keys</button>
+            <button class="action" data-action="wait-short">Wait 1 second</button>
+            <button class="action" data-action="wait-long">Wait 3 seconds</button>
+            <button class="action" data-action="move-edge">Move to top-right</button>
+            <button class="action danger" data-action="reset">Reset</button>
+            <label class="placement-control">
+              Cat placement
+              <select id="placement">
+                <option value="above-right">Above right</option>
+                <option value="above-left">Above left</option>
+                <option value="below-right">Below right</option>
+                <option value="below-left">Below left</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <aside class="panel">
+        <div class="panel-body">
+          <h2>Current state</h2>
+          <dl class="state-list" id="stateList"></dl>
+          <p class="last-change" id="lastChange"></p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="panel walkthroughs">
+      <div class="tabs" id="tabs"></div>
+      <div class="scenario">
+        <div>
+          <h2 id="scenarioTitle"></h2>
+          <p id="scenarioDescription"></p>
+          <p class="scenario-callout" id="scenarioWatch"></p>
+          <button class="action" id="restartScenario">Restart this walkthrough</button>
+        </div>
+        <div class="steps" id="steps"></div>
+      </div>
+    </section>
+
+    <section class="notes">
+      <article class="note">
+        <h3>Privacy boundary</h3>
+        <p>The smart strategy needs only an in-memory pointer coordinate and timestamp. It does not identify the clicked app or control and should never persist click history.</p>
+      </article>
+      <article class="note">
+        <h3>Password limitation</h3>
+        <p>A pointer-only sandboxed app cannot know whether the focused control is a password field. The animation may appear there, but it still records no key identity or typed content.</p>
+      </article>
+      <article class="note">
+        <h3>Settings language</h3>
+        <p>Call the setting “Cat position relative to pointer,” not “caret corner.” Explain that the cat stays where it appears until typing stops.</p>
+      </article>
+      <article class="note">
+        <h3>Feasibility gate</h3>
+        <p>Before committing to recent-click anchoring, verify global mouse-click callbacks inside the signed App Store sandbox. If that fails, use the first-key pointer strategy.</p>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const PointerPlacementModel = (() => {
+      const config = Object.freeze({
+        screen: { width: 900, height: 506 },
+        cat: { width: 110, height: 78 },
+        gap: 18,
+        clickFreshMs: 8000,
+        holdMs: 1500,
+        fadeMs: 350,
+      });
+
+      const strategies = Object.freeze({
+        smart: {
+          name: "Recent click → freeze",
+          detail: "Recommended: recent click, otherwise first-key pointer",
+        },
+        firstKey: {
+          name: "First-key pointer",
+          detail: "Current behavior: snapshot the pointer when typing begins",
+        },
+        follow: {
+          name: "Follow pointer",
+          detail: "The cat moves whenever the pointer moves",
+        },
+      });
+
+      function initialState() {
+        return {
+          nowMs: 0,
+          strategy: "smart",
+          placement: "above-right",
+          pointer: { x: 450, y: 330 },
+          lastClick: null,
+          cat: {
+            phase: "hidden",
+            anchor: null,
+            activeUntilMs: 0,
+            hideAtMs: 0,
+            anchorReason: "No typing yet",
+            burst: 0,
+          },
+          lastChange: "Ready. Try a walkthrough or use the free-play controls.",
+        };
+      }
+
+      function clamp(value, minimum, maximum) {
+        return Math.max(minimum, Math.min(value, maximum));
+      }
+
+      function positionCat(origin, placement) {
+        const preferLeft = placement.endsWith("left");
+        const preferBelow = placement.startsWith("below");
+        let x = preferLeft
+          ? origin.x - config.cat.width - config.gap
+          : origin.x + config.gap;
+        let y = preferBelow
+          ? origin.y + config.gap
+          : origin.y - config.cat.height - config.gap;
+
+        if (x < 0 || x + config.cat.width > config.screen.width) {
+          x = preferLeft
+            ? origin.x + config.gap
+            : origin.x - config.cat.width - config.gap;
+        }
+        if (y < 28 || y + config.cat.height > config.screen.height) {
+          y = preferBelow
+            ? origin.y - config.cat.height - config.gap
+            : origin.y + config.gap;
+        }
+        return {
+          x: clamp(Math.round(x), 0, config.screen.width - config.cat.width),
+          y: clamp(Math.round(y), 28, config.screen.height - config.cat.height),
+        };
+      }
+
+      function withPhaseAt(state, nowMs) {
+        if (!state.cat.anchor) return state;
+        if (nowMs < state.cat.activeUntilMs) {
+          return { ...state, cat: { ...state.cat, phase: "active" } };
+        }
+        if (nowMs < state.cat.hideAtMs) {
+          return { ...state, cat: { ...state.cat, phase: "fading" } };
+        }
+        return {
+          ...state,
+          cat: {
+            ...state.cat,
+            phase: "hidden",
+            anchor: null,
+            anchorReason: "Previous burst finished",
+          },
+        };
+      }
+
+      function chooseOrigin(state) {
+        const clickAge = state.lastClick
+          ? state.nowMs - state.lastClick.atMs
+          : Infinity;
+        if (state.strategy === "smart" && clickAge <= config.clickFreshMs) {
+          return {
+            point: { x: state.lastClick.x, y: state.lastClick.y },
+            reason: `Recent click (${(clickAge / 1000).toFixed(1)}s ago)`,
+          };
+        }
+        return {
+          point: { ...state.pointer },
+          reason: state.strategy === "follow"
+            ? "Following current pointer"
+            : "Pointer at first keystroke",
+        };
+      }
+
+      function keyDown(state, count = 1) {
+        let next = withPhaseAt(state, state.nowMs);
+        const startingBurst = next.cat.phase === "hidden";
+        if (startingBurst) {
+          const origin = chooseOrigin(next);
+          next = {
+            ...next,
+            cat: {
+              ...next.cat,
+              phase: "active",
+              anchor: positionCat(origin.point, next.placement),
+              anchorReason: origin.reason,
+              burst: next.cat.burst + 1,
+            },
+          };
+        }
+        return {
+          ...next,
+          cat: {
+            ...next.cat,
+            phase: "active",
+            activeUntilMs: next.nowMs + config.holdMs,
+            hideAtMs: next.nowMs + config.holdMs + config.fadeMs,
+          },
+          lastChange: startingBurst
+            ? `Started burst ${next.cat.burst}; anchor chosen from ${next.cat.anchorReason.toLowerCase()}.`
+            : `Recorded ${count} more key${count === 1 ? "" : "s"}; the existing anchor stayed fixed.`,
+        };
+      }
+
+      function movePointer(state, point, label = "Moved pointer") {
+        let next = { ...state, pointer: { ...point }, lastChange: `${label} to (${point.x}, ${point.y}).` };
+        next = withPhaseAt(next, next.nowMs);
+        if (next.strategy === "follow" && next.cat.phase !== "hidden") {
+          next = {
+            ...next,
+            cat: {
+              ...next.cat,
+              anchor: positionCat(point, next.placement),
+              anchorReason: "Following current pointer",
+            },
+            lastChange: `${label}; the follow-pointer strategy moved the visible cat too.`,
+          };
+        }
+        return next;
+      }
+
+      function reduce(state, action) {
+        switch (action.type) {
+          case "RESET":
+            return initialState();
+          case "SET_STRATEGY":
+            return {
+              ...state,
+              strategy: action.strategy,
+              cat: { ...state.cat, phase: "hidden", anchor: null },
+              lastChange: `Selected “${strategies[action.strategy].name}.” The next key starts a fresh comparison.`,
+            };
+          case "SET_PLACEMENT":
+            return {
+              ...state,
+              placement: action.placement,
+              cat: { ...state.cat, phase: "hidden", anchor: null },
+              lastChange: "Changed placement; the next typing burst will use it.",
+            };
+          case "MOVE":
+            return movePointer(state, action.point, action.label);
+          case "CLICK":
+            return {
+              ...state,
+              lastClick: { ...state.pointer, atMs: state.nowMs },
+              lastChange: `Recorded a click at (${state.pointer.x}, ${state.pointer.y}); it is eligible for eight seconds.`,
+            };
+          case "KEY":
+            return keyDown(state, action.count || 1);
+          case "WAIT": {
+            const nowMs = state.nowMs + action.ms;
+            const next = withPhaseAt({ ...state, nowMs }, nowMs);
+            return {
+              ...next,
+              lastChange: `Advanced time by ${(action.ms / 1000).toFixed(1)} seconds; cat is now ${next.cat.phase}.`,
+            };
+          }
+          default:
+            return state;
+        }
+      }
+
+      return { config, strategies, initialState, reduce };
+    })();
+
+    const inputPoint = { x: 430, y: 286 };
+    const awayPoint = { x: 770, y: 420 };
+    const edgePoint = { x: 875, y: 44 };
+
+    const scenarios = [
+      {
+        title: "Focus, move away, then type",
+        description: "This is the strongest case for remembering a recent click. It approximates the focused field without inspecting another app.",
+        watch: "With the recommended strategy, the cat appears beside the click in the input box—not beside the pointer after it moved away.",
+        actions: [
+          ["Move to the input box", { type: "MOVE", point: inputPoint, label: "Moved pointer to input" }],
+          ["Click to focus it", { type: "CLICK" }],
+          ["Move the pointer away", { type: "MOVE", point: awayPoint, label: "Moved pointer away" }],
+          ["Type the first key", { type: "KEY" }],
+        ],
+      },
+      {
+        title: "Keep the cat stable",
+        description: "Pointer movement during a typing burst should not make the companion chase the user or jitter across the screen.",
+        watch: "The anchor remains fixed after the first key. Switch to “Follow pointer” and restart to feel the difference.",
+        actions: [
+          ["Move near the input", { type: "MOVE", point: inputPoint, label: "Moved pointer to input" }],
+          ["Type the first key", { type: "KEY" }],
+          ["Move the pointer away", { type: "MOVE", point: awayPoint, label: "Moved pointer away" }],
+          ["Continue typing", { type: "KEY", count: 5 }],
+          ["Wait for the cat to hide", { type: "WAIT", ms: 2200 }],
+        ],
+      },
+      {
+        title: "Ignore an old click",
+        description: "A click should help only briefly. Otherwise an unrelated click from minutes ago could pull the cat to a surprising location.",
+        watch: "After nine seconds, the smart strategy uses the pointer at the first keystroke instead of the stale click.",
+        actions: [
+          ["Move to the input", { type: "MOVE", point: inputPoint, label: "Moved pointer to input" }],
+          ["Click", { type: "CLICK" }],
+          ["Wait nine seconds", { type: "WAIT", ms: 9000 }],
+          ["Move away", { type: "MOVE", point: awayPoint, label: "Moved pointer away" }],
+          ["Type", { type: "KEY" }],
+        ],
+      },
+      {
+        title: "Avoid screen edges",
+        description: "The preferred pointer corner is only a preference. The cat should flip sides when it would otherwise leave the usable screen.",
+        watch: "At the top-right, an “above right” preference flips left and below while remaining fully visible.",
+        actions: [
+          ["Move to the top-right", { type: "MOVE", point: edgePoint, label: "Moved pointer to top-right" }],
+          ["Type", { type: "KEY" }],
+        ],
+      },
+      {
+        title: "Choose again next burst",
+        description: "A frozen anchor lasts for one appearance only. After the cat fades, a new burst should use the user’s new context.",
+        watch: "The second burst receives a new anchor instead of reviving the old location.",
+        actions: [
+          ["Move near the input", { type: "MOVE", point: inputPoint, label: "Moved pointer to input" }],
+          ["Type", { type: "KEY" }],
+          ["Wait until hidden", { type: "WAIT", ms: 2200 }],
+          ["Move elsewhere", { type: "MOVE", point: { x: 120, y: 430 }, label: "Moved pointer elsewhere" }],
+          ["Start a new burst", { type: "KEY" }],
+        ],
+      },
+    ];
+
+    let state = PointerPlacementModel.initialState();
+    let activeScenario = 0;
+    let scenarioStep = 0;
+
+    const desktop = document.querySelector("#desktop");
+    const pointer = document.querySelector("#pointer");
+    const clickRing = document.querySelector("#clickRing");
+    const cat = document.querySelector("#cat");
+    const strategies = document.querySelector("#strategies");
+    const placement = document.querySelector("#placement");
+    const stateList = document.querySelector("#stateList");
+    const lastChange = document.querySelector("#lastChange");
+
+    function scalePoint(point) {
+      return {
+        x: point.x / PointerPlacementModel.config.screen.width * desktop.clientWidth,
+        y: point.y / PointerPlacementModel.config.screen.height * desktop.clientHeight,
+      };
+    }
+
+    function renderStrategies() {
+      strategies.innerHTML = "";
+      Object.entries(PointerPlacementModel.strategies).forEach(([id, strategy]) => {
+        const button = document.createElement("button");
+        button.className = `strategy${state.strategy === id ? " selected" : ""}`;
+        button.innerHTML = `<strong>${strategy.name}</strong><small>${strategy.detail}</small>`;
+        button.addEventListener("click", () => dispatch({ type: "SET_STRATEGY", strategy: id }));
+        strategies.append(button);
+      });
+    }
+
+    function renderDesktop() {
+      const pointerPosition = scalePoint(state.pointer);
+      pointer.style.left = `${pointerPosition.x}px`;
+      pointer.style.top = `${pointerPosition.y}px`;
+
+      if (state.lastClick) {
+        const clickPosition = scalePoint(state.lastClick);
+        clickRing.hidden = false;
+        clickRing.style.left = `${clickPosition.x}px`;
+        clickRing.style.top = `${clickPosition.y}px`;
+      } else {
+        clickRing.hidden = true;
+      }
+
+      if (state.cat.anchor && state.cat.phase !== "hidden") {
+        const catPosition = scalePoint(state.cat.anchor);
+        cat.hidden = false;
+        cat.style.left = `${catPosition.x}px`;
+        cat.style.top = `${catPosition.y}px`;
+        cat.style.opacity = state.cat.phase === "fading" ? ".35" : "1";
+        cat.dataset.label = state.cat.phase;
+      } else {
+        cat.hidden = true;
+      }
+    }
+
+    function renderState() {
+      const clickAge = state.lastClick
+        ? `${((state.nowMs - state.lastClick.atMs) / 1000).toFixed(1)}s`
+        : "None";
+      const anchor = state.cat.anchor
+        ? `(${state.cat.anchor.x}, ${state.cat.anchor.y})`
+        : "None";
+      const rows = [
+        ["Simulated time", `${(state.nowMs / 1000).toFixed(1)}s`],
+        ["Strategy", PointerPlacementModel.strategies[state.strategy].name],
+        ["Pointer", `(${state.pointer.x}, ${state.pointer.y})`],
+        ["Last click age", clickAge],
+        ["Cat phase", state.cat.phase],
+        ["Cat anchor", anchor],
+        ["Anchor reason", state.cat.anchorReason, true],
+        ["Typing burst", state.cat.burst || "Not started"],
+        ["Placement", state.placement],
+      ];
+      stateList.innerHTML = rows.map(([label, value, long]) =>
+        `<dt>${label}</dt><dd class="${long ? "long" : ""}">${value}</dd>`
+      ).join("");
+      lastChange.textContent = state.lastChange;
+    }
+
+    function renderScenario() {
+      const scenario = scenarios[activeScenario];
+      document.querySelector("#scenarioTitle").textContent = scenario.title;
+      document.querySelector("#scenarioDescription").textContent = scenario.description;
+      document.querySelector("#scenarioWatch").textContent = `Watch for: ${scenario.watch}`;
+      const steps = document.querySelector("#steps");
+      steps.innerHTML = "";
+      scenario.actions.forEach(([label, action], index) => {
+        const row = document.createElement("div");
+        row.className = `step${index === scenarioStep ? " current" : ""}${index < scenarioStep ? " done" : ""}`;
+        const button = document.createElement("button");
+        button.textContent = index < scenarioStep ? "Done" : "Run";
+        button.disabled = index !== scenarioStep;
+        button.addEventListener("click", () => {
+          dispatch(action);
+          scenarioStep += 1;
+          renderScenario();
+        });
+        row.innerHTML = `<span class="step-number">${index + 1}</span><span>${label}</span>`;
+        row.append(button);
+        steps.append(row);
+      });
+    }
+
+    function renderTabs() {
+      const tabs = document.querySelector("#tabs");
+      tabs.innerHTML = "";
+      scenarios.forEach((scenario, index) => {
+        const button = document.createElement("button");
+        button.className = `tab${index === activeScenario ? " active" : ""}`;
+        button.textContent = scenario.title;
+        button.addEventListener("click", () => startScenario(index));
+        tabs.append(button);
+      });
+    }
+
+    function render() {
+      renderStrategies();
+      renderDesktop();
+      renderState();
+      placement.value = state.placement;
+    }
+
+    function dispatch(action) {
+      state = PointerPlacementModel.reduce(state, action);
+      render();
+    }
+
+    function startScenario(index = activeScenario) {
+      activeScenario = index;
+      scenarioStep = 0;
+      state = PointerPlacementModel.initialState();
+      renderTabs();
+      renderScenario();
+      render();
+    }
+
+    document.querySelectorAll("[data-action]").forEach(button => {
+      button.addEventListener("click", () => {
+        const actions = {
+          "move-input": { type: "MOVE", point: inputPoint, label: "Moved pointer to input" },
+          "move-away": { type: "MOVE", point: awayPoint, label: "Moved pointer away" },
+          "click": { type: "CLICK" },
+          "key": { type: "KEY" },
+          "burst": { type: "KEY", count: 5 },
+          "wait-short": { type: "WAIT", ms: 1000 },
+          "wait-long": { type: "WAIT", ms: 3000 },
+          "move-edge": { type: "MOVE", point: edgePoint, label: "Moved pointer to top-right" },
+          "reset": { type: "RESET" },
+        };
+        dispatch(actions[button.dataset.action]);
+      });
+    });
+
+    desktop.addEventListener("click", event => {
+      const rect = desktop.getBoundingClientRect();
+      const point = {
+        x: Math.round((event.clientX - rect.left) / rect.width * PointerPlacementModel.config.screen.width),
+        y: Math.round((event.clientY - rect.top) / rect.height * PointerPlacementModel.config.screen.height),
+      };
+      dispatch({ type: "MOVE", point, label: "Clicked desktop" });
+      dispatch({ type: "CLICK" });
+    });
+
+    placement.addEventListener("change", () => {
+      dispatch({ type: "SET_PLACEMENT", placement: placement.value });
+    });
+
+    document.querySelector("#restartScenario").addEventListener("click", () => startScenario());
+    window.addEventListener("resize", renderDesktop);
+
+    startScenario(0);
+  </script>
+</body>
+</html>

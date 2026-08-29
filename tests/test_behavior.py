@@ -383,10 +383,15 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         with (
             patch("cat_type.SettingsWindow") as settings_window,
             patch("cat_type.APP_ICON") as app_icon,
+            patch(
+                "cat_type._macos_activation_policy_accessors_for_app",
+                return_value=None,
+            ) as activation_policy,
         ):
             app_icon.exists.return_value = False
             app.open_settings()
 
+        activation_policy.assert_called_once_with()
         settings_window.assert_called_once()
         arguments, keywords = settings_window.call_args
         self.assertEqual(
@@ -773,6 +778,95 @@ class CaretRangeTests(unittest.TestCase):
 
 
 class CaretFallbackTests(unittest.TestCase):
+    def test_macos_prefers_detected_caret_over_pointer(self) -> None:
+        locator = CaretLocator()
+        caret = ScreenRect(100, 200, 102, 220)
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", True),
+            patch.object(
+                locator,
+                "_locate_with_macos_accessibility",
+                return_value=(caret, False),
+            ),
+            patch.object(locator, "_locate_pointer") as locate_pointer,
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.rect, caret)
+        self.assertEqual(snapshot.source, "macos-accessibility")
+        locate_pointer.assert_not_called()
+
+    def test_macos_password_field_never_uses_pointer(self) -> None:
+        locator = CaretLocator()
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", True),
+            patch.object(
+                locator,
+                "_locate_with_macos_accessibility",
+                return_value=(None, True),
+            ),
+            patch.object(locator, "_locate_pointer") as locate_pointer,
+        ):
+            snapshot = locator.locate()
+
+        self.assertTrue(snapshot.is_password)
+        self.assertIsNone(snapshot.rect)
+        locate_pointer.assert_not_called()
+
+    def test_macos_requests_accessibility_once_then_uses_pointer(self) -> None:
+        locator = CaretLocator()
+        pointer = ScreenRect(320, 240, 322, 260)
+        prompt = Mock(return_value=False)
+        accessibility = SimpleNamespace(
+            AXIsProcessTrusted=Mock(return_value=False),
+            AXIsProcessTrustedWithOptions=prompt,
+            kAXTrustedCheckOptionPrompt="prompt",
+        )
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", True),
+            patch.dict(
+                sys.modules,
+                {
+                    "ApplicationServices": accessibility,
+                    "AppKit": SimpleNamespace(NSWorkspace=Mock()),
+                    "CoreFoundation": SimpleNamespace(CFRangeMake=Mock()),
+                },
+            ),
+            patch.object(locator, "_locate_pointer", return_value=pointer),
+        ):
+            first_snapshot = locator.locate()
+            second_snapshot = locator.locate()
+
+        self.assertEqual(first_snapshot.source, "pointer-fallback")
+        self.assertEqual(second_snapshot.source, "pointer-fallback")
+        prompt.assert_called_once_with({"prompt": True})
+
+    def test_macos_accessibility_can_be_disabled_for_sandboxed_builds(
+        self,
+    ) -> None:
+        locator = CaretLocator(allow_macos_accessibility=False)
+        pointer = ScreenRect(320, 240, 322, 260)
+
+        with (
+            patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", True),
+            patch.object(
+                locator,
+                "_locate_with_macos_accessibility",
+            ) as locate_with_accessibility,
+            patch.object(locator, "_locate_pointer", return_value=pointer),
+        ):
+            snapshot = locator.locate()
+
+        self.assertEqual(snapshot.source, "pointer-fallback")
+        locate_with_accessibility.assert_not_called()
+
     def test_windows_uses_pointer_when_caret_providers_fail(self) -> None:
         locator = CaretLocator()
         pointer = ScreenRect(640, 480, 642, 500)
@@ -853,12 +947,13 @@ class CaretFallbackTests(unittest.TestCase):
         self.assertIsNone(snapshot.rect)
         locate_pointer.assert_not_called()
 
-    def test_non_windows_uses_shared_pointer_provider(self) -> None:
+    def test_linux_uses_shared_pointer_provider(self) -> None:
         locator = CaretLocator()
         pointer = ScreenRect(320, 240, 322, 260)
 
         with (
             patch("cat_type.IS_WINDOWS", False),
+            patch("cat_type.IS_MACOS", False),
             patch.object(locator, "_locate_pointer", return_value=pointer),
         ):
             snapshot = locator.locate()

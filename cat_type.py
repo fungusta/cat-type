@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import math
 import os
 import platform as runtime_platform
 import queue
@@ -1061,10 +1062,16 @@ class KeyboardMonitor:
 
 
 class CaretLocator:
-    def __init__(self, debug: bool = False) -> None:
+    def __init__(
+        self,
+        debug: bool = False,
+        allow_macos_accessibility: bool = True,
+    ) -> None:
         self.debug = debug
+        self.allow_macos_accessibility = allow_macos_accessibility
         self._automation = None
         self._uia = None
+        self._macos_accessibility_prompted = False
 
     def initialize_uia(self) -> None:
         try:
@@ -1086,6 +1093,25 @@ class CaretLocator:
 
     def locate(self) -> CaretSnapshot:
         now = time.monotonic()
+        if IS_MACOS and self.allow_macos_accessibility:
+            macos_rect, is_password = (
+                self._locate_with_macos_accessibility()
+            )
+            if is_password:
+                return CaretSnapshot(
+                    now,
+                    None,
+                    True,
+                    "macos-accessibility-password",
+                )
+            if macos_rect:
+                return CaretSnapshot(
+                    now,
+                    macos_rect,
+                    False,
+                    "macos-accessibility",
+                )
+
         if not IS_WINDOWS:
             # Accessibility APIs differ considerably between desktop
             # environments. Until a provider returns a usable caret rectangle,
@@ -1120,6 +1146,132 @@ class CaretLocator:
                 "pointer-fallback",
             )
         return CaretSnapshot(now, None)
+
+    def _locate_with_macos_accessibility(
+        self,
+    ) -> tuple[ScreenRect | None, bool]:
+        try:
+            import ApplicationServices as accessibility
+            from AppKit import NSWorkspace
+            from CoreFoundation import CFRangeMake
+
+            if not accessibility.AXIsProcessTrusted():
+                if not self._macos_accessibility_prompted:
+                    self._macos_accessibility_prompted = True
+                    accessibility.AXIsProcessTrustedWithOptions(
+                        {
+                            accessibility.kAXTrustedCheckOptionPrompt: True,
+                        }
+                    )
+                return None, False
+
+            frontmost = NSWorkspace.sharedWorkspace().frontmostApplication()
+            if frontmost is None:
+                return None, False
+            application = accessibility.AXUIElementCreateApplication(
+                frontmost.processIdentifier()
+            )
+            error, element = accessibility.AXUIElementCopyAttributeValue(
+                application,
+                accessibility.kAXFocusedUIElementAttribute,
+                None,
+            )
+            if error != accessibility.kAXErrorSuccess or element is None:
+                return None, False
+
+            _, subrole = accessibility.AXUIElementCopyAttributeValue(
+                element,
+                accessibility.kAXSubroleAttribute,
+                None,
+            )
+            if subrole == accessibility.kAXSecureTextFieldSubrole:
+                return None, True
+
+            error, selected_range = (
+                accessibility.AXUIElementCopyAttributeValue(
+                    element,
+                    accessibility.kAXSelectedTextRangeAttribute,
+                    None,
+                )
+            )
+            if (
+                error != accessibility.kAXErrorSuccess
+                or selected_range is None
+                or accessibility.AXValueGetType(selected_range)
+                != accessibility.kAXValueCFRangeType
+            ):
+                return None, False
+
+            valid, selected = accessibility.AXValueGetValue(
+                selected_range,
+                accessibility.kAXValueCFRangeType,
+                None,
+            )
+            if not valid:
+                return None, False
+            location, length = selected
+            caret_range = accessibility.AXValueCreate(
+                accessibility.kAXValueCFRangeType,
+                CFRangeMake(
+                    location + length,
+                    0,
+                ),
+            )
+            error, bounds = (
+                accessibility.AXUIElementCopyParameterizedAttributeValue(
+                    element,
+                    accessibility.kAXBoundsForRangeParameterizedAttribute,
+                    caret_range,
+                    None,
+                )
+            )
+            if (
+                error != accessibility.kAXErrorSuccess
+                or bounds is None
+                or accessibility.AXValueGetType(bounds)
+                != accessibility.kAXValueCGRectType
+            ):
+                return None, False
+
+            valid, frame = accessibility.AXValueGetValue(
+                bounds,
+                accessibility.kAXValueCGRectType,
+                None,
+            )
+            if not valid:
+                return None, False
+            left = float(frame.origin.x)
+            top = float(frame.origin.y)
+            width = float(frame.size.width)
+            height = float(frame.size.height)
+            if (
+                not all(
+                    math.isfinite(value)
+                    for value in (left, top, width, height)
+                )
+                or height <= 0
+                or width < 0
+            ):
+                return None, False
+
+            rounded_left = round(left)
+            rounded_top = round(top)
+            return (
+                ScreenRect(
+                    rounded_left,
+                    rounded_top,
+                    max(rounded_left + 2, round(left + width)),
+                    max(rounded_top + 1, round(top + height)),
+                ),
+                False,
+            )
+        except Exception as exc:
+            if self.debug:
+                print(
+                    f"macOS Accessibility lookup failed: {exc}",
+                    file=sys.stderr,
+                )
+            return None, False
 
     def _locate_pointer(self) -> ScreenRect | None:
         try:
@@ -1251,8 +1403,15 @@ class CaretLocator:
 
 
 class CaretTracker:
-    def __init__(self, debug: bool = False) -> None:
-        self._locator = CaretLocator(debug=debug)
+    def __init__(
+        self,
+        debug: bool = False,
+        allow_macos_accessibility: bool = True,
+    ) -> None:
+        self._locator = CaretLocator(
+            debug=debug,
+            allow_macos_accessibility=allow_macos_accessibility,
+        )
         self._snapshot = CaretSnapshot(0.0, None)
         self._snapshot_lock = threading.Lock()
         self._wake = threading.Event()
@@ -1551,7 +1710,10 @@ class CatTypeApp:
             fade_seconds=self.settings.fade_seconds,
         )
         self.keyboard = KeyboardMonitor(self.events)
-        self.tracker = CaretTracker(debug=debug)
+        self.tracker = CaretTracker(
+            debug=debug,
+            allow_macos_accessibility=not self._app_store_distribution,
+        )
         self._last_rendered_frame: tuple[str, str] | None = None
         self._last_key_at = 0.0
         self._hook_failed = False

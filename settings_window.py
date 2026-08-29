@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 import sys
 import tkinter as tk
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -341,11 +342,18 @@ class SettingsWindow:
         self.active_page = tk.StringVar(value="Settings")
         self.metrics_range_days = tk.IntVar(value=7)
         self.metrics_view = tk.StringVar(value=settings.metrics_view)
+        self.metrics_interval_text = tk.StringVar(value="")
         self.metrics_today_text = tk.StringVar(value="0")
         self.metrics_week_text = tk.StringVar(value="0")
         self.metrics_total_text = tk.StringVar(
             value=f"{self.usage_metrics.total_keystrokes:,}"
         )
+        self._metrics_selected_index: int | None = None
+        self._metrics_positions: list[tuple[float, float]] = []
+        self._metrics_values: list[int] = []
+        self._metrics_exact_labels: list[str] = []
+        self._metrics_partial_index: int | None = None
+        self._metrics_plot_bounds = (0, 0, 0, 0)
         self.update_status_text = tk.StringVar(value=update_status)
 
         self._configure_styles()
@@ -832,11 +840,41 @@ class SettingsWindow:
             height=250,
             background=self.CARD,
             highlightthickness=0,
+            takefocus=True,
         )
+        self.metrics_interval_label = tk.Label(
+            activity_content,
+            textvariable=self.metrics_interval_text,
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        )
+        self.metrics_interval_label.pack(anchor="w", pady=(0, 8))
         self.metrics_chart.pack(fill="x")
         self.metrics_chart.bind(
             "<Configure>",
             lambda _event: self._draw_metrics(),
+        )
+        self.metrics_chart.bind("<Motion>", self._inspect_metrics_from_pointer)
+        self.metrics_chart.bind("<Button-1>", self._focus_metrics_from_pointer)
+        self.metrics_chart.bind("<Leave>", self._leave_metrics_chart)
+        self.metrics_chart.bind("<FocusIn>", self._focus_metrics_chart)
+        self.metrics_chart.bind("<FocusOut>", self._hide_metrics_inspection)
+        self.metrics_chart.bind(
+            "<Left>",
+            lambda event: self._move_metrics_inspection(event, -1),
+        )
+        self.metrics_chart.bind(
+            "<Right>",
+            lambda event: self._move_metrics_inspection(event, 1),
+        )
+        self.metrics_chart.bind(
+            "<Home>",
+            lambda event: self._jump_metrics_inspection(event, to_end=False),
+        )
+        self.metrics_chart.bind(
+            "<End>",
+            lambda event: self._jump_metrics_inspection(event, to_end=True),
         )
         activity_card.pack(fill="x", pady=(0, 14))
 
@@ -967,18 +1005,24 @@ class SettingsWindow:
         ).pack(anchor="w", padx=16, pady=(2, 14))
 
     def _change_metrics_range(self) -> None:
+        self._metrics_selected_index = None
         self._refresh_metrics_range_buttons()
         self._draw_metrics()
 
     def _refresh_metrics_range_buttons(self) -> None:
         selected = self.metrics_range_days.get()
         for days, button in self.metrics_range_buttons.items():
+            is_selected = days == selected
             button.configure(
-                background=self.PEACH if days == selected else self.BLUSH,
-                foreground=self.ACCENT_DARK if days == selected else self.INK,
+                background=self.PEACH if is_selected else self.BLUSH,
+                foreground=self.INK,
+                highlightbackground=(
+                    self.ACCENT_DARK if is_selected else self.BORDER
+                ),
             )
 
     def _change_metrics_view(self) -> None:
+        self._metrics_selected_index = None
         self._refresh_metrics_view_buttons()
         self._draw_metrics()
 
@@ -988,10 +1032,89 @@ class SettingsWindow:
     def _refresh_metrics_view_buttons(self) -> None:
         selected = self.metrics_view.get()
         for view, button in self.metrics_view_buttons.items():
+            is_selected = view == selected
             button.configure(
-                background=self.PEACH if view == selected else self.BLUSH,
-                foreground=self.ACCENT_DARK if view == selected else self.INK,
+                background=self.PEACH if is_selected else self.BLUSH,
+                foreground=self.INK,
+                highlightbackground=(
+                    self.ACCENT_DARK if is_selected else self.BORDER
+                ),
             )
+
+    @staticmethod
+    def _metric_axis(maximum: int) -> tuple[int, list[int]]:
+        maximum = max(0, int(maximum))
+        if maximum == 0:
+            return 1, [0, 1]
+
+        target_maximum = max(1.0, maximum * 1.1)
+        rough_step = target_maximum / 3
+        magnitude = 10 ** math.floor(math.log10(rough_step))
+        fraction = rough_step / magnitude
+        if fraction <= 1:
+            nice_fraction = 1
+        elif fraction <= 2:
+            nice_fraction = 2
+        elif fraction <= 5:
+            nice_fraction = 5
+        else:
+            nice_fraction = 10
+        step = max(1, int(nice_fraction * magnitude))
+        axis_maximum = int(math.ceil(target_maximum / step) * step)
+        return axis_maximum, list(range(0, axis_maximum + 1, step))
+
+    @staticmethod
+    def _format_metric_tick(value: int) -> str:
+        if value < 1_000:
+            return f"{value:,}"
+        if value < 10_000 and value % 1_000:
+            return f"{value / 1_000:.1f}k"
+        return f"{value // 1_000:,}k"
+
+    @staticmethod
+    def _metric_interval_label(start: date, end: date) -> str:
+        if start == end:
+            return f"Today · {end.day} {end.strftime('%b %Y')}"
+        if start.year == end.year and start.month == end.month:
+            return f"{start.day}–{end.day} {end.strftime('%b %Y')}"
+        if start.year == end.year:
+            return (
+                f"{start.day} {start.strftime('%b')}–"
+                f"{end.day} {end.strftime('%b %Y')}"
+            )
+        return (
+            f"{start.day} {start.strftime('%b %Y')}–"
+            f"{end.day} {end.strftime('%b %Y')}"
+        )
+
+    @staticmethod
+    def _metric_hour_label(day: date, hour: int) -> str:
+        def short_hour(value: int) -> str:
+            suffix = "am" if value < 12 else "pm"
+            return f"{value % 12 or 12}{suffix}"
+
+        return (
+            f"{day.strftime('%a')}, {day.day} {day.strftime('%b %Y')} · "
+            f"{short_hour(hour)}–{short_hour((hour + 1) % 24)}"
+        )
+
+    @staticmethod
+    def _metric_label_indices(
+        labels: list[str | None],
+        usable_width: int,
+    ) -> set[int]:
+        candidates = [
+            index for index, label in enumerate(labels) if label is not None
+        ]
+        maximum_labels = max(2, usable_width // 52)
+        if len(candidates) <= maximum_labels:
+            return set(candidates)
+        return {
+            candidates[
+                round(position * (len(candidates) - 1) / (maximum_labels - 1))
+            ]
+            for position in range(maximum_labels)
+        }
 
     @staticmethod
     def _metric_line_positions(
@@ -1003,12 +1126,13 @@ class SettingsWindow:
         right: int,
         top: int,
         bottom: int,
+        maximum: int | None = None,
     ) -> list[tuple[float, float]]:
         if not values:
             return []
         usable_width = max(1, width - left - right)
         usable_height = max(1, height - top - bottom)
-        maximum = max(1, max(values))
+        maximum = max(1, maximum if maximum is not None else max(values))
         step = usable_width / max(1, len(values) - 1)
         baseline = height - bottom
         return [
@@ -1029,12 +1153,13 @@ class SettingsWindow:
         right: int,
         top: int,
         bottom: int,
+        maximum: int | None = None,
     ) -> list[tuple[float, float, float]]:
         if not values:
             return []
         usable_width = max(1, width - left - right)
         usable_height = max(1, height - top - bottom)
-        maximum = max(1, max(values))
+        maximum = max(1, maximum if maximum is not None else max(values))
         step = usable_width / len(values)
         baseline = height - bottom
         return [
@@ -1049,7 +1174,8 @@ class SettingsWindow:
     def _draw_metrics(self) -> None:
         canvas = self.metrics_chart
         canvas.delete("all")
-        today = datetime.now().astimezone().date()
+        now = datetime.now().astimezone()
+        today = now.date()
         days = self.metrics_range_days.get()
         if days == 1:
             values = self.usage_metrics.hourly_series(today)
@@ -1057,6 +1183,13 @@ class SettingsWindow:
                 {0: "12a", 6: "6a", 12: "12p", 18: "6p", 23: "11p"}.get(hour)
                 for hour in range(24)
             ]
+            exact_labels = [
+                self._metric_hour_label(today, hour)
+                for hour in range(24)
+            ]
+            visible_count = now.hour + 1
+            interval_start = today
+            interval_end = today
             empty_message = "No activity recorded today yet"
         else:
             series = self.usage_metrics.daily_series(days, ending_on=today)
@@ -1071,32 +1204,29 @@ class SettingsWindow:
                 )
                 for index, (day, _count) in enumerate(series)
             ]
+            exact_labels = [
+                f"{day.strftime('%a')}, {day.day} {day.strftime('%b %Y')}"
+                for day, _count in series
+            ]
+            visible_count = len(values)
+            interval_start = series[0][0]
+            interval_end = series[-1][0]
             empty_message = "Start typing to see your daily rhythm"
+        self.metrics_interval_text.set(
+            self._metric_interval_label(interval_start, interval_end)
+        )
         width = max(320, canvas.winfo_width())
         height = max(180, canvas.winfo_height())
         left = 46
         right = 14
         top = 24
         bottom = 34
-        maximum = max(values, default=0)
+        visible_values = values[:visible_count]
+        maximum = max(visible_values, default=0)
+        axis_maximum, ticks = self._metric_axis(maximum)
         baseline = height - bottom
-        for fraction in (0, 0.5, 1):
-            y = baseline - (height - top - bottom) * fraction
-            canvas.create_line(
-                left,
-                y,
-                width - right,
-                y,
-                fill=self.BORDER,
-            )
-            canvas.create_text(
-                left - 8,
-                y,
-                text=f"{round(maximum * fraction):,}",
-                anchor="e",
-                fill=self.MUTED,
-                font=self.fonts["tiny"],
-            )
+        usable_width = width - left - right
+
         if self.metrics_view.get() == "columns":
             column_positions = self._metric_column_positions(
                 values,
@@ -1106,16 +1236,80 @@ class SettingsWindow:
                 right=right,
                 top=top,
                 bottom=bottom,
+                maximum=axis_maximum,
             )
-            label_positions = [
+            plot_positions = [
                 (x, y) for x, _column_baseline, y in column_positions
             ]
+            label_positions = plot_positions
+            bucket_span = usable_width / max(1, len(values))
+        else:
+            line_positions = self._metric_line_positions(
+                values,
+                width,
+                height,
+                left=left,
+                right=right,
+                top=top,
+                bottom=bottom,
+                maximum=axis_maximum,
+            )
+            plot_positions = line_positions
+            label_positions = line_positions
+            bucket_span = usable_width / max(1, len(values) - 1)
+
+        partial_index = max(0, visible_count - 1)
+        if maximum:
+            partial_x = plot_positions[partial_index][0]
+            partial_left = max(left, partial_x - bucket_span / 2)
+            partial_right = min(width - right, partial_x + bucket_span / 2)
+            canvas.create_rectangle(
+                partial_left,
+                top,
+                partial_right,
+                baseline,
+                fill=self.BLUSH,
+                outline="",
+                tags=("metric-partial",),
+            )
+            partial_label_x = min(width - right - 4, partial_right - 4)
+            canvas.create_text(
+                partial_label_x,
+                top + 8,
+                text="so far",
+                anchor="ne",
+                fill=self.MUTED,
+                font=self.fonts["tiny"],
+                tags=("metric-partial-label",),
+            )
+
+        for tick in ticks if maximum else (0,):
+            fraction = tick / axis_maximum
+            y = baseline - (height - top - bottom) * fraction
+            canvas.create_line(
+                left,
+                y,
+                width - right,
+                y,
+                fill=self.BORDER,
+                tags=("metric-grid",),
+            )
+            canvas.create_text(
+                left - 8,
+                y,
+                text=self._format_metric_tick(tick),
+                anchor="e",
+                fill=self.MUTED,
+                font=self.fonts["tiny"],
+                tags=("metric-y-label",),
+            )
+        if self.metrics_view.get() == "columns":
             step = (width - left - right) / max(1, len(values))
             bar_width = max(3, min(22, step * 0.56))
             if maximum:
                 for value, (x, column_baseline, y) in zip(
-                    values,
-                    column_positions,
+                    visible_values,
+                    column_positions[:visible_count],
                 ):
                     if value:
                         half_width = bar_width / 2
@@ -1158,43 +1352,36 @@ class SettingsWindow:
                             tags=("metric-column",),
                         )
         else:
-            line_positions = self._metric_line_positions(
-                values,
-                width,
-                height,
-                left=left,
-                right=right,
-                top=top,
-                bottom=bottom,
-            )
-            label_positions = line_positions
-            if maximum and len(line_positions) > 1:
+            visible_line_positions = line_positions[:visible_count]
+            if maximum and len(visible_line_positions) > 1:
                 canvas.create_line(
                     *[
                         coordinate
-                        for point in line_positions
+                        for point in visible_line_positions
                         for coordinate in point
                     ],
                     fill=self.ACCENT_DARK,
-                    width=3,
+                    width=2,
                     smooth=False,
                     capstyle="round",
                     joinstyle="round",
                     tags=("metric-line",),
                 )
-                for x, y in line_positions:
-                    canvas.create_oval(
-                        x - 3,
-                        y - 3,
-                        x + 3,
-                        y + 3,
-                        fill=self.ACCENT_DARK,
-                        outline=self.CARD,
-                        width=1,
-                        tags=("metric-point",),
-                    )
-        for (x, _y), label in zip(label_positions, labels):
-            if label is not None:
+            elif maximum and visible_line_positions:
+                x, y = visible_line_positions[0]
+                canvas.create_oval(
+                    x - 3,
+                    y - 3,
+                    x + 3,
+                    y + 3,
+                    fill=self.ACCENT_DARK,
+                    outline=self.CARD,
+                    width=1,
+                    tags=("metric-single-point",),
+                )
+        visible_label_indices = self._metric_label_indices(labels, usable_width)
+        for index, ((x, _y), label) in enumerate(zip(label_positions, labels)):
+            if label is not None and index in visible_label_indices:
                 canvas.create_text(
                     x,
                     height - 13,
@@ -1210,6 +1397,151 @@ class SettingsWindow:
                 fill=self.MUTED,
                 font=self.fonts["body"],
             )
+
+        self._metrics_positions = plot_positions[:visible_count] if maximum else []
+        self._metrics_values = visible_values if maximum else []
+        self._metrics_exact_labels = exact_labels[:visible_count] if maximum else []
+        self._metrics_partial_index = partial_index if maximum else None
+        self._metrics_plot_bounds = (left, top, width - right, baseline)
+        if (
+            self._metrics_selected_index is not None
+            and self._metrics_positions
+        ):
+            self._show_metrics_inspection(self._metrics_selected_index)
+
+    def _inspect_metrics_from_pointer(self, event: tk.Event[tk.Misc]) -> None:
+        if not self._metrics_positions:
+            return
+        index = min(
+            range(len(self._metrics_positions)),
+            key=lambda item: abs(self._metrics_positions[item][0] - event.x),
+        )
+        self._show_metrics_inspection(index)
+
+    def _focus_metrics_from_pointer(self, event: tk.Event[tk.Misc]) -> None:
+        self.metrics_chart.focus_set()
+        self._inspect_metrics_from_pointer(event)
+
+    def _focus_metrics_chart(self, _event: tk.Event[tk.Misc]) -> None:
+        if not self._metrics_positions:
+            return
+        index = (
+            self._metrics_selected_index
+            if self._metrics_selected_index is not None
+            else len(self._metrics_positions) - 1
+        )
+        self._show_metrics_inspection(index)
+
+    def _leave_metrics_chart(self, _event: tk.Event[tk.Misc]) -> None:
+        if self.metrics_chart.focus_get() is not self.metrics_chart:
+            self._hide_metrics_inspection()
+
+    def _hide_metrics_inspection(
+        self,
+        _event: tk.Event[tk.Misc] | None = None,
+    ) -> None:
+        self.metrics_chart.delete("metric-inspection")
+        self._metrics_selected_index = None
+
+    def _move_metrics_inspection(
+        self,
+        _event: tk.Event[tk.Misc],
+        amount: int,
+    ) -> str:
+        if not self._metrics_positions:
+            return "break"
+        current = (
+            self._metrics_selected_index
+            if self._metrics_selected_index is not None
+            else len(self._metrics_positions) - 1
+        )
+        self._show_metrics_inspection(current + amount)
+        return "break"
+
+    def _jump_metrics_inspection(
+        self,
+        _event: tk.Event[tk.Misc],
+        *,
+        to_end: bool,
+    ) -> str:
+        if self._metrics_positions:
+            self._show_metrics_inspection(
+                len(self._metrics_positions) - 1 if to_end else 0
+            )
+        return "break"
+
+    def _show_metrics_inspection(self, index: int) -> None:
+        if not self._metrics_positions:
+            return
+        index = min(max(0, index), len(self._metrics_positions) - 1)
+        self._metrics_selected_index = index
+        canvas = self.metrics_chart
+        canvas.delete("metric-inspection")
+        x, y = self._metrics_positions[index]
+        left, top, right, baseline = self._metrics_plot_bounds
+        canvas.create_line(
+            x,
+            top,
+            x,
+            baseline,
+            fill=self.ACCENT,
+            dash=(2, 3),
+            tags=("metric-inspection", "metric-crosshair"),
+        )
+        canvas.create_oval(
+            x - 4,
+            y - 4,
+            x + 4,
+            y + 4,
+            fill=self.ACCENT_DARK,
+            outline=self.CARD,
+            width=2,
+            tags=("metric-inspection", "metric-active-point"),
+        )
+
+        value = self._metrics_values[index]
+        partial_suffix = (
+            " · so far" if index == self._metrics_partial_index else ""
+        )
+        unit = "keystroke" if value == 1 else "keystrokes"
+        tooltip_text = (
+            f"{self._metrics_exact_labels[index]}\n"
+            f"{value:,} {unit}{partial_suffix}"
+        )
+        text_id = canvas.create_text(
+            0,
+            0,
+            text=tooltip_text,
+            anchor="nw",
+            fill="#FFFFFF",
+            font=self.fonts["small"],
+            justify="left",
+            tags=("metric-inspection", "metric-tooltip-text"),
+        )
+        text_bounds = canvas.bbox(text_id)
+        if text_bounds is None:
+            return
+        tooltip_width = text_bounds[2] - text_bounds[0] + 18
+        tooltip_height = text_bounds[3] - text_bounds[1] + 14
+        tooltip_x = x + 12
+        if tooltip_x + tooltip_width > right:
+            tooltip_x = x - tooltip_width - 12
+        tooltip_x = max(left, min(tooltip_x, right - tooltip_width))
+        tooltip_y = y - tooltip_height - 12
+        if tooltip_y < top + 4:
+            tooltip_y = min(baseline - tooltip_height, y + 12)
+        tooltip_y = max(top + 4, tooltip_y)
+        canvas.coords(text_id, tooltip_x + 9, tooltip_y + 7)
+        rectangle_id = canvas.create_rectangle(
+            tooltip_x,
+            tooltip_y,
+            tooltip_x + tooltip_width,
+            tooltip_y + tooltip_height,
+            fill=self.INK,
+            outline="",
+            tags=("metric-inspection", "metric-tooltip"),
+        )
+        canvas.tag_lower(rectangle_id, text_id)
 
     def _refresh_usage_metrics(self) -> None:
         today = datetime.now().astimezone().date()

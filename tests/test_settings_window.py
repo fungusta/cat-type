@@ -200,6 +200,36 @@ class SettingsWindowMetricsGeometryTests(unittest.TestCase):
             ],
         )
 
+    def test_metric_axis_uses_nice_ticks_and_peak_headroom(self) -> None:
+        self.assertEqual(
+            SettingsWindow._metric_axis(1),
+            (2, [0, 1, 2]),
+        )
+        self.assertEqual(
+            SettingsWindow._metric_axis(100),
+            (150, [0, 50, 100, 150]),
+        )
+        self.assertEqual(
+            SettingsWindow._metric_axis(274),
+            (400, [0, 200, 400]),
+        )
+
+        positions = SettingsWindow._metric_line_positions(
+            [0, 50, 100],
+            300,
+            200,
+            left=40,
+            right=20,
+            top=20,
+            bottom=30,
+            maximum=125,
+        )
+
+        self.assertEqual(
+            positions,
+            [(40.0, 170.0), (160.0, 110.0), (280.0, 50.0)],
+        )
+
 
 class SettingsWindowCiTests(unittest.TestCase):
     def test_cross_platform_workflows_run_settings_window_tests(self) -> None:
@@ -811,6 +841,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.metrics_range_buttons[1].cget("background"),
             self.settings_window.PEACH,
         )
+        self.assertEqual(
+            self.settings_window.metrics_range_buttons[1].cget(
+                "highlightbackground"
+            ),
+            self.settings_window.ACCENT_DARK,
+        )
 
         self.settings_window.metrics_range_days.set(30)
         self.settings_window._change_metrics_range()
@@ -822,12 +858,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
 
     def test_metrics_view_switches_without_resetting_range(self) -> None:
-        today = datetime.now().astimezone().date()
+        now = datetime.now().astimezone()
+        today = now.date()
         self.settings_window.update_usage_metrics(
             UsageMetrics(
                 total_keystrokes=30,
                 daily={today.isoformat(): 30},
-                hourly={f"{today.isoformat()}T09": 30},
+                hourly={f"{today.isoformat()}T{now.hour:02d}": 30},
             )
         )
         self.settings_window.active_page.set("Metrics")
@@ -847,6 +884,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.metrics_view_label.cget("text"),
             "View",
         )
+        self.assertTrue(self.settings_window.metrics_interval_text.get())
         line_ids = self.settings_window.metrics_chart.find_withtag(
             "metric-line"
         )
@@ -879,7 +917,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_view.get(), "columns")
         self.on_metrics_view_change.assert_called_once_with("columns")
 
-    def test_columns_cover_every_bucket_with_exact_scaled_bounds(self) -> None:
+    def test_columns_cover_observed_buckets_with_exact_scaled_bounds(self) -> None:
         today = datetime.now().astimezone().date()
         daily = {
             (today - timedelta(days=offset)).isoformat(): offset + 1
@@ -900,7 +938,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window.window.update()
         canvas = self.settings_window.metrics_chart
 
-        for days, expected_count in ((1, 24), (7, 7), (30, 30)):
+        observed_hours = datetime.now().astimezone().hour + 1
+        for days, expected_count in (
+            (1, observed_hours),
+            (7, 7),
+            (30, 30),
+        ):
             with self.subTest(days=days):
                 self.settings_window.metrics_range_days.set(days)
                 self.settings_window.metrics_view.set("columns")
@@ -919,6 +962,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                         )
                     ]
                 )
+                visible_values = values[:expected_count]
+                axis_maximum, _ticks = SettingsWindow._metric_axis(
+                    max(visible_values, default=0)
+                )
                 expected_positions = SettingsWindow._metric_column_positions(
                     values,
                     width,
@@ -927,10 +974,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     right=14,
                     top=24,
                     bottom=34,
+                    maximum=axis_maximum,
                 )
                 expected_width = max(
                     3,
-                    min(22, ((width - 46 - 14) / expected_count) * 0.56),
+                    min(22, ((width - 46 - 14) / len(values)) * 0.56),
                 )
                 column_ids = canvas.find_withtag("metric-column")
 
@@ -976,23 +1024,29 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window.window.update()
         canvas = self.settings_window.metrics_chart
 
-        for days, expected_count in ((1, 24), (7, 7), (30, 30)):
+        observed_hours = datetime.now().astimezone().hour + 1
+        for days, expected_count in (
+            (1, observed_hours),
+            (7, 7),
+            (30, 30),
+        ):
             with self.subTest(days=days):
                 self.settings_window.metrics_range_days.set(days)
                 self.settings_window.metrics_view.set("line")
                 self.settings_window._draw_metrics()
-                line_id = canvas.find_withtag("metric-line")[0]
-                line_coordinates = canvas.coords(line_id)
-                line_points = list(
-                    zip(line_coordinates[::2], line_coordinates[1::2])
-                )
-                marker_centers = []
-                for marker_id in canvas.find_withtag("metric-point"):
-                    x0, y0, x1, y1 = canvas.coords(marker_id)
-                    marker_centers.append(((x0 + x1) / 2, (y0 + y1) / 2))
-
+                if expected_count == 1:
+                    point_id = canvas.find_withtag("metric-single-point")[0]
+                    x0, y0, x1, y1 = canvas.coords(point_id)
+                    line_points = [((x0 + x1) / 2, (y0 + y1) / 2)]
+                else:
+                    line_id = canvas.find_withtag("metric-line")[0]
+                    line_coordinates = canvas.coords(line_id)
+                    line_points = list(
+                        zip(line_coordinates[::2], line_coordinates[1::2])
+                    )
+                    self.assertEqual(canvas.itemcget(line_id, "width"), "2.0")
                 self.assertEqual(len(line_points), expected_count)
-                self.assertEqual(marker_centers, line_points)
+                self.assertFalse(canvas.find_withtag("metric-point"))
 
                 self.settings_window.metrics_view.set("columns")
                 self.settings_window._draw_metrics()
@@ -1005,6 +1059,92 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
                 self.assertEqual(column_tops, [y for _x, y in line_points])
                 self.assertEqual(len(set(column_baselines)), 1)
+
+    def test_line_chart_reveals_exact_values_on_hover_and_keyboard_focus(
+        self,
+    ) -> None:
+        today = datetime.now().astimezone().date()
+        daily = {
+            (today - timedelta(days=offset)).isoformat(): (offset + 1) * 100
+            for offset in range(7)
+        }
+        self.settings_window.update_usage_metrics(
+            UsageMetrics(
+                total_keystrokes=sum(daily.values()),
+                daily=daily,
+            )
+        )
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+        canvas = self.settings_window.metrics_chart
+
+        self.assertFalse(canvas.find_withtag("metric-point"))
+        self.assertTrue(canvas.find_withtag("metric-partial"))
+        self.assertEqual(
+            canvas.itemcget(canvas.find_withtag("metric-partial-label")[0], "text"),
+            "so far",
+        )
+
+        self.settings_window._show_metrics_inspection(6)
+
+        self.assertTrue(canvas.find_withtag("metric-crosshair"))
+        self.assertTrue(canvas.find_withtag("metric-active-point"))
+        tooltip_id = canvas.find_withtag("metric-tooltip-text")[0]
+        tooltip_text = canvas.itemcget(tooltip_id, "text")
+        self.assertIn(today.strftime("%a, %d %b %Y"), tooltip_text)
+        self.assertIn(f"{daily[today.isoformat()]:,} keystrokes", tooltip_text)
+        self.assertIn("so far", tooltip_text)
+
+        canvas.focus_force()
+        self.settings_window._move_metrics_inspection(
+            SimpleNamespace(),
+            -1,
+        )
+
+        self.assertEqual(self.settings_window._metrics_selected_index, 5)
+        tooltip_id = canvas.find_withtag("metric-tooltip-text")[0]
+        self.assertNotIn("so far", canvas.itemcget(tooltip_id, "text"))
+
+    def test_one_day_line_stops_at_the_current_partial_hour(self) -> None:
+        now = datetime.now().astimezone()
+        today = now.date()
+        hourly = {
+            f"{today.isoformat()}T{hour:02d}": hour + 1
+            for hour in range(24)
+        }
+        self.settings_window.update_usage_metrics(
+            UsageMetrics(
+                total_keystrokes=sum(hourly.values()),
+                hourly=hourly,
+            )
+        )
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.metrics_range_days.set(1)
+        self.settings_window._change_metrics_range()
+        self.settings_window.window.update()
+
+        if now.hour == 0:
+            self.assertTrue(
+                self.settings_window.metrics_chart.find_withtag(
+                    "metric-single-point"
+                )
+            )
+        else:
+            line_id = self.settings_window.metrics_chart.find_withtag(
+                "metric-line"
+            )[0]
+            line_coordinates = self.settings_window.metrics_chart.coords(line_id)
+            self.assertEqual(len(line_coordinates) // 2, now.hour + 1)
+        self.settings_window._show_metrics_inspection(now.hour)
+        tooltip_id = self.settings_window.metrics_chart.find_withtag(
+            "metric-tooltip-text"
+        )[0]
+        self.assertIn(
+            "so far",
+            self.settings_window.metrics_chart.itemcget(tooltip_id, "text"),
+        )
 
     def test_both_views_keep_empty_labels_resize_and_live_refresh(self) -> None:
         today = datetime.now().astimezone().date()
@@ -1029,6 +1169,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     self.assertFalse(canvas.find_withtag("metric-line"))
                     self.assertFalse(canvas.find_withtag("metric-point"))
                     self.assertFalse(canvas.find_withtag("metric-column"))
+                    self.assertFalse(canvas.find_withtag("metric-partial"))
                     texts = {
                         canvas.itemcget(item_id, "text")
                         for item_id in canvas.find_all()
@@ -1049,10 +1190,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     )
                     self.assertEqual(self.settings_window.metrics_view.get(), view)
 
+                    now = datetime.now().astimezone()
                     updated = UsageMetrics(
                         total_keystrokes=9,
                         daily={today.isoformat(): 9},
-                        hourly={f"{today.isoformat()}T09": 9},
+                        hourly={f"{today.isoformat()}T{now.hour:02d}": 9},
                     )
                     self.settings_window.update_usage_metrics(updated)
                     self.assertEqual(
@@ -1060,11 +1202,14 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                         days,
                     )
                     self.assertEqual(self.settings_window.metrics_view.get(), view)
-                    self.assertTrue(
-                        canvas.find_withtag(
-                            "metric-line" if view == "line" else "metric-column"
+                    expected_tag = "metric-column"
+                    if view == "line":
+                        expected_tag = (
+                            "metric-single-point"
+                            if days == 1 and now.hour == 0
+                            else "metric-line"
                         )
-                    )
+                    self.assertTrue(canvas.find_withtag(expected_tag))
 
             self.assertEqual(texts_by_view["line"], texts_by_view["columns"])
 
