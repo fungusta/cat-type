@@ -114,6 +114,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("CAT_TYPE_APP_STORE_BUILD", spec_source)
         self.assertIn("CatTypeDistributionChannel", spec_source)
         self.assertIn("CFBundleVersion", spec_source)
+        self.assertIn("LSMinimumSystemVersion", spec_source)
+        self.assertIn('"12.0"', spec_source)
         self.assertIn("CAT_TYPE_BUILD_NUMBER is required", spec_source)
         self.assertIn("COLLECT(", spec_source)
         self.assertIn("exclude_binaries=is_app_store", spec_source)

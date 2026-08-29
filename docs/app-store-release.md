@@ -29,7 +29,7 @@ build uploaded for the same marketing version.
 
 ```bash
 CAT_TYPE_APP_STORE_PROFILE="$TMPDIR/Cat-Type-App-Store.provisionprofile" \
-CAT_TYPE_BUILD_NUMBER=29 \
+CAT_TYPE_BUILD_NUMBER=30 \
 ./scripts/build_macos_app_store.sh
 ```
 
@@ -48,7 +48,7 @@ asc --profile cat-type-release builds upload \
   --app APP_STORE_CONNECT_APP_ID \
   --pkg "dist/Cat-Type-macOS-App-Store.pkg" \
   --version 1.0.29 \
-  --build-number 29 \
+  --build-number 30 \
   --wait
 ```
 

@@ -111,7 +111,10 @@ if is_macos:
             "LSUIElement": True,
             "NSHighResolutionCapable": True,
             **(
-                {"CFBundleVersion": app_store_build_number}
+                {
+                    "CFBundleVersion": app_store_build_number,
+                    "LSMinimumSystemVersion": "12.0",
+                }
                 if is_app_store
                 else {}
             ),
