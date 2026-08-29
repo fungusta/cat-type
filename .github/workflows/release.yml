@@ -20,16 +20,6 @@ jobs:
             source: dist/Cat-Type-Windows-x64.exe
             executable: dist/Cat Type.exe
             package_arch: x64
-          - runner: macos-15-intel
-            asset: Cat-Type-macOS-x64.dmg
-            source: dist/Cat-Type-macOS-x64.dmg
-            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
-            package_arch: x64
-          - runner: macos-15
-            asset: Cat-Type-macOS-arm64.dmg
-            source: dist/Cat-Type-macOS-arm64.dmg
-            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
-            package_arch: arm64
           - runner: ubuntu-22.04
             asset: Cat-Type-Linux-x64.tar.gz
             source: dist/Cat-Type-Linux-x64.tar.gz
@@ -72,11 +62,10 @@ jobs:
         run: >-
           python -m unittest
           tests.test_macos_overlay_focus
-          tests.test_macos_caret_integration
+          tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics
-          tests.test_distribution_channel
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
@@ -94,11 +83,10 @@ jobs:
           xvfb-run --auto-servernum
           python -m unittest
           tests.test_macos_overlay_focus
-          tests.test_macos_caret_integration
+          tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics
-          tests.test_distribution_channel
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
@@ -111,58 +99,6 @@ jobs:
           tests.test_linux_update_integration
           -v
 
-      - name: Import macOS Developer ID certificate
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          EXPECTED_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$APPLE_DEVELOPER_ID_CERT_BASE64" || \
-                -z "$APPLE_DEVELOPER_ID_CERT_PASSWORD" || \
-                -z "$EXPECTED_APPLE_TEAM_ID" ]]; then
-            echo "::error::macOS signing credentials are not configured"
-            exit 1
-          fi
-
-          certificate_path="$RUNNER_TEMP/cat-type-developer-id.p12"
-          keychain_path="$RUNNER_TEMP/cat-type-signing.keychain-db"
-          keychain_password="$(openssl rand -hex 32)"
-
-          printf '%s' "$APPLE_DEVELOPER_ID_CERT_BASE64" \
-            | /usr/bin/base64 -D > "$certificate_path"
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$certificate_path" \
-            -k "$keychain_path" \
-            -P "$APPLE_DEVELOPER_ID_CERT_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$keychain_password" \
-            "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-
-          identity_line="$(
-            security find-identity -v -p codesigning "$keychain_path" \
-              | grep '"Developer ID Application:' \
-              | head -n 1
-          )"
-          identity_hash="$(printf '%s\n' "$identity_line" | awk '{print $2}')"
-          if [[ -z "$identity_hash" || \
-                "$identity_line" != *"($EXPECTED_APPLE_TEAM_ID)"* ]]; then
-            echo "::error::Developer ID identity is missing or belongs to another team"
-            exit 1
-          fi
-
-          printf 'CAT_TYPE_CODESIGN_IDENTITY=%s\n' "$identity_hash" >> "$GITHUB_ENV"
-          printf 'CAT_TYPE_REQUIRE_SIGNING=1\n' >> "$GITHUB_ENV"
-
       - name: Build application
         run: |
           python scripts/build_icon.py
@@ -170,22 +106,6 @@ jobs:
 
       - name: Verify bundled runtime assets
         run: python -m scripts.check_bundled_icon "${{ matrix.executable }}"
-
-      - name: Verify macOS Developer ID signature
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          EXPECTED_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          app_path="dist/Cat Type.app"
-          codesign --verify --deep --strict --verbose=2 "$app_path"
-          signature_details="$(codesign --display --verbose=4 "$app_path" 2>&1)"
-          printf '%s\n' "$signature_details"
-          grep -Fq "Authority=Developer ID Application:" <<< "$signature_details"
-          grep -Fq "TeamIdentifier=$EXPECTED_APPLE_TEAM_ID" <<< "$signature_details"
-          grep -Fq "Identifier=com.fungusta.cat-type" <<< "$signature_details"
-          grep -Fq "Runtime Version=" <<< "$signature_details"
 
       - name: Smoke test Linux package
         if: runner.os == 'Linux'
@@ -246,85 +166,6 @@ jobs:
           -LegacyExecutable
           "${{ runner.temp }}/cat-type-v1.0.5/dist/Cat Type.exe"
 
-      - name: Install macOS disk image tooling
-        if: runner.os == 'macOS'
-        run: brew install create-dmg
-
-      - name: Build macOS disk image
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          EXPECTED_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
-        run: |
-          set -euo pipefail
-          dmg_source="${RUNNER_TEMP}/cat-type-dmg-${{ matrix.package_arch }}"
-          dmg_path="dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg"
-          mkdir -p "$dmg_source"
-          cp -R "dist/Cat Type.app" "$dmg_source/"
-          create-dmg \
-            --volname "Cat Type" \
-            --window-pos 200 120 \
-            --window-size 600 360 \
-            --background "packaging/dmg-background-v3.png" \
-            --volicon "assets/cat-type.icns" \
-            --icon-size 120 \
-            --icon "Cat Type.app" 132 182 \
-            --hide-extension "Cat Type.app" \
-            --app-drop-link 468 182 \
-            --no-internet-enable \
-            --overwrite \
-            "$dmg_path" \
-            "$dmg_source"
-
-          codesign --force --timestamp \
-            --sign "$CAT_TYPE_CODESIGN_IDENTITY" \
-            "$dmg_path"
-          codesign --verify --strict --verbose=2 "$dmg_path"
-          dmg_signature_details="$(codesign --display --verbose=4 "$dmg_path" 2>&1)"
-          printf '%s\n' "$dmg_signature_details"
-          grep -Fq "Authority=Developer ID Application:" \
-            <<< "$dmg_signature_details"
-          grep -Fq "TeamIdentifier=$EXPECTED_APPLE_TEAM_ID" \
-            <<< "$dmg_signature_details"
-
-      - name: Install asc for notarization
-        if: runner.os == 'macOS'
-        uses: rudrankriyam/setup-asc@5358c70a27a3f0d1517604b0f1fdc43e70c1cc4d # v1
-        with:
-          version: "4.9.2"
-
-      - name: Notarize and staple macOS disk image
-        if: runner.os == 'macOS'
-        shell: bash
-        env:
-          ASC_BYPASS_KEYCHAIN: "1"
-          ASC_NO_UPDATE: "1"
-          ASC_TELEMETRY_DISABLED: "1"
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$ASC_KEY_ID" || -z "$ASC_ISSUER_ID" || \
-                -z "$ASC_PRIVATE_KEY_B64" ]]; then
-            echo "::error::asc notarization credentials are not configured"
-            exit 1
-          fi
-
-          dmg_path="dist/Cat-Type-macOS-${{ matrix.package_arch }}.dmg"
-          asc notarization submit \
-            --file "$dmg_path" \
-            --wait \
-            --timeout 1h \
-            --output table
-          xcrun stapler staple "$dmg_path"
-          xcrun stapler validate "$dmg_path"
-          spctl --assess \
-            --type open \
-            --context context:primary-signature \
-            --verbose=4 \
-            "$dmg_path"
-
       - name: Build Linux archive
         if: runner.os == 'Linux'
         shell: bash
@@ -339,18 +180,53 @@ jobs:
           path: ${{ matrix.source }}
           if-no-files-found: error
 
-      - name: Remove temporary macOS signing keychain
-        if: ${{ always() && runner.os == 'macOS' }}
-        shell: bash
+  macos-tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Test the canonical macOS App Store experience
+        run: >-
+          python -m unittest
+          tests.test_macos_overlay_focus
+          tests.test_macos_pointer
+          tests.test_behavior
+          tests.test_settings
+          tests.test_usage_metrics
+          tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
+          tests.test_package_smoke
+          tests.test_release_version_check
+          tests.test_auto_update
+          tests.test_update_controller
+          tests.test_platform_updater
+          tests.test_windows_installer_contract
+          -v
+
+      - name: Build the canonical macOS package layout
+        env:
+          CAT_TYPE_BUILD_NUMBER: "1"
         run: |
-          keychain_path="$RUNNER_TEMP/cat-type-signing.keychain-db"
-          if [[ -e "$keychain_path" ]]; then
-            security delete-keychain "$keychain_path"
-          fi
+          python scripts/build_icon.py
+          python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - name: Verify bundled macOS runtime assets
+        run: >-
+          python -m scripts.check_bundled_icon
+          "dist/Cat Type.app/Contents/MacOS/Cat Type"
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, macos-tests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8

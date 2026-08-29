@@ -22,6 +22,7 @@ from cat_type import (
     classify_windows_key,
     choose_overlay_position,
 )
+from macos_pointer import RecentPointerClick
 from usage_metrics import UsageMetrics
 
 
@@ -494,7 +495,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.tracker.start.assert_not_called()
         app.root.after.assert_any_call(300, app._request_monitoring_consent)
 
-    def test_direct_distribution_preserves_disabled_global_hotkey_listener(self) -> None:
+    def test_windows_and_linux_preserve_disabled_global_hotkey_listener(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
         app._app_store_distribution = False
@@ -519,6 +520,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._input_monitoring_preflight = Mock(side_effect=[False, True])
         app._input_monitoring_request = Mock(return_value=False)
         app.keyboard = Mock()
+        app.pointer_clicks = Mock()
         app.tracker = Mock()
         app._tray_icon = None
         app.root = Mock()
@@ -529,6 +531,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
 
         app._input_monitoring_request.assert_called_once_with()
         app.keyboard.start.assert_not_called()
+        app.pointer_clicks.start.assert_not_called()
         self.assertEqual(
             app._monitoring_permission_poll_id,
             "permission-poll",
@@ -537,6 +540,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._poll_input_monitoring_permission()
 
         app.keyboard.start.assert_called_once_with()
+        app.pointer_clicks.start.assert_called_once_with()
         app.tracker.start.assert_called_once_with()
         self.assertTrue(app._activity_monitoring_started)
 
@@ -778,94 +782,39 @@ class CaretRangeTests(unittest.TestCase):
 
 
 class CaretFallbackTests(unittest.TestCase):
-    def test_macos_prefers_detected_caret_over_pointer(self) -> None:
-        locator = CaretLocator()
-        caret = ScreenRect(100, 200, 102, 220)
+    def test_macos_prefers_a_recent_click_over_the_live_pointer(self) -> None:
+        clicks = RecentPointerClick()
+        clicks.record(100.4, 200.6, happened_at=10.0)
+        locator = CaretLocator(recent_pointer_click=clicks)
 
         with (
             patch("cat_type.IS_WINDOWS", False),
             patch("cat_type.IS_MACOS", True),
-            patch.object(
-                locator,
-                "_locate_with_macos_accessibility",
-                return_value=(caret, False),
-            ),
+            patch("cat_type.time.monotonic", return_value=17.5),
             patch.object(locator, "_locate_pointer") as locate_pointer,
         ):
             snapshot = locator.locate()
 
-        self.assertEqual(snapshot.rect, caret)
-        self.assertEqual(snapshot.source, "macos-accessibility")
+        self.assertEqual(snapshot.rect, ScreenRect(100, 201, 102, 221))
+        self.assertEqual(snapshot.source, "recent-click")
         locate_pointer.assert_not_called()
 
-    def test_macos_password_field_never_uses_pointer(self) -> None:
-        locator = CaretLocator()
-
-        with (
-            patch("cat_type.IS_WINDOWS", False),
-            patch("cat_type.IS_MACOS", True),
-            patch.object(
-                locator,
-                "_locate_with_macos_accessibility",
-                return_value=(None, True),
-            ),
-            patch.object(locator, "_locate_pointer") as locate_pointer,
-        ):
-            snapshot = locator.locate()
-
-        self.assertTrue(snapshot.is_password)
-        self.assertIsNone(snapshot.rect)
-        locate_pointer.assert_not_called()
-
-    def test_macos_requests_accessibility_once_then_uses_pointer(self) -> None:
-        locator = CaretLocator()
-        pointer = ScreenRect(320, 240, 322, 260)
-        prompt = Mock(return_value=False)
-        accessibility = SimpleNamespace(
-            AXIsProcessTrusted=Mock(return_value=False),
-            AXIsProcessTrustedWithOptions=prompt,
-            kAXTrustedCheckOptionPrompt="prompt",
-        )
-
-        with (
-            patch("cat_type.IS_WINDOWS", False),
-            patch("cat_type.IS_MACOS", True),
-            patch.dict(
-                sys.modules,
-                {
-                    "ApplicationServices": accessibility,
-                    "AppKit": SimpleNamespace(NSWorkspace=Mock()),
-                    "CoreFoundation": SimpleNamespace(CFRangeMake=Mock()),
-                },
-            ),
-            patch.object(locator, "_locate_pointer", return_value=pointer),
-        ):
-            first_snapshot = locator.locate()
-            second_snapshot = locator.locate()
-
-        self.assertEqual(first_snapshot.source, "pointer-fallback")
-        self.assertEqual(second_snapshot.source, "pointer-fallback")
-        prompt.assert_called_once_with({"prompt": True})
-
-    def test_macos_accessibility_can_be_disabled_for_sandboxed_builds(
-        self,
-    ) -> None:
-        locator = CaretLocator(allow_macos_accessibility=False)
+    def test_macos_uses_live_pointer_after_the_click_expires(self) -> None:
+        clicks = RecentPointerClick()
+        clicks.record(100, 200, happened_at=10.0)
+        locator = CaretLocator(recent_pointer_click=clicks)
         pointer = ScreenRect(320, 240, 322, 260)
 
         with (
             patch("cat_type.IS_WINDOWS", False),
             patch("cat_type.IS_MACOS", True),
-            patch.object(
-                locator,
-                "_locate_with_macos_accessibility",
-            ) as locate_with_accessibility,
+            patch("cat_type.time.monotonic", return_value=18.001),
             patch.object(locator, "_locate_pointer", return_value=pointer),
         ):
             snapshot = locator.locate()
 
+        self.assertEqual(snapshot.rect, pointer)
         self.assertEqual(snapshot.source, "pointer-fallback")
-        locate_with_accessibility.assert_not_called()
 
     def test_windows_uses_pointer_when_caret_providers_fail(self) -> None:
         locator = CaretLocator()

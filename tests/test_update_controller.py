@@ -652,7 +652,7 @@ class UpdateControllerTests(unittest.TestCase):
 
     def test_source_and_macos_statuses_never_check_or_download(self) -> None:
         cases = (
-            ("darwin", True, "macOS updates are manual."),
+            ("darwin", True, "Mac App Store"),
             ("linux", False, "Source checkouts cannot update themselves."),
         )
         for platform_name, frozen, status in cases:

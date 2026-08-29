@@ -16,10 +16,6 @@ jobs:
             artifact: cat-type-windows-x64
             output: dist/Cat Type.exe
             executable: dist/Cat Type.exe
-          - runner: macos-15-intel
-            artifact: cat-type-macos-x64
-            output: dist/Cat Type.app
-            executable: dist/Cat Type.app/Contents/MacOS/Cat Type
           - runner: ubuntu-22.04
             artifact: cat-type-linux-x64
             output: dist/Cat Type
@@ -50,11 +46,10 @@ jobs:
         run: >-
           python -m unittest
           tests.test_macos_overlay_focus
-          tests.test_macos_caret_integration
+          tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics
-          tests.test_distribution_channel
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
@@ -72,11 +67,10 @@ jobs:
           xvfb-run --auto-servernum
           python -m unittest
           tests.test_macos_overlay_focus
-          tests.test_macos_caret_integration
+          tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
           tests.test_usage_metrics
-          tests.test_distribution_channel
           tests.test_settings_window
           tests.test_platform_assets
           tests.test_bundled_icon_check
@@ -121,3 +115,47 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.output }}
           if-no-files-found: error
+
+  macos-tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Test the canonical macOS App Store experience
+        run: >-
+          python -m unittest
+          tests.test_macos_overlay_focus
+          tests.test_macos_pointer
+          tests.test_behavior
+          tests.test_settings
+          tests.test_usage_metrics
+          tests.test_settings_window
+          tests.test_platform_assets
+          tests.test_bundled_icon_check
+          tests.test_package_smoke
+          tests.test_release_version_check
+          tests.test_auto_update
+          tests.test_update_controller
+          tests.test_platform_updater
+          tests.test_windows_installer_contract
+          -v
+
+      - name: Build the canonical macOS package layout
+        env:
+          CAT_TYPE_BUILD_NUMBER: "1"
+        run: |
+          python scripts/build_icon.py
+          python -m PyInstaller --noconfirm --clean CatType.spec
+
+      - name: Verify bundled macOS runtime assets
+        run: >-
+          python -m scripts.check_bundled_icon
+          "dist/Cat Type.app/Contents/MacOS/Cat Type"

@@ -16,6 +16,19 @@ def expected_icon_entry(platform: str) -> str:
     return f"assets/{icon_filename(platform)}"
 
 
+def external_bundle_entries(executable: Path, platform: str) -> tuple[str, ...]:
+    if platform != "darwin":
+        return ()
+    resources = executable.parent.parent / "Resources"
+    if not resources.is_dir():
+        return ()
+    return tuple(
+        path.relative_to(resources).as_posix()
+        for path in resources.rglob("*")
+        if path.is_file()
+    )
+
+
 def validate_bundled_icon(entries: Collection[str], platform: str) -> str:
     expected = expected_icon_entry(platform)
     normalized_entries = {entry.replace("\\", "/") for entry in entries}
@@ -46,7 +59,9 @@ def main() -> None:
     args = parser.parse_args()
     archive = CArchiveReader(str(args.executable))
     try:
-        expected = validate_bundled_icon(archive.toc, sys.platform)
+        entries = set(archive.toc)
+        entries.update(external_bundle_entries(args.executable, sys.platform))
+        expected = validate_bundled_icon(entries, sys.platform)
         expected_modules = runtime_modules(sys.platform)
         if expected_modules:
             pyz = archive.open_embedded_archive("PYZ.pyz")

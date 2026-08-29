@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-import math
 import os
 import platform as runtime_platform
 import queue
@@ -30,11 +29,11 @@ from auto_update import (
     UpdateStateStore,
 )
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
-from distribution_channel import is_app_store_build
 from macos_input_monitoring import (
     preflight_input_monitoring,
     request_input_monitoring,
 )
+from macos_pointer import MacOSPointerMonitor, RecentPointerClick
 from platform_assets import icon_filename
 from platform_updater import (
     LinuxControllerInstaller,
@@ -1065,13 +1064,12 @@ class CaretLocator:
     def __init__(
         self,
         debug: bool = False,
-        allow_macos_accessibility: bool = True,
+        recent_pointer_click: RecentPointerClick | None = None,
     ) -> None:
         self.debug = debug
-        self.allow_macos_accessibility = allow_macos_accessibility
+        self.recent_pointer_click = recent_pointer_click
         self._automation = None
         self._uia = None
-        self._macos_accessibility_prompted = False
 
     def initialize_uia(self) -> None:
         try:
@@ -1093,23 +1091,14 @@ class CaretLocator:
 
     def locate(self) -> CaretSnapshot:
         now = time.monotonic()
-        if IS_MACOS and self.allow_macos_accessibility:
-            macos_rect, is_password = (
-                self._locate_with_macos_accessibility()
-            )
-            if is_password:
+        if IS_MACOS and self.recent_pointer_click is not None:
+            click = self.recent_pointer_click.latest(now)
+            if click is not None:
                 return CaretSnapshot(
                     now,
-                    None,
-                    True,
-                    "macos-accessibility-password",
-                )
-            if macos_rect:
-                return CaretSnapshot(
-                    now,
-                    macos_rect,
+                    self._pointer_rect(click.x, click.y),
                     False,
-                    "macos-accessibility",
+                    "recent-click",
                 )
 
         if not IS_WINDOWS:
@@ -1147,140 +1136,23 @@ class CaretLocator:
             )
         return CaretSnapshot(now, None)
 
-    def _locate_with_macos_accessibility(
-        self,
-    ) -> tuple[ScreenRect | None, bool]:
-        try:
-            import ApplicationServices as accessibility
-            from AppKit import NSWorkspace
-            from CoreFoundation import CFRangeMake
-
-            if not accessibility.AXIsProcessTrusted():
-                if not self._macos_accessibility_prompted:
-                    self._macos_accessibility_prompted = True
-                    accessibility.AXIsProcessTrustedWithOptions(
-                        {
-                            accessibility.kAXTrustedCheckOptionPrompt: True,
-                        }
-                    )
-                return None, False
-
-            frontmost = NSWorkspace.sharedWorkspace().frontmostApplication()
-            if frontmost is None:
-                return None, False
-            application = accessibility.AXUIElementCreateApplication(
-                frontmost.processIdentifier()
-            )
-            error, element = accessibility.AXUIElementCopyAttributeValue(
-                application,
-                accessibility.kAXFocusedUIElementAttribute,
-                None,
-            )
-            if error != accessibility.kAXErrorSuccess or element is None:
-                return None, False
-
-            _, subrole = accessibility.AXUIElementCopyAttributeValue(
-                element,
-                accessibility.kAXSubroleAttribute,
-                None,
-            )
-            if subrole == accessibility.kAXSecureTextFieldSubrole:
-                return None, True
-
-            error, selected_range = (
-                accessibility.AXUIElementCopyAttributeValue(
-                    element,
-                    accessibility.kAXSelectedTextRangeAttribute,
-                    None,
-                )
-            )
-            if (
-                error != accessibility.kAXErrorSuccess
-                or selected_range is None
-                or accessibility.AXValueGetType(selected_range)
-                != accessibility.kAXValueCFRangeType
-            ):
-                return None, False
-
-            valid, selected = accessibility.AXValueGetValue(
-                selected_range,
-                accessibility.kAXValueCFRangeType,
-                None,
-            )
-            if not valid:
-                return None, False
-            location, length = selected
-            caret_range = accessibility.AXValueCreate(
-                accessibility.kAXValueCFRangeType,
-                CFRangeMake(
-                    location + length,
-                    0,
-                ),
-            )
-            error, bounds = (
-                accessibility.AXUIElementCopyParameterizedAttributeValue(
-                    element,
-                    accessibility.kAXBoundsForRangeParameterizedAttribute,
-                    caret_range,
-                    None,
-                )
-            )
-            if (
-                error != accessibility.kAXErrorSuccess
-                or bounds is None
-                or accessibility.AXValueGetType(bounds)
-                != accessibility.kAXValueCGRectType
-            ):
-                return None, False
-
-            valid, frame = accessibility.AXValueGetValue(
-                bounds,
-                accessibility.kAXValueCGRectType,
-                None,
-            )
-            if not valid:
-                return None, False
-            left = float(frame.origin.x)
-            top = float(frame.origin.y)
-            width = float(frame.size.width)
-            height = float(frame.size.height)
-            if (
-                not all(
-                    math.isfinite(value)
-                    for value in (left, top, width, height)
-                )
-                or height <= 0
-                or width < 0
-            ):
-                return None, False
-
-            rounded_left = round(left)
-            rounded_top = round(top)
-            return (
-                ScreenRect(
-                    rounded_left,
-                    rounded_top,
-                    max(rounded_left + 2, round(left + width)),
-                    max(rounded_top + 1, round(top + height)),
-                ),
-                False,
-            )
-        except Exception as exc:
-            if self.debug:
-                print(
-                    f"macOS Accessibility lookup failed: {exc}",
-                    file=sys.stderr,
-                )
-            return None, False
+    @staticmethod
+    def _pointer_rect(left: float, top: float) -> ScreenRect:
+        rounded_left = round(left)
+        rounded_top = round(top)
+        return ScreenRect(
+            rounded_left,
+            rounded_top,
+            rounded_left + 2,
+            rounded_top + 20,
+        )
 
     def _locate_pointer(self) -> ScreenRect | None:
         try:
             from pynput.mouse import Controller
 
             left, top = Controller().position
-            left = round(left)
-            top = round(top)
-            return ScreenRect(left, top, left + 2, top + 20)
+            return self._pointer_rect(left, top)
         except Exception as exc:
             if self.debug:
                 print(f"Pointer lookup failed: {exc}", file=sys.stderr)
@@ -1406,11 +1278,11 @@ class CaretTracker:
     def __init__(
         self,
         debug: bool = False,
-        allow_macos_accessibility: bool = True,
+        recent_pointer_click: RecentPointerClick | None = None,
     ) -> None:
         self._locator = CaretLocator(
             debug=debug,
-            allow_macos_accessibility=allow_macos_accessibility,
+            recent_pointer_click=recent_pointer_click,
         )
         self._snapshot = CaretSnapshot(0.0, None)
         self._snapshot_lock = threading.Lock()
@@ -1588,8 +1460,7 @@ class _UnavailableUpdateInstaller:
         )
         if platform_name == "darwin":
             status = (
-                "macOS updates are manual. Download the latest DMG: "
-                f"{self.RELEASES_URL}"
+                "macOS updates are delivered through the Mac App Store."
             )
         elif not is_frozen:
             status = (
@@ -1676,7 +1547,7 @@ class CatTypeApp:
             )
         ).normalized()
         self._app_store_distribution = (
-            is_app_store_build()
+            platform_name == "darwin"
             if app_store_distribution is None
             else app_store_distribution
         )
@@ -1710,9 +1581,19 @@ class CatTypeApp:
             fade_seconds=self.settings.fade_seconds,
         )
         self.keyboard = KeyboardMonitor(self.events)
+        self.recent_pointer_click = RecentPointerClick()
+        self.pointer_clicks = (
+            MacOSPointerMonitor(self.recent_pointer_click, debug=debug)
+            if platform_name == "darwin"
+            else None
+        )
         self.tracker = CaretTracker(
             debug=debug,
-            allow_macos_accessibility=not self._app_store_distribution,
+            recent_pointer_click=(
+                self.recent_pointer_click
+                if platform_name == "darwin"
+                else None
+            ),
         )
         self._last_rendered_frame: tuple[str, str] | None = None
         self._last_key_at = 0.0
@@ -2150,6 +2031,9 @@ class CatTypeApp:
     def _start_activity_monitoring(self) -> None:
         if getattr(self, "_activity_monitoring_started", False):
             return
+        pointer_clicks = getattr(self, "pointer_clicks", None)
+        if pointer_clicks is not None:
+            pointer_clicks.start()
         self.keyboard.start()
         self.tracker.start()
         self._activity_monitoring_started = True
@@ -2206,11 +2090,13 @@ class CatTypeApp:
         return messagebox.askokcancel(
             "Privacy & Input Monitoring",
             (
-                "Cat Type listens for key-press events across apps to animate "
-                "the cat and count aggregate activity by hour and day.\n\n"
-                "It never stores key names, typed text, app names, or window "
-                "titles, and it never sends usage data. The cat appears while "
-                "monitoring is active.\n\n"
+                "Cat Type listens for key-press events and primary mouse "
+                "clicks across apps to animate and position the cat. It also "
+                "counts aggregate activity by hour and day.\n\n"
+                "It keeps only the latest click coordinate for up to eight "
+                "seconds. It never stores key names, typed text, app names, "
+                "control names, or window titles, and it never sends usage "
+                "data. The cat appears while monitoring is active.\n\n"
                 "Continue and ask macOS for Input Monitoring access?"
             ),
             parent=self.root,
@@ -2277,6 +2163,9 @@ class CatTypeApp:
             self._monitoring_permission_poll_id = None
         if self._tray_icon is not None:
             self._tray_icon.stop()
+        pointer_clicks = getattr(self, "pointer_clicks", None)
+        if pointer_clicks is not None:
+            pointer_clicks.stop()
         self.keyboard.stop()
         self.tracker.stop()
         try:

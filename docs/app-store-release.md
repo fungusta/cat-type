@@ -1,11 +1,15 @@
 # Mac App Store release
 
-The App Store build is a separate distribution channel from the GitHub DMG.
-It enables App Sandbox, asks for explicit consent before requesting Input
-Monitoring access, disables the direct-download updater, and packages the app
-as a signed installer. Because App Sandbox does not permit Cat Type to inspect
-other applications through the macOS Accessibility API, this distribution
-uses the mouse-pointer placement fallback rather than native caret tracking.
+The Mac App Store package is the only supported macOS distribution. GitHub
+releases intentionally contain no macOS DMG. The package enables App Sandbox,
+asks for explicit consent before requesting Input Monitoring access, relies on
+the App Store for updates, and ships as a signed installer.
+
+Cat Type does not inspect other applications through the macOS Accessibility
+API. It places the cat beside the most recent primary click when that click is
+at most eight seconds old, otherwise beside the current pointer. The position
+is frozen for each visible typing burst. Only the latest click coordinate and
+timestamp are held in memory; the clicked app or control is never identified.
 
 ## Account resources
 
@@ -31,7 +35,7 @@ build uploaded for the same marketing version.
 
 ```bash
 CAT_TYPE_APP_STORE_PROFILE="$TMPDIR/Cat-Type-App-Store.provisionprofile" \
-CAT_TYPE_BUILD_NUMBER=30 \
+CAT_TYPE_BUILD_NUMBER=32 \
 ./scripts/build_macos_app_store.sh
 ```
 
@@ -49,8 +53,8 @@ package with its numeric App Store Connect app ID:
 asc --profile cat-type-release builds upload \
   --app APP_STORE_CONNECT_APP_ID \
   --pkg "dist/Cat-Type-macOS-App-Store.pkg" \
-  --version 1.0.29 \
-  --build-number 30 \
+  --version 1.0.31 \
+  --build-number 32 \
   --wait
 ```
 

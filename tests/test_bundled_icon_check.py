@@ -1,6 +1,8 @@
 import importlib
 import importlib.util
+import tempfile
 import unittest
+from pathlib import Path
 
 
 class BundledIconCheckTests(unittest.TestCase):
@@ -38,6 +40,21 @@ class BundledIconCheckTests(unittest.TestCase):
                 {"assets/cat-type.ico"},
                 "linux",
             )
+
+    def test_reads_resources_from_a_macos_one_directory_bundle(self) -> None:
+        checker = self._module()
+        with tempfile.TemporaryDirectory() as directory:
+            contents = Path(directory) / "Cat Type.app" / "Contents"
+            executable = contents / "MacOS" / "Cat Type"
+            icon = contents / "Resources" / "assets" / "cat-type.icns"
+            executable.parent.mkdir(parents=True)
+            executable.touch()
+            icon.parent.mkdir(parents=True)
+            icon.touch()
+
+            entries = checker.external_bundle_entries(executable, "darwin")
+
+        self.assertIn("assets/cat-type.icns", entries)
 
 
 class BundledRuntimeModuleCheckTests(unittest.TestCase):

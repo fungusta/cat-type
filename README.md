@@ -9,10 +9,10 @@ Cat Type was inspired by [Bongo Cat on Steam](https://store.steampowered.com/app
 I loved the idea of a tiny companion that reacts as you type and wanted to
 create my own take on it.
 
-On Windows and direct-distribution macOS builds, Cat Type puts the companion
-beside the place where text is being inserted rather than on the taskbar. Its
-four-frame gray and ginger tabby sprite sheets are original artwork created
-for this project; it does not extract or redistribute Bongo Cat's game assets.
+On Windows, Cat Type puts the companion beside the place where text is being
+inserted. On macOS and Linux, it uses pointer placement instead. Its four-frame
+gray and ginger tabby sprite sheets are original artwork created for this
+project; it does not extract or redistribute Bongo Cat's game assets.
 
 ## Install on Windows
 
@@ -28,12 +28,9 @@ cat, open Settings, or quit.
 
 ## Install on macOS
 
-Download **Cat-Type-macOS-arm64.dmg** for Apple Silicon (M1 and newer), or
-**Cat-Type-macOS-x64.dmg** for an Intel Mac, then drag Cat Type to
-Applications. These community builds are not notarized, so the first launch
-may require right clicking the app and choosing **Open**. Allow Cat Type under
-**System Settings > Privacy & Security > Input Monitoring** and
-**Accessibility** when macOS asks.
+Cat Type for macOS is distributed only through the Mac App Store. On first
+launch, approve Cat Type's explanation and then allow it under **System
+Settings > Privacy & Security > Input Monitoring** when macOS asks.
 
 ## Install on Linux
 
@@ -42,10 +39,10 @@ Download **Cat-Type-Linux-x64.tar.gz** for most PCs or
 `Cat Type`. The overlay and global keyboard listener require X11 or XWayland.
 A system tray implementation such as AppIndicator is also recommended.
 
-On Windows and direct-distribution macOS builds, Cat Type uses native
-accessibility APIs to place the cat beside the text caret when that geometry is
-available. If no usable caret can be detected, it falls back to the current
-mouse pointer. Linux and the sandboxed Mac App Store build use the mouse
+On Windows, Cat Type uses native accessibility APIs to place the cat beside the
+text caret when that geometry is available, falling back to the current mouse
+pointer when needed. On macOS, it prefers the latest primary-click position for
+eight seconds and otherwise uses the current pointer. Linux uses the current
 pointer directly.
 
 ## Settings
@@ -55,7 +52,7 @@ Settings are saved for the current user and take effect immediately:
 - Enable or pause the typing companion.
 - Choose alternating tabbies, gray only, or ginger only.
 - Change the cat size from 60% to 175%.
-- Choose which corner of the caret the cat prefers.
+- Choose which corner of the caret or pointer the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
 - View all-time activity and 1-day, 7-day, or 30-day trends as an exact line
@@ -94,7 +91,8 @@ left unchanged and show instructions to update manually. The replacement
 helper requires Linux `/proc` plus the standard `sh`, `mv`, `sed`, and `awk`
 command-line tools included by mainstream desktop distributions.
 
-macOS updates remain manual, and apps run from source never self-install.
+macOS updates are delivered through the Mac App Store, and apps run from source
+never self-install.
 Checking or downloading contacts GitHub's API and release download hosts; Cat
 Type does not include keyboard input or local usage metrics in those requests.
 
@@ -138,7 +136,7 @@ The outputs are `dist\Cat Type.exe` and, when Inno Setup 6 is installed,
 application icon, and both tabby sprite sets. Windows may warn about local
 builds because they are not code-signed.
 
-On macOS or Linux:
+On Linux:
 
 ```bash
 python scripts/build_icon.py
@@ -146,12 +144,12 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The macOS output is `dist/Cat Type.app`; the Linux output is
-`dist/Cat Type`. Push a tag such as `v1.0.30` to build every supported
-architecture and publish the assets together on a GitHub Release.
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.31` to build the
+Windows and Linux architectures and publish those assets on a GitHub Release.
 
-For the separately sandboxed Mac App Store package and upload workflow, see
-[`docs/app-store-release.md`](docs/app-store-release.md).
+The only supported macOS package is the sandboxed Mac App Store build. See
+[`docs/app-store-release.md`](docs/app-store-release.md) for its build and
+upload workflow.
 
 ## Privacy behavior
 
@@ -160,8 +158,9 @@ For the separately sandboxed Mac App Store package and upload workflow, see
 - While enabled, Cat Type persists only aggregate keystroke counts by local
   day and hour in `usage.json`. It never stores key names, typed text, app
   names, or window titles, and it does not send usage metrics over the network.
-- On Windows and macOS, accessible password fields are detected before showing
-  the cat.
+- On Windows, accessible password fields are detected before showing the cat.
+- macOS pointer placement cannot identify password fields, apps, controls, or
+  window titles.
 - The overlay is click-through and cannot take focus from the text field.
 
 ## How caret tracking works
@@ -173,16 +172,16 @@ On Windows, Cat Type combines two mechanisms:
 2. `GetGUIThreadInfo` and `rcCaret` as a fallback for traditional Win32
    controls.
 
-On direct-distribution macOS builds, Cat Type reads the focused editable
-control through the macOS Accessibility API, obtains its selected text range,
-and asks for the on-screen bounds of the insertion point. macOS requests
-Accessibility permission the first time this provider is needed. The Mac App
-Store build cannot use this provider because it runs inside App Sandbox.
+On macOS, Cat Type remembers only the coordinate and time of the latest primary
+click. If typing starts within eight seconds, the cat anchors beside that click;
+otherwise it anchors beside the pointer's current position. The anchor remains
+fixed until that visible typing burst ends. Cat Type never asks which app or
+control was clicked.
 
 Some canvas-based editors, terminals, games, elevated applications, or other
-controls do not publish a usable caret. In those cases, Cat Type falls back to
-the current mouse pointer. Password fields detected through the platform
-accessibility provider stay hidden and never use the pointer fallback.
+controls do not publish a usable caret. On Windows, Cat Type falls back to the
+current mouse pointer. Windows password fields detected through UI Automation
+stay hidden and never use the pointer fallback.
 
 ## Tests
 

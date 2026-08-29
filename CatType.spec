@@ -9,7 +9,7 @@ from platform_assets import icon_filename, runtime_modules
 project_root = Path(SPECPATH)
 is_windows = sys.platform == "win32"
 is_macos = sys.platform == "darwin"
-is_app_store = is_macos and os.environ.get("CAT_TYPE_APP_STORE_BUILD") == "1"
+is_app_store = is_macos
 app_store_build_number = os.environ.get("CAT_TYPE_BUILD_NUMBER")
 codesign_identity = (
     os.environ.get("CAT_TYPE_CODESIGN_IDENTITY") if is_macos else None
@@ -20,8 +20,6 @@ if (
     and not codesign_identity
 ):
     raise RuntimeError("CAT_TYPE_CODESIGN_IDENTITY is required for this macOS build")
-if os.environ.get("CAT_TYPE_APP_STORE_BUILD") == "1" and not is_macos:
-    raise RuntimeError("CAT_TYPE_APP_STORE_BUILD is only supported on macOS")
 if is_app_store and not app_store_build_number:
     raise RuntimeError("CAT_TYPE_BUILD_NUMBER is required for App Store builds")
 icon_path = project_root / "assets" / icon_filename(sys.platform)
@@ -82,7 +80,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    exclude_binaries=is_app_store,
+    exclude_binaries=is_macos,
     codesign_identity=codesign_identity,
     entitlements_file=str(entitlements_path) if entitlements_path else None,
     icon=[str(icon_path)],
@@ -91,40 +89,29 @@ exe = EXE(
 )
 
 if is_macos:
-    bundle_input = exe
-    if is_app_store:
-        bundle_input = COLLECT(
-            exe,
-            a.binaries,
-            a.datas,
-            strip=False,
-            upx=True,
-            name="Cat Type",
-        )
+    bundle_input = COLLECT(
+        exe,
+        a.binaries,
+        a.datas,
+        strip=False,
+        upx=True,
+        name="Cat Type",
+    )
     app = BUNDLE(
         bundle_input,
         name="Cat Type.app",
         icon=str(icon_path),
         bundle_identifier="com.fungusta.cat-type",
-        version="1.0.30",
+        version="1.0.31",
         info_plist={
             "LSUIElement": True,
             "NSHighResolutionCapable": True,
-            **(
-                {
-                    "CFBundleVersion": app_store_build_number,
-                    "LSMinimumSystemVersion": "12.0",
-                }
-                if is_app_store
-                else {}
-            ),
+            "CFBundleVersion": app_store_build_number,
+            "LSMinimumSystemVersion": "12.0",
             "LSApplicationCategoryType": "public.app-category.utilities",
             "NSHumanReadableCopyright": (
                 "Copyright © 2026 Peter Fung. All rights reserved."
             ),
             "ITSAppUsesNonExemptEncryption": False,
-            "CatTypeDistributionChannel": (
-                "app-store" if is_app_store else "direct"
-            ),
         },
     )

@@ -46,13 +46,14 @@ if ! security find-identity -v | grep -Fq "$installer_identity"; then
 fi
 
 cd "$project_root"
-export CAT_TYPE_APP_STORE_BUILD=1
 export CAT_TYPE_BUILD_NUMBER="$build_number"
 export CAT_TYPE_CODESIGN_IDENTITY="$app_identity"
 export CAT_TYPE_REQUIRE_SIGNING=1
 
 .venv/bin/python scripts/build_icon.py
 .venv/bin/python -m PyInstaller --noconfirm --clean CatType.spec
+.venv/bin/python -m scripts.check_bundled_icon \
+    "$app_path/Contents/MacOS/Cat Type"
 cp "$profile_path" "$app_path/Contents/embedded.provisionprofile"
 
 retry codesign --force --deep --strict --timestamp \
