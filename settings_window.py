@@ -292,6 +292,10 @@ class SettingsWindow:
         update_status: str = "",
         on_close: Callable[[], None] | None = None,
         app_store_distribution: bool = False,
+        input_monitoring_granted: bool | None = None,
+        input_monitoring_request_attempted: bool = False,
+        on_request_input_monitoring: Callable[[], bool] | None = None,
+        on_open_input_monitoring_settings: Callable[[], bool] | None = None,
     ) -> None:
         self._on_save = on_save
         self._on_metrics_view_change = on_metrics_view_change
@@ -299,7 +303,15 @@ class SettingsWindow:
         self._on_open_release_page = on_open_release_page
         self._on_close = on_close
         self._app_store_distribution = app_store_distribution
-        self._monitoring_consent = settings.monitoring_consent
+        self._input_monitoring_granted = bool(input_monitoring_granted)
+        self._input_monitoring_request_attempted = (
+            input_monitoring_request_attempted
+        )
+        self._on_request_input_monitoring = on_request_input_monitoring
+        self._on_open_input_monitoring_settings = (
+            on_open_input_monitoring_settings
+        )
+        self._privacy_details_visible = False
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -355,6 +367,7 @@ class SettingsWindow:
         self._metrics_partial_index: int | None = None
         self._metrics_plot_bounds = (0, 0, 0, 0)
         self.update_status_text = tk.StringVar(value=update_status)
+        self.input_monitoring_status_text = tk.StringVar(value="")
 
         self._configure_styles()
         self._load_preview_frames(icon_path)
@@ -783,20 +796,130 @@ class SettingsWindow:
         self.launch_at_startup_toggle.pack(fill="x")
         if self._app_store_distribution:
             self.launch_at_startup_toggle.pack_forget()
-            tk.Label(
-                content,
+            privacy = tk.Frame(content, background=self.CARD)
+            privacy.pack(fill="x")
+            self.privacy_details_button = ttk.Button(
+                privacy,
+                text="Privacy details",
+                command=self._toggle_privacy_details,
+                style=self.secondary_button_style,
+            )
+            self.privacy_details_button.pack(anchor="w")
+            self.privacy_explanation = tk.Label(
+                privacy,
                 text=(
-                    "Privacy: Cat Type observes key-press events only to animate "
-                    "the cat and count aggregate activity. It never stores key "
-                    "names or typed text, and it never sends usage data."
+                    "Privacy: Cat Type observes key-press events and primary "
+                    "mouse clicks only to animate and position the cat and count "
+                    "aggregate activity. It keeps only the latest click position "
+                    "for up to eight seconds. It never stores key names, typed "
+                    "text, app names, or window titles, and it never sends usage "
+                    "data."
                 ),
                 background=self.CARD,
                 foreground=self.MUTED,
                 font=self.fonts["small"],
                 justify="left",
                 wraplength=330,
-            ).pack(fill="x")
+            )
+            permission = tk.Frame(content, background=self.BLUSH)
+            permission.pack(fill="x", pady=(12, 0))
+            tk.Label(
+                permission,
+                textvariable=self.input_monitoring_status_text,
+                background=self.BLUSH,
+                foreground=self.INK,
+                font=self.fonts["small"],
+                justify="left",
+                wraplength=330,
+            ).pack(fill="x", padx=12, pady=(10, 4))
+            self.input_monitoring_button = ttk.Button(
+                permission,
+                command=self._handle_input_monitoring_action,
+                style=self.primary_button_style,
+            )
+            self.input_monitoring_button.pack(
+                anchor="e",
+                padx=12,
+                pady=(4, 10),
+            )
+            self.set_input_monitoring_status(
+                self._input_monitoring_granted,
+                request_attempted=self._input_monitoring_request_attempted,
+            )
         card.pack(fill="x", pady=(0, 14))
+
+    def _toggle_privacy_details(self) -> None:
+        self._privacy_details_visible = not self._privacy_details_visible
+        if self._privacy_details_visible:
+            self.privacy_explanation.pack(fill="x", pady=(8, 0))
+            self.privacy_details_button.configure(text="Hide privacy details")
+        else:
+            self.privacy_explanation.pack_forget()
+            self.privacy_details_button.configure(text="Privacy details")
+        self.window.after_idle(self._sync_scrollbar_visibility)
+
+    def _handle_input_monitoring_action(self) -> None:
+        if self._input_monitoring_granted:
+            return
+        if self._input_monitoring_request_attempted:
+            if self._on_open_input_monitoring_settings is not None:
+                opened = bool(self._on_open_input_monitoring_settings())
+                if opened:
+                    self.input_monitoring_status_text.set(
+                        "Waiting for permission in System Settings…"
+                    )
+            return
+        granted = bool(
+            self._on_request_input_monitoring()
+            if self._on_request_input_monitoring is not None
+            else False
+        )
+        self.set_input_monitoring_status(
+            granted,
+            request_attempted=not granted,
+        )
+        if granted:
+            self.enabled.set(True)
+
+    def set_input_monitoring_status(
+        self,
+        granted: bool,
+        *,
+        request_attempted: bool = False,
+    ) -> None:
+        self._input_monitoring_granted = bool(granted)
+        self._input_monitoring_request_attempted = bool(request_attempted)
+        if not hasattr(self, "input_monitoring_button"):
+            return
+        if granted:
+            self.input_monitoring_status_text.set("Input Monitoring is enabled.")
+            self.input_monitoring_button.configure(
+                text="Input Monitoring Enabled",
+                state="disabled",
+                style=self.secondary_button_style,
+            )
+        elif request_attempted:
+            self.input_monitoring_status_text.set(
+                "Input Monitoring is off. Allow Cat Type in System Settings."
+            )
+            self.input_monitoring_button.configure(
+                text="Open System Settings",
+                state="normal",
+                style=self.primary_button_style,
+            )
+        else:
+            self.input_monitoring_status_text.set(
+                "Input Monitoring is required to show the cat."
+            )
+            self.input_monitoring_button.configure(
+                text="Enable Input Monitoring",
+                state=(
+                    "normal"
+                    if self._on_request_input_monitoring is not None
+                    else "disabled"
+                ),
+                style=self.primary_button_style,
+            )
 
     def _build_metrics_page(self, parent: tk.Frame) -> None:
         self.metrics_page = tk.Frame(parent, background=self.BACKGROUND)
@@ -2020,7 +2143,6 @@ class SettingsWindow:
             placement=PLACEMENT_LABELS[self.placement.get()],
             launch_at_startup=self.launch_at_startup.get(),
             metrics_view=self.metrics_view.get(),
-            monitoring_consent=self._monitoring_consent,
         ).normalized()
         self._on_save(settings)
         self.close()

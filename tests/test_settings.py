@@ -7,11 +7,21 @@ from cat_settings import AppSettings, SettingsStore
 
 
 class AppSettingsTests(unittest.TestCase):
-    def test_monitoring_consent_defaults_off_and_round_trips(self) -> None:
-        self.assertFalse(AppSettings().monitoring_consent)
-        self.assertTrue(
-            AppSettings(monitoring_consent=True).normalized().monitoring_consent
-        )
+    def test_legacy_monitoring_consent_is_ignored_and_not_resaved(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "settings.json"
+            path.write_text(
+                '{"enabled": false, "monitoring_consent": true}',
+                encoding="utf-8",
+            )
+
+            store = SettingsStore(path)
+            settings = store.load()
+            store.save(settings)
+
+            self.assertFalse(settings.enabled)
+            self.assertFalse(hasattr(settings, "monitoring_consent"))
+            self.assertNotIn("monitoring_consent", json.loads(path.read_text()))
 
     def test_metrics_view_defaults_to_line_and_normalizes_invalid_values(
         self,

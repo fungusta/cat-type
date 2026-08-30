@@ -29,8 +29,9 @@ cat, open Settings, or quit.
 ## Install on macOS
 
 Cat Type for macOS is distributed only through the Mac App Store. On first
-launch, approve Cat Type's explanation and then allow it under **System
-Settings > Privacy & Security > Input Monitoring** when macOS asks.
+launch, open Settings and choose **Enable Input Monitoring**. macOS controls
+the permission under **System Settings > Privacy & Security > Input
+Monitoring**. Cat Type never shows a separate consent alert.
 
 ## Install on Linux
 

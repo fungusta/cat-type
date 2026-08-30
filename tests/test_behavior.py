@@ -522,10 +522,10 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertFalse(icon.visible_during_setup)
         self.assertTrue(icon.visible)
 
-    def test_app_store_first_run_waits_for_explicit_monitoring_consent(self) -> None:
+    def test_app_store_run_has_no_custom_monitoring_consent_prompt(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app._start_tray = Mock()
-        app.keyboard = Mock()
+        app._ensure_activity_monitoring = Mock()
         app.tracker = Mock()
         app.animation = Mock()
         app.root = Mock()
@@ -533,18 +533,18 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._first_run = False
         app._platform_name = "darwin"
         app._app_store_distribution = True
-        app.settings = AppSettings(
-            enabled=False,
-            monitoring_consent=False,
-        )
-        app._request_monitoring_consent = Mock()
+        app.settings = AppSettings(enabled=False)
         app.usage_tracker = Mock()
 
         app.run()
 
-        app.keyboard.start.assert_not_called()
-        app.tracker.start.assert_not_called()
-        app.root.after.assert_any_call(300, app._request_monitoring_consent)
+        app._ensure_activity_monitoring.assert_called_once_with()
+        self.assertFalse(
+            any(
+                call.args and call.args[0] == 300
+                for call in app.root.after.call_args_list
+            )
+        )
 
     def test_windows_and_linux_preserve_disabled_global_hotkey_listener(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
@@ -560,46 +560,92 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.keyboard.start.assert_called_once_with()
         app.tracker.start.assert_called_once_with()
 
-    def test_app_store_permission_poll_starts_monitoring_after_access(self) -> None:
+    def test_app_store_permission_request_enables_after_access(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
-        app.settings = AppSettings(enabled=True, monitoring_consent=True)
+        app.settings = AppSettings(enabled=False)
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = lambda value: value.normalized()
         app._app_store_distribution = True
         app._platform_name = "darwin"
         app._activity_monitoring_started = False
         app._input_monitoring_requested = False
         app._monitoring_permission_poll_id = None
-        app._input_monitoring_preflight = Mock(side_effect=[False, True])
+        app._input_monitoring_preflight = Mock(return_value=False)
+        app._input_monitoring_request = Mock(return_value=True)
+        app._ensure_activity_monitoring = Mock()
+        app._tray_icon = None
+        app.root = Mock()
+        app._settings_window = None
+        app._hide = Mock()
+        app._shutting_down = False
+
+        self.assertTrue(app._request_input_monitoring_access())
+
+        app._input_monitoring_request.assert_called_once_with()
+        self.assertTrue(app.settings.enabled)
+        app._ensure_activity_monitoring.assert_called_once_with()
+
+    def test_app_store_permission_denial_stays_disabled_and_polls(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=False)
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = lambda value: value.normalized()
+        app._app_store_distribution = True
+        app._platform_name = "darwin"
+        app._input_monitoring_requested = False
+        app._monitoring_permission_poll_id = None
+        app._input_monitoring_preflight = Mock(return_value=False)
         app._input_monitoring_request = Mock(return_value=False)
-        app.keyboard = Mock()
-        app.pointer_clicks = Mock()
-        app.tracker = Mock()
+        app._ensure_activity_monitoring = Mock()
         app._tray_icon = None
         app.root = Mock()
         app.root.after.return_value = "permission-poll"
+        app._settings_window = Mock()
+        app._settings_window.window.winfo_exists.return_value = True
+        app._hide = Mock()
         app._shutting_down = False
 
-        app._ensure_activity_monitoring()
+        self.assertFalse(app._request_input_monitoring_access())
 
-        app._input_monitoring_request.assert_called_once_with()
-        app.keyboard.start.assert_not_called()
-        app.pointer_clicks.start.assert_not_called()
-        self.assertEqual(
-            app._monitoring_permission_poll_id,
-            "permission-poll",
+        self.assertFalse(app.settings.enabled)
+        app.root.after.assert_called_once_with(
+            1000,
+            app._poll_input_monitoring_permission,
         )
+        app._settings_window.set_input_monitoring_status.assert_called_once_with(
+            False,
+            request_attempted=True,
+        )
+        app._ensure_activity_monitoring.assert_not_called()
+
+    def test_app_store_permission_poll_enables_after_system_settings(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app.settings = AppSettings(enabled=False)
+        app.settings_store = Mock()
+        app.settings_store.save.side_effect = lambda value: value.normalized()
+        app._app_store_distribution = True
+        app._platform_name = "darwin"
+        app._input_monitoring_requested = True
+        app._monitoring_permission_poll_id = "permission-poll"
+        app._input_monitoring_preflight = Mock(return_value=True)
+        app._ensure_activity_monitoring = Mock()
+        app._tray_icon = None
+        app.root = Mock()
+        app._settings_window = None
+        app._hide = Mock()
+        app._shutting_down = False
 
         app._poll_input_monitoring_permission()
 
-        app.keyboard.start.assert_called_once_with()
-        app.pointer_clicks.start.assert_called_once_with()
-        app.tracker.start.assert_called_once_with()
-        self.assertTrue(app._activity_monitoring_started)
+        self.assertTrue(app.settings.enabled)
+        self.assertFalse(app._input_monitoring_requested)
+        app._ensure_activity_monitoring.assert_called_once_with()
 
     def test_app_store_tray_title_indicates_monitoring_status(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app._app_store_distribution = True
         app._activity_monitoring_started = False
-        app.settings = AppSettings(enabled=True, monitoring_consent=True)
+        app.settings = AppSettings(enabled=True)
 
         self.assertEqual(
             app._tray_title(),
@@ -613,59 +659,19 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             "Cat Type — Input monitoring active",
         )
 
-    def test_app_store_consent_is_persisted_before_monitoring_starts(self) -> None:
+    def test_app_store_enabled_menu_requests_native_permission_directly(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
-        app.settings = AppSettings(enabled=False, monitoring_consent=False)
-        app.settings_store = Mock()
-        app.settings_store.save.side_effect = lambda value: value.normalized()
-        app._confirm_monitoring = Mock(return_value=True)
-        app._ensure_activity_monitoring = Mock()
-        app._settings_window = None
-        app._tray_icon = None
-        app._hide = Mock()
+        app.settings = AppSettings(enabled=False)
+        app._app_store_distribution = True
+        app._platform_name = "darwin"
+        app._input_monitoring_preflight = Mock(return_value=False)
+        app._request_input_monitoring_access = Mock(return_value=False)
+        app.open_settings = Mock()
 
-        self.assertTrue(app._request_monitoring_consent())
+        app._set_enabled(True)
 
-        saved = app.settings_store.save.call_args.args[0]
-        self.assertTrue(saved.monitoring_consent)
-        self.assertTrue(saved.enabled)
-        app._ensure_activity_monitoring.assert_called_once_with()
-
-    def test_macos_monitoring_consent_activates_app_before_modal(self) -> None:
-        app = CatTypeApp.__new__(CatTypeApp)
-        events = []
-        app.root = Mock()
-        app._restore_macos_activation_policy = Mock(
-            side_effect=lambda: events.append("restore")
-        )
-        set_policy = Mock(
-            side_effect=lambda policy: events.append(f"policy:{policy}")
-        )
-
-        with (
-            patch.object(cat_type, "IS_MACOS", True),
-            patch(
-                "cat_type._macos_activation_policy_accessors_for_app",
-                return_value=(Mock(return_value=2), set_policy, Mock()),
-            ),
-            patch(
-                "cat_type._activate_macos_application",
-                side_effect=lambda: events.append("activate"),
-            ),
-            patch.object(
-                cat_type.messagebox,
-                "askokcancel",
-                side_effect=lambda *args, **kwargs: (
-                    events.append("prompt") or True
-                ),
-            ),
-        ):
-            self.assertTrue(app._show_monitoring_consent())
-
-        self.assertEqual(
-            events,
-            ["restore", "policy:1", "activate", "prompt", "policy:2"],
-        )
+        app._request_input_monitoring_access.assert_called_once_with()
+        app.open_settings.assert_called_once_with()
 
     def test_periodic_usage_flush_reschedules_while_app_is_running(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)

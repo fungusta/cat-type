@@ -2,8 +2,10 @@
 
 The Mac App Store package is the only supported macOS distribution. GitHub
 releases intentionally contain no macOS DMG. The package enables App Sandbox,
-asks for explicit consent before requesting Input Monitoring access, relies on
-the App Store for updates, and ships as a signed installer.
+uses macOS's native Input Monitoring permission as the source of truth, relies
+on the App Store for updates, and ships as a signed installer. Its Settings
+window explains the on-device activity handling inline instead of presenting a
+second consent alert.
 
 Cat Type does not inspect other applications through the macOS Accessibility
 API. It places the cat beside the most recent primary click when that click is

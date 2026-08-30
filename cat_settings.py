@@ -26,7 +26,6 @@ class AppSettings:
     placement: str = "above-right"
     launch_at_startup: bool = False
     metrics_view: str = "line"
-    monitoring_consent: bool = False
 
     def normalized(self) -> "AppSettings":
         cat_style = (
@@ -56,7 +55,6 @@ class AppSettings:
             placement=placement,
             launch_at_startup=bool(self.launch_at_startup),
             metrics_view=metrics_view,
-            monitoring_consent=bool(self.monitoring_consent),
         )
 
 

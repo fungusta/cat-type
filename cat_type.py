@@ -30,6 +30,7 @@ from auto_update import (
 )
 from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
 from macos_input_monitoring import (
+    open_input_monitoring_settings,
     preflight_input_monitoring,
     request_input_monitoring,
 )
@@ -647,16 +648,6 @@ def _raise_macos_window_without_activation(title: str) -> bool:
             window.orderFrontRegardless()
             return True
     return False
-
-
-def _activate_macos_application() -> bool:
-    """Bring the current Aqua application to the foreground."""
-    if not IS_MACOS:
-        return False
-    from AppKit import NSApplication
-
-    NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-    return True
 
 
 class _MacOSNativeOverlaySurface:
@@ -1542,9 +1533,9 @@ class CatTypeApp:
         shutdown_signal: ControllerShutdownSignal | None = None,
         usage_tracker: UsageTracker | None = None,
         app_store_distribution: bool | None = None,
-        confirm_monitoring: Callable[[], bool] | None = None,
         input_monitoring_preflight: Callable[[], bool] | None = None,
         input_monitoring_request: Callable[[], bool] | None = None,
+        input_monitoring_settings_opener: Callable[[], bool] | None = None,
     ) -> None:
         self.debug = debug
         self.settings_store = settings_store or SettingsStore()
@@ -1561,13 +1552,6 @@ class CatTypeApp:
             if app_store_distribution is None
             else app_store_distribution
         )
-        if self._app_store_distribution and not self.settings.monitoring_consent:
-            self.settings = replace(self.settings, enabled=False)
-        self._confirm_monitoring = (
-            self._show_monitoring_consent
-            if confirm_monitoring is None
-            else confirm_monitoring
-        )
         self._input_monitoring_preflight = (
             preflight_input_monitoring
             if input_monitoring_preflight is None
@@ -1578,6 +1562,17 @@ class CatTypeApp:
             if input_monitoring_request is None
             else input_monitoring_request
         )
+        self._input_monitoring_settings_opener = (
+            open_input_monitoring_settings
+            if input_monitoring_settings_opener is None
+            else input_monitoring_settings_opener
+        )
+        if (
+            self._app_store_distribution
+            and platform_name == "darwin"
+            and not self._input_monitoring_preflight()
+        ):
+            self.settings = replace(self.settings, enabled=False)
         self._activity_monitoring_started = False
         self._input_monitoring_requested = False
         self._monitoring_permission_poll_id: str | None = None
@@ -2010,15 +2005,7 @@ class CatTypeApp:
 
     def run(self) -> None:
         self._start_tray()
-        app_store_distribution = getattr(
-            self,
-            "_app_store_distribution",
-            False,
-        )
-        if app_store_distribution and not self.settings.monitoring_consent:
-            self.root.after(300, self._request_monitoring_consent)
-        else:
-            self._ensure_activity_monitoring()
+        self._ensure_activity_monitoring()
         # Give immediate visual confirmation when the app starts while a text
         # field is already focused.
         started_at = time.monotonic()
@@ -2078,14 +2065,6 @@ class CatTypeApp:
             app_store_distribution and self._platform_name == "darwin"
         ):
             if not self._input_monitoring_preflight():
-                if not self._input_monitoring_requested:
-                    self._input_monitoring_requested = True
-                    self._input_monitoring_request()
-                if self._monitoring_permission_poll_id is None:
-                    self._monitoring_permission_poll_id = self.root.after(
-                        1000,
-                        self._poll_input_monitoring_permission,
-                    )
                 return
         self._start_activity_monitoring()
 
@@ -2093,60 +2072,113 @@ class CatTypeApp:
         self._monitoring_permission_poll_id = None
         if self._shutting_down:
             return
-        self._ensure_activity_monitoring()
+        if self._input_monitoring_preflight():
+            self._input_monitoring_requested = False
+            self._save_enabled_state(True, monitoring_granted=True)
+            return
+        self._update_input_monitoring_ui(
+            False,
+            request_attempted=True,
+        )
+        self._schedule_input_monitoring_poll()
 
-    def _show_monitoring_consent(self) -> bool:
-        self._restore_macos_activation_policy()
-        activation_policy = _macos_activation_policy_accessors_for_app()
-        previous_policy = None
-        if activation_policy is not None:
-            previous_policy = activation_policy[0]()
-            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
-        _activate_macos_application()
-        try:
-            return messagebox.askokcancel(
-                "Privacy & Input Monitoring",
-                (
-                    "Cat Type listens for key-press events and primary mouse "
-                    "clicks across apps to animate and position the cat. It also "
-                    "counts aggregate activity by hour and day.\n\n"
-                    "It keeps only the latest click coordinate for up to eight "
-                    "seconds. It never stores key names, typed text, app names, "
-                    "control names, or window titles, and it never sends usage "
-                    "data. The cat appears while monitoring is active.\n\n"
-                    "Continue and ask macOS for Input Monitoring access?"
-                ),
-                parent=self.root,
-                icon="info",
+    def _schedule_input_monitoring_poll(self) -> None:
+        if self._monitoring_permission_poll_id is None:
+            self._monitoring_permission_poll_id = self.root.after(
+                1000,
+                self._poll_input_monitoring_permission,
             )
-        finally:
-            if activation_policy is not None and previous_policy is not None:
-                activation_policy[1](previous_policy)
 
-    def _request_monitoring_consent(self) -> bool:
-        if self.settings.monitoring_consent:
-            self._ensure_activity_monitoring()
-            return True
-        accepted = bool(self._confirm_monitoring())
+    def _cancel_input_monitoring_poll(self) -> None:
+        permission_poll_id = getattr(
+            self,
+            "_monitoring_permission_poll_id",
+            None,
+        )
+        if permission_poll_id is None:
+            return
+        try:
+            self.root.after_cancel(permission_poll_id)
+        except tk.TclError:
+            pass
+        self._monitoring_permission_poll_id = None
+
+    def _update_input_monitoring_ui(
+        self,
+        granted: bool,
+        *,
+        request_attempted: bool = False,
+    ) -> None:
+        settings_window = getattr(self, "_settings_window", None)
+        if (
+            settings_window is None
+            or not settings_window.window.winfo_exists()
+        ):
+            return
+        settings_window.enabled.set(self.settings.enabled)
+        settings_window.set_input_monitoring_status(
+            granted,
+            request_attempted=request_attempted,
+        )
+
+    def _save_enabled_state(
+        self,
+        enabled: bool,
+        *,
+        monitoring_granted: bool | None = None,
+        request_attempted: bool = False,
+    ) -> None:
         updated = replace(
             self.settings,
-            monitoring_consent=accepted,
-            enabled=accepted,
+            enabled=enabled,
             launch_at_startup=False,
         )
         try:
             self.settings = self.settings_store.save(updated)
         except OSError:
             self.settings = updated.normalized()
-        if getattr(self, "_settings_window", None) is not None:
-            self._settings_window.enabled.set(self.settings.enabled)
-        if accepted:
+        if enabled:
             self._ensure_activity_monitoring()
         else:
             self._hide()
         if getattr(self, "_tray_icon", None) is not None:
+            self._update_tray_monitoring_status()
             self._tray_icon.update_menu()
-        return accepted
+        if monitoring_granted is None:
+            monitoring_granted = (
+                self._input_monitoring_preflight()
+                if self._platform_name == "darwin"
+                else True
+            )
+        self._update_input_monitoring_ui(
+            monitoring_granted,
+            request_attempted=request_attempted,
+        )
+
+    def _request_input_monitoring_access(self) -> bool:
+        granted = self._input_monitoring_preflight()
+        if not granted:
+            self._input_monitoring_requested = True
+            granted = bool(self._input_monitoring_request())
+        if granted:
+            self._input_monitoring_requested = False
+            self._cancel_input_monitoring_poll()
+            self._save_enabled_state(True, monitoring_granted=True)
+            return True
+        self._save_enabled_state(
+            False,
+            monitoring_granted=False,
+            request_attempted=True,
+        )
+        self._schedule_input_monitoring_poll()
+        return False
+
+    def _open_input_monitoring_settings(self) -> bool:
+        self._input_monitoring_requested = True
+        opened = bool(self._input_monitoring_settings_opener())
+        if opened:
+            self._schedule_input_monitoring_poll()
+        return opened
 
     def shutdown(self) -> None:
         lifecycle_lock = getattr(self, "_update_lifecycle_lock", None)
@@ -2596,6 +2628,21 @@ class CatTypeApp:
             "_app_store_distribution",
             False,
         )
+        input_monitoring_granted = (
+            self._input_monitoring_preflight()
+            if app_store_distribution and self._platform_name == "darwin"
+            else None
+        )
+        if input_monitoring_granted is False and self.settings.enabled:
+            self._save_enabled_state(
+                False,
+                monitoring_granted=False,
+                request_attempted=getattr(
+                    self,
+                    "_input_monitoring_requested",
+                    False,
+                ),
+            )
         self._settings_window = SettingsWindow(
             self.root,
             self.settings,
@@ -2627,6 +2674,22 @@ class CatTypeApp:
             ),
             on_close=self._return_to_macos_background_policy,
             app_store_distribution=app_store_distribution,
+            input_monitoring_granted=input_monitoring_granted,
+            input_monitoring_request_attempted=getattr(
+                self,
+                "_input_monitoring_requested",
+                False,
+            ),
+            on_request_input_monitoring=(
+                self._request_input_monitoring_access
+                if app_store_distribution
+                else None
+            ),
+            on_open_input_monitoring_settings=(
+                self._open_input_monitoring_settings
+                if app_store_distribution
+                else None
+            ),
         )
         if getattr(self, "_update_worker_active", False):
             self._settings_window.set_update_status(
@@ -2658,11 +2721,19 @@ class CatTypeApp:
             "_app_store_distribution",
             False,
         )
+        request_input_monitoring = False
         if app_store_distribution:
             settings = replace(settings, launch_at_startup=False)
-            if settings.enabled and not settings.monitoring_consent:
-                self._request_monitoring_consent()
-                settings = self.settings
+            request_input_monitoring = (
+                settings.enabled
+                and self._platform_name == "darwin"
+                and not self._input_monitoring_preflight()
+            )
+            if request_input_monitoring:
+                settings = replace(settings, enabled=False)
+        if not settings.enabled and not request_input_monitoring:
+            self._input_monitoring_requested = False
+            self._cancel_input_monitoring_poll()
         self.settings = self.settings_store.save(settings)
         if not app_store_distribution:
             set_launch_at_startup(self.settings.launch_at_startup)
@@ -2686,6 +2757,8 @@ class CatTypeApp:
             self._hide()
         else:
             self._ensure_activity_monitoring()
+        if request_input_monitoring:
+            self._request_input_monitoring_access()
         if self._tray_icon is not None:
             self._update_tray_monitoring_status()
             self._tray_icon.update_menu()
@@ -2694,9 +2767,11 @@ class CatTypeApp:
         if (
             enabled
             and getattr(self, "_app_store_distribution", False)
-            and not self.settings.monitoring_consent
+            and self._platform_name == "darwin"
+            and not self._input_monitoring_preflight()
         ):
-            self._request_monitoring_consent()
+            if not self._request_input_monitoring_access():
+                self.open_settings()
             return
         updated = AppSettings(
             **{

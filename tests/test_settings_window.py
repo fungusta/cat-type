@@ -745,6 +745,79 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertFalse(hasattr(app_store_window, "check_for_updates_button"))
         app_store_window.set_update_status("A harmless late update event.")
 
+    def test_app_store_permission_control_uses_native_request_then_settings(
+        self,
+    ) -> None:
+        request_permission = Mock(return_value=False)
+        open_system_settings = Mock(return_value=True)
+        app_store_window = SettingsWindow(
+            self.root,
+            AppSettings(enabled=False),
+            Mock(),
+            app_store_distribution=True,
+            input_monitoring_granted=False,
+            on_request_input_monitoring=request_permission,
+            on_open_input_monitoring_settings=open_system_settings,
+        )
+        self.addCleanup(app_store_window.close)
+
+        texts = self._widget_texts(app_store_window.window)
+        self.assertIn(
+            "Input Monitoring is required to show the cat.",
+            texts,
+        )
+        self.assertEqual(
+            app_store_window.input_monitoring_button.cget("text"),
+            "Enable Input Monitoring",
+        )
+
+        app_store_window.input_monitoring_button.invoke()
+
+        request_permission.assert_called_once_with()
+        self.assertEqual(
+            app_store_window.input_monitoring_button.cget("text"),
+            "Open System Settings",
+        )
+        self.assertFalse(app_store_window.enabled.get())
+
+        app_store_window.input_monitoring_button.invoke()
+
+        open_system_settings.assert_called_once_with()
+
+    def test_app_store_privacy_explanation_toggles_from_details_button(
+        self,
+    ) -> None:
+        app_store_window = SettingsWindow(
+            self.root,
+            AppSettings(enabled=False),
+            Mock(),
+            app_store_distribution=True,
+        )
+        self.addCleanup(app_store_window.close)
+
+        self.assertEqual(app_store_window.privacy_explanation.winfo_manager(), "")
+        self.assertEqual(
+            app_store_window.privacy_details_button.cget("text"),
+            "Privacy details",
+        )
+
+        app_store_window.privacy_details_button.invoke()
+        app_store_window.window.update_idletasks()
+
+        self.assertEqual(
+            app_store_window.privacy_explanation.winfo_manager(),
+            "pack",
+        )
+        self.assertEqual(
+            app_store_window.privacy_details_button.cget("text"),
+            "Hide privacy details",
+        )
+
+        app_store_window.privacy_details_button.invoke()
+        app_store_window.window.update_idletasks()
+
+        self.assertEqual(app_store_window.privacy_explanation.winfo_manager(), "")
+
     def test_update_status_changes_live_and_disables_button_while_checking(
         self,
     ) -> None:
