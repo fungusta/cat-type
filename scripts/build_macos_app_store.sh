@@ -65,6 +65,7 @@ export CAT_TYPE_REQUIRE_SIGNING=1
 "$python_command" -m scripts.check_bundled_icon \
     "$app_path/Contents/MacOS/Cat Type"
 cp "$profile_path" "$app_path/Contents/embedded.provisionprofile"
+chmod -R a+rX "$app_path"
 
 retry codesign --force --deep --strict --timestamp \
     --options runtime \

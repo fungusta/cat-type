@@ -119,6 +119,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("com.apple.security.app-sandbox", entitlements)
         self.assertIn("9B98U2J5Q2.com.fungusta.cat-type", entitlements)
         self.assertIn("embedded.provisionprofile", script)
+        self.assertIn('chmod -R a+rX "$app_path"', script)
         self.assertIn("scripts.check_bundled_icon", script)
         self.assertIn("productbuild", script)
         self.assertIn("one to three numeric segments", script)
