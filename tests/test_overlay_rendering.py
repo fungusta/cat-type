@@ -292,6 +292,20 @@ class SpriteAssetTests(unittest.TestCase):
             with self.subTest(frame=str(frame_path)), Image.open(frame_path) as frame:
                 self.assertEqual(frame.size, (120, 120))
 
+    def test_every_cat_variant_has_all_four_runtime_frames(self) -> None:
+        expected_names = {
+            "idle.png",
+            "tap-left.png",
+            "tap-right.png",
+            "excited.png",
+        }
+        for variant in CAT_VARIANTS:
+            with self.subTest(variant=variant):
+                actual_names = {
+                    path.name for path in (FRAME_ROOT / variant).glob("*.png")
+                }
+                self.assertEqual(actual_names, expected_names)
+
     def test_gray_tabby_has_dark_purple_pads_not_purple_paw_fur(self) -> None:
         with Image.open(FRAME_ROOT / "gray" / "idle.png") as frame:
             dark_gray_purple_pixels = sum(

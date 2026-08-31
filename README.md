@@ -11,8 +11,8 @@ create my own take on it.
 
 On Windows, Cat Type puts the companion beside the place where text is being
 inserted. On macOS and Linux, it uses pointer placement instead. Its four-frame
-gray and ginger tabby sprite sheets are original artwork created for this
-project; it does not extract or redistribute Bongo Cat's game assets.
+cat sprite sheets are original artwork created for this project; it does not
+extract or redistribute Bongo Cat's game assets.
 
 ## Install on Windows
 
@@ -51,13 +51,15 @@ pointer directly.
 Settings are saved for the current user and take effect immediately:
 
 - Enable or pause the typing companion.
-- Choose alternating tabbies, gray only, or ginger only.
+- Choose gray, ginger, charcoal, brown-tabby, white, or black-and-white cats,
+  or cycle through all of them.
 - Change the cat size from 60% to 175%.
 - Choose which corner of the caret or pointer the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
 - Start Cat Type automatically when you sign in.
-- View all-time activity and 1-day, 7-day, or 30-day trends as an exact line
-  or columns; Cat Type remembers the selected chart view.
+- View all-time activity and navigate through current or previous 1-day, 7-day,
+  or 30-day trends as an exact line or columns; Cat Type remembers the selected
+  chart view.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 

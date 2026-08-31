@@ -3,10 +3,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cat_settings import AppSettings, SettingsStore
+from cat_settings import CAT_VARIANTS, AppSettings, SettingsStore
 
 
 class AppSettingsTests(unittest.TestCase):
+    def test_all_bundled_cat_variants_are_valid_styles(self) -> None:
+        for variant in CAT_VARIANTS:
+            with self.subTest(variant=variant):
+                self.assertEqual(
+                    AppSettings(cat_style=variant).normalized().cat_style,
+                    variant,
+                )
+
     def test_legacy_monitoring_consent_is_ignored_and_not_resaved(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"

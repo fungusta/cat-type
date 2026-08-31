@@ -28,7 +28,12 @@ from auto_update import (
     UpdateService,
     UpdateStateStore,
 )
-from cat_settings import AppSettings, SettingsStore, set_launch_at_startup
+from cat_settings import (
+    CAT_VARIANTS,
+    AppSettings,
+    SettingsStore,
+    set_launch_at_startup,
+)
 from macos_input_monitoring import (
     open_input_monitoring_settings,
     preflight_input_monitoring,
@@ -55,7 +60,6 @@ APP_DIR = Path(
 )
 FRAME_ROOT = APP_DIR / "assets" / "tabby-frames"
 APP_ICON = APP_DIR / "assets" / icon_filename(sys.platform)
-CAT_VARIANTS = ("gray", "ginger")
 FRAME_DIR = FRAME_ROOT / CAT_VARIANTS[0]
 FRAME_NAMES = ("idle", "tap-left", "tap-right", "excited")
 

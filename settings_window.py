@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import sys
 import tkinter as tk
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -12,7 +12,7 @@ from typing import Callable
 from PIL import Image, ImageDraw, ImageTk
 
 from app_version import APP_VERSION
-from cat_settings import AppSettings
+from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
 
 
@@ -20,6 +20,10 @@ CAT_STYLE_LABELS = {
     "Mix it up": "alternate",
     "Gray tabby": "gray",
     "Ginger tabby": "ginger",
+    "Charcoal": "charcoal",
+    "Brown tabby": "brown-tabby",
+    "White": "white",
+    "Black & white": "black-white",
 }
 PLACEMENT_LABELS = {
     "Above · right": "above-right",
@@ -353,6 +357,7 @@ class SettingsWindow:
         )
         self.active_page = tk.StringVar(value="Settings")
         self.metrics_range_days = tk.IntVar(value=7)
+        self.metrics_period_offset = 0
         self.metrics_view = tk.StringVar(value=settings.metrics_view)
         self.metrics_interval_text = tk.StringVar(value="")
         self.metrics_today_text = tk.StringVar(value="0")
@@ -577,7 +582,7 @@ class SettingsWindow:
             return
         frames_root = Path(icon_path).parent / "tabby-frames"
         resampling = getattr(Image, "Resampling", Image).LANCZOS
-        for variant in ("gray", "ginger"):
+        for variant in CAT_VARIANTS:
             variant_frames: dict[str, ImageTk.PhotoImage] = {}
             for name in ("idle", "tap-left", "tap-right", "excited"):
                 path = frames_root / variant / f"{name}.png"
@@ -965,14 +970,36 @@ class SettingsWindow:
             highlightthickness=0,
             takefocus=True,
         )
-        self.metrics_interval_label = tk.Label(
+        metrics_navigation = tk.Frame(
             activity_content,
+            background=self.CARD,
+        )
+        metrics_navigation.pack(fill="x", pady=(0, 8))
+        metrics_navigation.grid_columnconfigure(1, weight=1)
+        self.metrics_previous_button = ttk.Button(
+            metrics_navigation,
+            text="← Previous",
+            command=lambda: self._navigate_metrics_period(-1),
+            style=self.secondary_button_style,
+            takefocus=True,
+        )
+        self.metrics_previous_button.grid(row=0, column=0, sticky="w")
+        self.metrics_interval_label = tk.Label(
+            metrics_navigation,
             textvariable=self.metrics_interval_text,
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["small"],
         )
-        self.metrics_interval_label.pack(anchor="w", pady=(0, 8))
+        self.metrics_interval_label.grid(row=0, column=1, padx=12)
+        self.metrics_next_button = ttk.Button(
+            metrics_navigation,
+            text="Next →",
+            command=lambda: self._navigate_metrics_period(1),
+            style=self.secondary_button_style,
+            takefocus=True,
+        )
+        self.metrics_next_button.grid(row=0, column=2, sticky="e")
         self.metrics_chart.pack(fill="x")
         self.metrics_chart.bind(
             "<Configure>",
@@ -1128,9 +1155,24 @@ class SettingsWindow:
         ).pack(anchor="w", padx=16, pady=(2, 14))
 
     def _change_metrics_range(self) -> None:
+        self.metrics_period_offset = 0
         self._metrics_selected_index = None
         self._refresh_metrics_range_buttons()
         self._draw_metrics()
+
+    def _navigate_metrics_period(self, direction: int) -> None:
+        next_offset = min(0, self.metrics_period_offset + direction)
+        if next_offset == self.metrics_period_offset:
+            return
+        self.metrics_period_offset = next_offset
+        self._metrics_selected_index = None
+        self._draw_metrics()
+
+    def _refresh_metrics_navigation(self) -> None:
+        self.metrics_previous_button.configure(state="normal")
+        self.metrics_next_button.configure(
+            state="normal" if self.metrics_period_offset < 0 else "disabled"
+        )
 
     def _refresh_metrics_range_buttons(self) -> None:
         selected = self.metrics_range_days.get()
@@ -1195,9 +1237,16 @@ class SettingsWindow:
         return f"{value // 1_000:,}k"
 
     @staticmethod
-    def _metric_interval_label(start: date, end: date) -> str:
+    def _metric_interval_label(
+        start: date,
+        end: date,
+        *,
+        today: date | None = None,
+    ) -> str:
+        today = today or datetime.now().astimezone().date()
         if start == end:
-            return f"Today · {end.day} {end.strftime('%b %Y')}"
+            day_name = "Today" if end == today else end.strftime("%a")
+            return f"{day_name} · {end.day} {end.strftime('%b %Y')}"
         if start.year == end.year and start.month == end.month:
             return f"{start.day}–{end.day} {end.strftime('%b %Y')}"
         if start.year == end.year:
@@ -1300,22 +1349,27 @@ class SettingsWindow:
         now = datetime.now().astimezone()
         today = now.date()
         days = self.metrics_range_days.get()
+        period_end = today + timedelta(days=self.metrics_period_offset * days)
         if days == 1:
-            values = self.usage_metrics.hourly_series(today)
+            values = self.usage_metrics.hourly_series(period_end)
             labels = [
                 {0: "12a", 6: "6a", 12: "12p", 18: "6p", 23: "11p"}.get(hour)
                 for hour in range(24)
             ]
             exact_labels = [
-                self._metric_hour_label(today, hour)
+                self._metric_hour_label(period_end, hour)
                 for hour in range(24)
             ]
-            visible_count = now.hour + 1
-            interval_start = today
-            interval_end = today
-            empty_message = "No activity recorded today yet"
+            visible_count = now.hour + 1 if period_end == today else 24
+            interval_start = period_end
+            interval_end = period_end
+            empty_message = (
+                "No activity recorded today yet"
+                if period_end == today
+                else "No activity recorded on this day"
+            )
         else:
-            series = self.usage_metrics.daily_series(days, ending_on=today)
+            series = self.usage_metrics.daily_series(days, ending_on=period_end)
             values = [count for _day, count in series]
             labels = [
                 (
@@ -1336,8 +1390,13 @@ class SettingsWindow:
             interval_end = series[-1][0]
             empty_message = "Start typing to see your daily rhythm"
         self.metrics_interval_text.set(
-            self._metric_interval_label(interval_start, interval_end)
+            self._metric_interval_label(
+                interval_start,
+                interval_end,
+                today=today,
+            )
         )
+        self._refresh_metrics_navigation()
         width = max(320, canvas.winfo_width())
         height = max(180, canvas.winfo_height())
         left = 46
@@ -1381,8 +1440,10 @@ class SettingsWindow:
             label_positions = line_positions
             bucket_span = usable_width / max(1, len(values) - 1)
 
-        partial_index = max(0, visible_count - 1)
-        if maximum:
+        partial_index = (
+            max(0, visible_count - 1) if interval_end == today else None
+        )
+        if maximum and partial_index is not None:
             partial_x = plot_positions[partial_index][0]
             partial_left = max(left, partial_x - bucket_span / 2)
             partial_right = min(width - right, partial_x + bucket_span / 2)
@@ -1682,7 +1743,7 @@ class SettingsWindow:
             hasattr(self, "metrics_chart")
             and self.active_page.get() == "Metrics"
         ):
-            self._change_metrics_range()
+            self._draw_metrics()
 
     def _build_appearance_card(self, parent: tk.Frame) -> None:
         self.cat_style_card, self.cat_style_content = self._card(
@@ -1724,6 +1785,7 @@ class SettingsWindow:
         choices = tk.Frame(content, background=self.CARD)
         choices.pack(fill="x", pady=(0, 16))
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
+        columns = 2
         for index, label in enumerate(CAT_STYLE_LABELS):
             button = tk.Radiobutton(
                 choices,
@@ -1747,12 +1809,13 @@ class SettingsWindow:
                 cursor="hand2",
             )
             button.grid(
-                row=0,
-                column=index,
+                row=index // columns,
+                column=index % columns,
                 sticky="ew",
-                padx=(0 if index == 0 else 4, 0),
+                padx=(0 if index % columns == 0 else 4, 0),
+                pady=(0 if index < columns else 4, 0),
             )
-            choices.grid_columnconfigure(index, weight=1)
+            choices.grid_columnconfigure(index % columns, weight=1)
             self.cat_style_buttons[label] = button
         self.cat_style.trace_add(
             "write",
@@ -2120,12 +2183,13 @@ class SettingsWindow:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
         if self._preview_frames:
             selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
-            if selected in ("gray", "ginger"):
+            if selected in CAT_VARIANTS:
                 self._preview_variant = selected
             elif self._preview_step % len(sequence) == 0:
-                self._preview_variant = (
-                    "ginger" if self._preview_variant == "gray" else "gray"
-                )
+                variant_index = CAT_VARIANTS.index(self._preview_variant)
+                self._preview_variant = CAT_VARIANTS[
+                    (variant_index + 1) % len(CAT_VARIANTS)
+                ]
             frames = self._preview_frames.get(self._preview_variant, {})
             frame = frames.get(sequence[self._preview_step % len(sequence)])
             if frame is not None:

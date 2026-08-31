@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from app_version import APP_VERSION
-from cat_settings import AppSettings
+from cat_settings import CAT_VARIANTS, AppSettings
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
 
@@ -478,7 +478,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Above · right",
             "All time",
             "All-time keystrokes",
+            "Black & white",
+            "Brown tabby",
             "Cancel",
+            "Charcoal",
             "Check for updates",
             "Columns",
             "Favorite spot",
@@ -488,6 +491,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Last 7 days",
             "Line",
             "Mix it up",
+            "Next →",
             "Open release page",
             "Preview scale",
             "Range",
@@ -497,9 +501,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Start Cat Type when I sign in",
             "Save changes",
             "Today",
+            "White",
             f"Version {APP_VERSION}",
             "View",
             "keystrokes",
+            "← Previous",
         }
 
         self.assertTrue(filler_copy.isdisjoint(texts))
@@ -990,6 +996,85 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_view.get(), "columns")
         self.on_metrics_view_change.assert_called_once_with("columns")
 
+    def test_metrics_navigation_shows_previous_days_and_weeks(self) -> None:
+        today = datetime.now().astimezone().date()
+        yesterday = today - timedelta(days=1)
+        previous_week_start = today - timedelta(days=13)
+        previous_week_end = today - timedelta(days=7)
+        previous_week = {
+            (previous_week_start + timedelta(days=offset)).isoformat(): offset + 1
+            for offset in range(7)
+        }
+        yesterday_hours = {
+            f"{yesterday.isoformat()}T{hour:02d}": hour + 1
+            for hour in range(24)
+        }
+        self.settings_window.update_usage_metrics(
+            UsageMetrics(
+                daily=previous_week,
+                hourly=yesterday_hours,
+            )
+        )
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update()
+
+        self.settings_window.metrics_range_days.set(1)
+        self.settings_window._change_metrics_range()
+        self.assertEqual(
+            str(self.settings_window.metrics_next_button.cget("state")),
+            "disabled",
+        )
+
+        self.settings_window._navigate_metrics_period(-1)
+
+        self.assertEqual(self.settings_window.metrics_period_offset, -1)
+        self.assertEqual(
+            self.settings_window.metrics_interval_text.get(),
+            f"{yesterday.strftime('%a')} · "
+            f"{yesterday.day} {yesterday.strftime('%b %Y')}",
+        )
+        self.assertEqual(self.settings_window._metrics_values, list(range(1, 25)))
+        self.assertEqual(len(self.settings_window._metrics_positions), 24)
+        self.assertFalse(
+            self.settings_window.metrics_chart.find_withtag("metric-partial")
+        )
+        self.assertEqual(
+            str(self.settings_window.metrics_next_button.cget("state")),
+            "normal",
+        )
+
+        self.settings_window._navigate_metrics_period(1)
+
+        self.assertEqual(self.settings_window.metrics_period_offset, 0)
+        self.assertEqual(
+            str(self.settings_window.metrics_next_button.cget("state")),
+            "disabled",
+        )
+
+        self.settings_window.metrics_range_days.set(7)
+        self.settings_window._change_metrics_range()
+        self.settings_window._navigate_metrics_period(-1)
+
+        self.assertEqual(self.settings_window.metrics_period_offset, -1)
+        self.assertEqual(self.settings_window._metrics_values, list(range(1, 8)))
+        self.assertIn(
+            str(previous_week_start.day),
+            self.settings_window.metrics_interval_text.get(),
+        )
+        self.assertIn(
+            str(previous_week_end.day),
+            self.settings_window.metrics_interval_text.get(),
+        )
+        self.assertFalse(
+            self.settings_window.metrics_chart.find_withtag("metric-partial")
+        )
+
+        self.settings_window.metrics_range_days.set(30)
+        self.settings_window._change_metrics_range()
+
+        self.assertEqual(self.settings_window.metrics_period_offset, 0)
+
     def test_columns_cover_observed_buckets_with_exact_scaled_bounds(self) -> None:
         today = datetime.now().astimezone().date()
         daily = {
@@ -1165,7 +1250,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertTrue(canvas.find_withtag("metric-active-point"))
         tooltip_id = canvas.find_withtag("metric-tooltip-text")[0]
         tooltip_text = canvas.itemcget(tooltip_id, "text")
-        self.assertIn(today.strftime("%a, %d %b %Y"), tooltip_text)
+        self.assertIn(
+            f"{today.strftime('%a')}, {today.day} {today.strftime('%b %Y')}",
+            tooltip_text,
+        )
         self.assertIn(f"{daily[today.isoformat()]:,} keystrokes", tooltip_text)
         self.assertIn("so far", tooltip_text)
 
@@ -1496,6 +1584,25 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 )
                 self.assertEqual(button.cget("highlightbackground"), expected)
                 self.assertEqual(button.winfo_reqwidth(), widths_before[label])
+
+    def test_preview_loader_includes_every_cat_variant(self) -> None:
+        icon_path = (
+            Path(__file__).resolve().parents[1] / "assets" / "cat-type.png"
+        )
+        self.settings_window._preview_frames.clear()
+
+        self.settings_window._load_preview_frames(str(icon_path))
+
+        self.assertEqual(
+            set(self.settings_window._preview_frames),
+            set(CAT_VARIANTS),
+        )
+        for variant, frames in self.settings_window._preview_frames.items():
+            with self.subTest(variant=variant):
+                self.assertEqual(
+                    set(frames),
+                    {"idle", "tap-left", "tap-right", "excited"},
+                )
 
     def test_footer_actions_use_settings_language(self) -> None:
         self.assertEqual(self.settings_window.cancel_button.cget("text"), "Cancel")

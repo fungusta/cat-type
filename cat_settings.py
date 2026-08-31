@@ -11,7 +11,15 @@ from typing import Any
 
 APP_NAME = "Cat Type"
 SETTINGS_VERSION = 1
-VALID_CAT_STYLES = ("alternate", "gray", "ginger")
+CAT_VARIANTS = (
+    "gray",
+    "ginger",
+    "charcoal",
+    "brown-tabby",
+    "white",
+    "black-white",
+)
+VALID_CAT_STYLES = ("alternate", *CAT_VARIANTS)
 VALID_PLACEMENTS = ("above-right", "above-left", "below-right", "below-left")
 VALID_METRICS_VIEWS = ("line", "columns")
 
