@@ -284,7 +284,10 @@ jobs:
             echo "::error::Missing ASC_KEY_ID, ASC_ISSUER_ID, or ASC_PRIVATE_KEY_B64 repository secrets."
             exit 1
           fi
-          key_path="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          key_directory="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_directory"
+          chmod 700 "$HOME/.appstoreconnect" "$key_directory"
+          key_path="$key_directory/AuthKey_${ASC_KEY_ID}.p8"
           printf '%s' "$ASC_PRIVATE_KEY_B64" | openssl base64 -d -A -out "$key_path"
           chmod 600 "$key_path"
           openssl pkey -in "$key_path" -check -noout
@@ -301,7 +304,6 @@ jobs:
           -t macos
           --apiKey "$ASC_KEY_ID"
           --apiIssuer "$ASC_ISSUER_ID"
-          --p8-file-path "$ASC_PRIVATE_KEY_PATH"
 
       - name: Upload package to App Store Connect
         if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_macos_app_store
@@ -314,7 +316,6 @@ jobs:
           -t macos
           --apiKey "$ASC_KEY_ID"
           --apiIssuer "$ASC_ISSUER_ID"
-          --p8-file-path "$ASC_PRIVATE_KEY_PATH"
 
       - name: Upload signed package artifact
         if: always()
@@ -332,6 +333,8 @@ jobs:
           if [ -n "${ASC_PRIVATE_KEY_PATH:-}" ]; then
             rm -f -- "$ASC_PRIVATE_KEY_PATH"
           fi
+          rmdir "$HOME/.appstoreconnect/private_keys" 2>/dev/null || true
+          rmdir "$HOME/.appstoreconnect" 2>/dev/null || true
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')

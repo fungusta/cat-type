@@ -217,6 +217,8 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("build_macos_app_store.sh", release)
         self.assertIn("xcrun altool --validate-app", release)
         self.assertIn("xcrun altool --upload-app", release)
+        self.assertIn('$HOME/.appstoreconnect/private_keys', release)
+        self.assertNotIn("--p8-file-path", release)
         self.assertIn('ASC_APP_ID: "6806567925"', release)
         self.assertIn("CAT_TYPE_BUILD_NUMBER", release)
         self.assertIn("CAT_TYPE_PYTHON: python", release)
