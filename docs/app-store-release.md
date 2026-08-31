@@ -41,6 +41,9 @@ CAT_TYPE_BUILD_NUMBER=32 \
 ./scripts/build_macos_app_store.sh
 ```
 
+The script uses `.venv/bin/python` locally. Set `CAT_TYPE_PYTHON` when the
+dependencies are installed in another Python environment, as they are in CI.
+
 The signed installer is written to
 `dist/Cat-Type-macOS-App-Store.pkg`. The script verifies the application and
 installer signatures before it succeeds.

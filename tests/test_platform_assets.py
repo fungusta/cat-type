@@ -125,6 +125,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("retry codesign", script)
         self.assertIn("retry productbuild", script)
         self.assertIn("Cat-Type-macOS-App-Store.pkg", script)
+        self.assertIn("CAT_TYPE_PYTHON", script)
 
     def test_pyinstaller_explicitly_bundles_update_runtime_modules(self) -> None:
         spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
@@ -218,6 +219,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("xcrun altool --upload-app", release)
         self.assertIn('ASC_APP_ID: "6806567925"', release)
         self.assertIn("CAT_TYPE_BUILD_NUMBER", release)
+        self.assertIn("CAT_TYPE_PYTHON: python", release)
         self.assertIn("com.apple.application-identifier", credential_script)
         self.assertIn("ExpirationDate", credential_script)
         self.assertIn("ProvisionsAllDevices", credential_script)

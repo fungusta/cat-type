@@ -240,6 +240,7 @@ jobs:
       DEVELOPMENT_TEAM: 9B98U2J5Q2
       BUNDLE_ID: com.fungusta.cat-type
       ASC_APP_ID: "6806567925"
+      CAT_TYPE_PYTHON: python
 
     steps:
       - uses: actions/checkout@v7

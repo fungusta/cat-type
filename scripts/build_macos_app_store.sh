@@ -7,6 +7,7 @@ profile_path="${CAT_TYPE_APP_STORE_PROFILE:-}"
 app_identity="${CAT_TYPE_APP_STORE_APP_IDENTITY:-3rd Party Mac Developer Application: Peter Fung (9B98U2J5Q2)}"
 installer_identity="${CAT_TYPE_APP_STORE_INSTALLER_IDENTITY:-3rd Party Mac Developer Installer: Peter Fung (9B98U2J5Q2)}"
 build_number="${CAT_TYPE_BUILD_NUMBER:-}"
+python_command="${CAT_TYPE_PYTHON:-$project_root/.venv/bin/python}"
 app_path="$project_root/dist/Cat Type.app"
 package_path="$project_root/dist/Cat-Type-macOS-App-Store.pkg"
 entitlements_path="$project_root/packaging/macos-app-store.entitlements"
@@ -36,6 +37,15 @@ if [[ ! "$build_number" =~ ^[1-9][0-9]*(\.[0-9]+){0,2}$ ]]; then
     echo "Set CAT_TYPE_BUILD_NUMBER to one to three numeric segments." >&2
     exit 1
 fi
+if [[ "$python_command" == */* ]]; then
+    if [[ ! -x "$python_command" ]]; then
+        echo "Python interpreter is not executable: $python_command" >&2
+        exit 1
+    fi
+elif ! command -v "$python_command" >/dev/null 2>&1; then
+    echo "Python interpreter is not on PATH: $python_command" >&2
+    exit 1
+fi
 if ! security find-identity -v -p codesigning | grep -Fq "$app_identity"; then
     echo "Missing Mac App Distribution identity: $app_identity" >&2
     exit 1
@@ -50,9 +60,9 @@ export CAT_TYPE_BUILD_NUMBER="$build_number"
 export CAT_TYPE_CODESIGN_IDENTITY="$app_identity"
 export CAT_TYPE_REQUIRE_SIGNING=1
 
-.venv/bin/python scripts/build_icon.py
-.venv/bin/python -m PyInstaller --noconfirm --clean CatType.spec
-.venv/bin/python -m scripts.check_bundled_icon \
+"$python_command" scripts/build_icon.py
+"$python_command" -m PyInstaller --noconfirm --clean CatType.spec
+"$python_command" -m scripts.check_bundled_icon \
     "$app_path/Contents/MacOS/Cat Type"
 cp "$profile_path" "$app_path/Contents/embedded.provisionprofile"
 
