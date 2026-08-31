@@ -147,7 +147,7 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.31` to build the
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.32` to build the
 Windows and Linux architectures and publish those assets on a GitHub Release.
 
 The only supported macOS package is the sandboxed Mac App Store build. See

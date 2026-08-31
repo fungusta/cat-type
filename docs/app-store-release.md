@@ -58,7 +58,7 @@ package with its numeric App Store Connect app ID:
 asc --profile cat-type-release builds upload \
   --app APP_STORE_CONNECT_APP_ID \
   --pkg "dist/Cat-Type-macOS-App-Store.pkg" \
-  --version 1.0.31 \
+  --version 1.0.32 \
   --build-number 32 \
   --wait
 ```
