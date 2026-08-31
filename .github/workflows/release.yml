@@ -5,6 +5,12 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      upload_macos_app_store:
+        description: Upload the signed macOS package to App Store Connect
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -224,14 +230,117 @@ jobs:
           python -m scripts.check_bundled_icon
           "dist/Cat Type.app/Contents/MacOS/Cat Type"
 
+  macos-app-store:
+    name: Build and optionally upload the Mac App Store package
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: macos-tests
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      DEVELOPMENT_TEAM: 9B98U2J5Q2
+      BUNDLE_ID: com.fungusta.cat-type
+      ASC_APP_ID: "6806567925"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Install Mac App Store signing credentials
+        env:
+          CAT_TYPE_MAC_APP_CERTIFICATE_P12_B64: ${{ secrets.CAT_TYPE_MAC_APP_CERTIFICATE_P12_B64 }}
+          CAT_TYPE_MAC_APP_CERTIFICATE_PASSWORD: ${{ secrets.CAT_TYPE_MAC_APP_CERTIFICATE_PASSWORD }}
+          CAT_TYPE_MAC_INSTALLER_CERTIFICATE_P12_B64: ${{ secrets.CAT_TYPE_MAC_INSTALLER_CERTIFICATE_P12_B64 }}
+          CAT_TYPE_MAC_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.CAT_TYPE_MAC_INSTALLER_CERTIFICATE_PASSWORD }}
+          CAT_TYPE_MAC_APP_STORE_PROFILE_B64: ${{ secrets.CAT_TYPE_MAC_APP_STORE_PROFILE_B64 }}
+        run: ./scripts/macos-app-store-credentials.sh install
+
+      - name: Build signed Mac App Store package
+        env:
+          CAT_TYPE_BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
+        run: ./scripts/build_macos_app_store.sh
+
+      - name: Verify package payload
+        run: |
+          package_path="dist/Cat-Type-macOS-App-Store.pkg"
+          pkgutil --check-signature "$package_path"
+          pkgutil --payload-files "$package_path" | grep -Fq "Cat Type.app/Contents/MacOS/Cat Type"
+
+      - name: Prepare App Store Connect API key
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_macos_app_store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.ASC_PRIVATE_KEY_B64 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_PRIVATE_KEY_B64" ]; then
+            echo "::error::Missing ASC_KEY_ID, ASC_ISSUER_ID, or ASC_PRIVATE_KEY_B64 repository secrets."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_B64" | openssl base64 -d -A -out "$key_path"
+          chmod 600 "$key_path"
+          openssl pkey -in "$key_path" -check -noout
+          echo "ASC_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Validate package with App Store Connect
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_macos_app_store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >-
+          xcrun altool --validate-app
+          -f "dist/Cat-Type-macOS-App-Store.pkg"
+          -t macos
+          --apiKey "$ASC_KEY_ID"
+          --apiIssuer "$ASC_ISSUER_ID"
+          --p8-file-path "$ASC_PRIVATE_KEY_PATH"
+
+      - name: Upload package to App Store Connect
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.upload_macos_app_store
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >-
+          xcrun altool --upload-app
+          -f "dist/Cat-Type-macOS-App-Store.pkg"
+          -t macos
+          --apiKey "$ASC_KEY_ID"
+          --apiIssuer "$ASC_ISSUER_ID"
+          --p8-file-path "$ASC_PRIVATE_KEY_PATH"
+
+      - name: Upload signed package artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-app-store-pkg-${{ github.run_number }}-${{ github.run_attempt }}
+          path: dist/Cat-Type-macOS-App-Store.pkg
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove temporary credentials
+        if: always()
+        run: |
+          ./scripts/macos-app-store-credentials.sh cleanup
+          if [ -n "${ASC_PRIVATE_KEY_PATH:-}" ]; then
+            rm -f -- "$ASC_PRIVATE_KEY_PATH"
+          fi
+
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, macos-tests]
+    needs: [build, macos-tests, macos-app-store]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v8
         with:
           path: release-assets
+          pattern: Cat-Type-*
           merge-multiple: true
 
       - name: Publish GitHub Release

@@ -32,8 +32,8 @@ if [[ -z "$profile_path" || ! -f "$profile_path" ]]; then
     echo "Set CAT_TYPE_APP_STORE_PROFILE to the downloaded .provisionprofile." >&2
     exit 1
 fi
-if [[ ! "$build_number" =~ ^[1-9][0-9]*$ ]]; then
-    echo "Set CAT_TYPE_BUILD_NUMBER to a positive integer." >&2
+if [[ ! "$build_number" =~ ^[1-9][0-9]*(\.[0-9]+){0,2}$ ]]; then
+    echo "Set CAT_TYPE_BUILD_NUMBER to one to three numeric segments." >&2
     exit 1
 fi
 if ! security find-identity -v -p codesigning | grep -Fq "$app_identity"; then

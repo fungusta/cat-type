@@ -121,7 +121,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("embedded.provisionprofile", script)
         self.assertIn("scripts.check_bundled_icon", script)
         self.assertIn("productbuild", script)
-        self.assertIn("positive integer", script)
+        self.assertIn("one to three numeric segments", script)
         self.assertIn("retry codesign", script)
         self.assertIn("retry productbuild", script)
         self.assertIn("Cat-Type-macOS-App-Store.pkg", script)
@@ -179,14 +179,49 @@ class PackagingContractTests(unittest.TestCase):
             PROJECT_ROOT / ".github" / "workflows" / "build.yml"
         ).read_text(encoding="utf-8")
 
+        self.assertNotIn("cat-type-macos", build.lower())
         for source in (build, release):
-            self.assertNotIn("cat-type-macos", source.lower())
             self.assertNotIn(".dmg", source.lower())
             self.assertNotIn("create-dmg", source)
         self.assertIn("macos-tests", build)
         self.assertIn("macos-tests", release)
         self.assertIn('CAT_TYPE_BUILD_NUMBER: "1"', build)
         self.assertIn('CAT_TYPE_BUILD_NUMBER: "1"', release)
+        self.assertIn("pattern: Cat-Type-*", release)
+        self.assertIn("name: mac-app-store-pkg-", release)
+
+    def test_release_workflow_signs_and_uploads_mac_app_store_package(self) -> None:
+        release = (
+            PROJECT_ROOT / ".github" / "workflows" / "release.yml"
+        ).read_text(encoding="utf-8")
+        credential_script = (
+            PROJECT_ROOT / "scripts" / "macos-app-store-credentials.sh"
+        ).read_text(encoding="utf-8")
+
+        for secret in (
+            "CAT_TYPE_MAC_APP_CERTIFICATE_P12_B64",
+            "CAT_TYPE_MAC_APP_CERTIFICATE_PASSWORD",
+            "CAT_TYPE_MAC_INSTALLER_CERTIFICATE_P12_B64",
+            "CAT_TYPE_MAC_INSTALLER_CERTIFICATE_PASSWORD",
+            "CAT_TYPE_MAC_APP_STORE_PROFILE_B64",
+            "ASC_KEY_ID",
+            "ASC_ISSUER_ID",
+            "ASC_PRIVATE_KEY_B64",
+        ):
+            with self.subTest(secret=secret):
+                self.assertIn(f"secrets.{secret}", release)
+
+        self.assertIn("macos-app-store-credentials.sh install", release)
+        self.assertIn("macos-app-store-credentials.sh cleanup", release)
+        self.assertIn("build_macos_app_store.sh", release)
+        self.assertIn("xcrun altool --validate-app", release)
+        self.assertIn("xcrun altool --upload-app", release)
+        self.assertIn('ASC_APP_ID: "6806567925"', release)
+        self.assertIn("CAT_TYPE_BUILD_NUMBER", release)
+        self.assertIn("com.apple.application-identifier", credential_script)
+        self.assertIn("ExpirationDate", credential_script)
+        self.assertIn("ProvisionsAllDevices", credential_script)
+        self.assertIn("security delete-keychain", credential_script)
 
 
 if __name__ == "__main__":

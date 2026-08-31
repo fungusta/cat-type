@@ -21,8 +21,8 @@ timestamp are held in memory; the clicked app or control is never identified.
 - Application signing identity: `3rd Party Mac Developer Application: Peter Fung (9B98U2J5Q2)`
 - Installer signing identity: `3rd Party Mac Developer Installer: Peter Fung (9B98U2J5Q2)`
 
-The certificates and their private keys must be present in the login keychain.
-Download the current profile when needed:
+For a local build, the certificates and their private keys must be present in
+the login keychain. Download the current profile when needed:
 
 ```bash
 asc --profile cat-type-release profiles download \
@@ -32,8 +32,8 @@ asc --profile cat-type-release profiles download \
 
 ## Build
 
-Use a positive integer for `CAT_TYPE_BUILD_NUMBER`. It must increase for every
-build uploaded for the same marketing version.
+Use one to three numeric segments for `CAT_TYPE_BUILD_NUMBER`. It must increase
+for every build uploaded for the same marketing version.
 
 ```bash
 CAT_TYPE_APP_STORE_PROFILE="$TMPDIR/Cat-Type-App-Store.provisionprofile" \
@@ -63,3 +63,31 @@ asc --profile cat-type-release builds upload \
 Do not submit the version for App Review until the processed build, privacy
 answers, description, support URL, screenshots, category, age rating, and
 review notes have all been checked in App Store Connect.
+
+## GitHub Actions
+
+The `Release` workflow builds a signed Mac App Store package on every version
+tag and uploads it to App Store Connect before publishing the Windows and Linux
+GitHub release. The build number is `<workflow run>.<run attempt>`, so retrying
+an interrupted upload creates a new build number.
+
+A manual workflow run builds and verifies the signed package without uploading
+it. Enable the `upload_macos_app_store` input only when that manual run should
+also upload to App Store Connect.
+
+The workflow uses these repository secrets:
+
+- `CAT_TYPE_MAC_APP_CERTIFICATE_P12_B64`
+- `CAT_TYPE_MAC_APP_CERTIFICATE_PASSWORD`
+- `CAT_TYPE_MAC_INSTALLER_CERTIFICATE_P12_B64`
+- `CAT_TYPE_MAC_INSTALLER_CERTIFICATE_PASSWORD`
+- `CAT_TYPE_MAC_APP_STORE_PROFILE_B64`
+- `ASC_KEY_ID`
+- `ASC_ISSUER_ID`
+- `ASC_PRIVATE_KEY_B64`
+
+`scripts/macos-app-store-credentials.sh` validates the team, bundle ID,
+certificate/profile match, and both private-key identities before installing
+them in a temporary keychain. The cleanup step removes the keychain, profile,
+certificate files, passwords, and App Store Connect key even after a failed
+build.
