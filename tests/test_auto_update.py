@@ -97,6 +97,16 @@ def release_payload(**overrides: Any) -> dict[str, Any]:
                 "size": 14,
             },
             {
+                "name": "Cat-Type-macOS-x64.dmg",
+                "browser_download_url": "https://github.com/fungusta/cat-type/releases/download/v1.1.0/Cat-Type-macOS-x64.dmg",
+                "size": 17,
+            },
+            {
+                "name": "Cat-Type-macOS-arm64.dmg",
+                "browser_download_url": "https://github.com/fungusta/cat-type/releases/download/v1.1.0/Cat-Type-macOS-arm64.dmg",
+                "size": 18,
+            },
+            {
                 "name": "Cat-Type-Linux-x64.tar.gz",
                 "browser_download_url": "https://github.com/fungusta/cat-type/releases/download/v1.1.0/Cat-Type-Linux-x64.tar.gz",
                 "size": 15,
@@ -170,6 +180,22 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         self.assertEqual(update.package.name, "Cat-Type-Linux-x64.tar.gz")
         self.assertEqual(update.checksums.name, "SHA256SUMS.txt")
 
+    def test_selects_macos_release_asset_for_each_architecture(self) -> None:
+        for machine, expected in (
+            ("x86_64", "Cat-Type-macOS-x64.dmg"),
+            ("arm64", "Cat-Type-macOS-arm64.dmg"),
+            ("aarch64", "Cat-Type-macOS-arm64.dmg"),
+        ):
+            with self.subTest(machine=machine):
+                service, _ = service_from_payload(release_payload())
+
+                update = service.check("darwin", machine)
+
+                self.assertIsNotNone(update)
+                assert update is not None
+                self.assertEqual(update.package.name, expected)
+                self.assertEqual(update.checksums.name, "SHA256SUMS.txt")
+
     def test_selects_linux_arm64_release_assets(self) -> None:
         service, _ = service_from_payload(release_payload())
 
@@ -220,7 +246,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
 
     def test_rejects_unsupported_platforms_and_architectures(self) -> None:
         for platform, machine in (
-            ("darwin", "x86_64"),
+            ("darwin", "i686"),
             ("win32", "arm64"),
             ("win32", "x86"),
             ("linux", "i686"),
@@ -233,7 +259,11 @@ class ReleaseDiscoveryTests(unittest.TestCase):
     def test_rejects_missing_or_duplicate_package_assets(self) -> None:
         assets = release_payload()["assets"]
         assert isinstance(assets, list)
-        linux_package = assets[1]
+        linux_package = next(
+            asset
+            for asset in assets
+            if asset["name"] == "Cat-Type-Linux-x64.tar.gz"
+        )
         for changed_assets in (
             [asset for asset in assets if asset is not linux_package],
             [*assets, dict(linux_package)],
@@ -263,7 +293,11 @@ class ReleaseDiscoveryTests(unittest.TestCase):
     def test_rejects_non_https_or_malformed_selected_assets(self) -> None:
         assets = release_payload()["assets"]
         assert isinstance(assets, list)
-        linux_package = assets[1]
+        linux_package = next(
+            asset
+            for asset in assets
+            if asset["name"] == "Cat-Type-Linux-x64.tar.gz"
+        )
         assert isinstance(linux_package, dict)
         invalid_assets = (
             {**linux_package, "browser_download_url": "http://example.test/file"},

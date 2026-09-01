@@ -1463,15 +1463,16 @@ class _UnavailableUpdateInstaller:
         is_frozen = (
             bool(getattr(sys, "frozen", False)) if frozen is None else frozen
         )
-        if platform_name == "darwin":
-            status = (
-                "macOS updates are delivered through the Mac App Store."
-            )
-        elif not is_frozen:
+        if not is_frozen:
             status = (
                 "Source checkouts cannot update themselves. "
-                "Download a packaged Windows or Linux release: "
+                "Download a packaged Windows, macOS, or Linux release: "
                 f"{self.RELEASES_URL}"
+            )
+        elif platform_name == "darwin":
+            status = (
+                "Automatic macOS installation is unavailable. "
+                f"Download the latest signed release: {self.RELEASES_URL}"
             )
         else:
             status = (
@@ -1536,7 +1537,7 @@ class CatTypeApp:
         now: Callable[[], datetime] | None = None,
         shutdown_signal: ControllerShutdownSignal | None = None,
         usage_tracker: UsageTracker | None = None,
-        app_store_distribution: bool | None = None,
+        requires_input_monitoring: bool | None = None,
         input_monitoring_preflight: Callable[[], bool] | None = None,
         input_monitoring_request: Callable[[], bool] | None = None,
         input_monitoring_settings_opener: Callable[[], bool] | None = None,
@@ -1551,10 +1552,10 @@ class CatTypeApp:
                 fade_seconds=fade_seconds,
             )
         ).normalized()
-        self._app_store_distribution = (
+        self._requires_input_monitoring = (
             platform_name == "darwin"
-            if app_store_distribution is None
-            else app_store_distribution
+            if requires_input_monitoring is None
+            else requires_input_monitoring
         )
         self._input_monitoring_preflight = (
             preflight_input_monitoring
@@ -1572,7 +1573,7 @@ class CatTypeApp:
             else input_monitoring_settings_opener
         )
         if (
-            self._app_store_distribution
+            self._requires_input_monitoring
             and platform_name == "darwin"
             and not self._input_monitoring_preflight()
         ):
@@ -1765,7 +1766,8 @@ class CatTypeApp:
     def check_for_updates(self, manual: bool = False) -> None:
         if not manual:
             if not (
-                self._platform_name == "win32"
+                self._platform_name == "darwin"
+                or self._platform_name == "win32"
                 or self._platform_name.startswith("linux")
             ):
                 return
@@ -1782,7 +1784,8 @@ class CatTypeApp:
         def check_worker() -> None:
             try:
                 supports_discovery = self._frozen and (
-                    self._platform_name == "win32"
+                    self._platform_name == "darwin"
+                    or self._platform_name == "win32"
                     or self._platform_name.startswith("linux")
                 )
                 availability = self._update_installer.availability()
@@ -2041,7 +2044,7 @@ class CatTypeApp:
         self._update_tray_monitoring_status()
 
     def _tray_title(self) -> str:
-        if not getattr(self, "_app_store_distribution", False):
+        if not getattr(self, "_requires_input_monitoring", False):
             return "Cat Type"
         monitoring_active = (
             self.settings.enabled
@@ -2056,17 +2059,17 @@ class CatTypeApp:
             tray_icon.title = self._tray_title()
 
     def _ensure_activity_monitoring(self) -> None:
-        app_store_distribution = getattr(
+        requires_input_monitoring = getattr(
             self,
-            "_app_store_distribution",
+            "_requires_input_monitoring",
             False,
         )
         if getattr(self, "_activity_monitoring_started", False):
             return
-        if app_store_distribution and not self.settings.enabled:
+        if requires_input_monitoring and not self.settings.enabled:
             return
         if (
-            app_store_distribution and self._platform_name == "darwin"
+            requires_input_monitoring and self._platform_name == "darwin"
         ):
             if not self._input_monitoring_preflight():
                 return
@@ -2135,7 +2138,6 @@ class CatTypeApp:
         updated = replace(
             self.settings,
             enabled=enabled,
-            launch_at_startup=False,
         )
         try:
             self.settings = self.settings_store.save(updated)
@@ -2627,14 +2629,14 @@ class CatTypeApp:
         ):
             self._settings_window.show()
             return
-        app_store_distribution = getattr(
+        requires_input_monitoring = getattr(
             self,
-            "_app_store_distribution",
+            "_requires_input_monitoring",
             False,
         )
         input_monitoring_granted = (
             self._input_monitoring_preflight()
-            if app_store_distribution and self._platform_name == "darwin"
+            if requires_input_monitoring and self._platform_name == "darwin"
             else None
         )
         if input_monitoring_granted is False and self.settings.enabled:
@@ -2659,17 +2661,9 @@ class CatTypeApp:
                 else UsageMetrics(total_keystrokes=self.keystroke_count)
             ),
             on_metrics_view_change=self._persist_metrics_view,
-            on_check_for_updates=(
-                None
-                if app_store_distribution
-                else lambda: self.check_for_updates(manual=True)
-            ),
-            on_open_release_page=(
-                None
-                if app_store_distribution
-                else lambda: webbrowser.open(
-                    _UnavailableUpdateInstaller.RELEASES_URL
-                )
+            on_check_for_updates=lambda: self.check_for_updates(manual=True),
+            on_open_release_page=lambda: webbrowser.open(
+                _UnavailableUpdateInstaller.RELEASES_URL
             ),
             update_status=getattr(
                 self,
@@ -2677,7 +2671,7 @@ class CatTypeApp:
                 "Ready to check for updates.",
             ),
             on_close=self._return_to_macos_background_policy,
-            app_store_distribution=app_store_distribution,
+            requires_input_monitoring=requires_input_monitoring,
             input_monitoring_granted=input_monitoring_granted,
             input_monitoring_request_attempted=getattr(
                 self,
@@ -2686,12 +2680,12 @@ class CatTypeApp:
             ),
             on_request_input_monitoring=(
                 self._request_input_monitoring_access
-                if app_store_distribution
+                if requires_input_monitoring
                 else None
             ),
             on_open_input_monitoring_settings=(
                 self._open_input_monitoring_settings
-                if app_store_distribution
+                if requires_input_monitoring
                 else None
             ),
         )
@@ -2720,14 +2714,13 @@ class CatTypeApp:
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent
-        app_store_distribution = getattr(
+        requires_input_monitoring = getattr(
             self,
-            "_app_store_distribution",
+            "_requires_input_monitoring",
             False,
         )
         request_input_monitoring = False
-        if app_store_distribution:
-            settings = replace(settings, launch_at_startup=False)
+        if requires_input_monitoring:
             request_input_monitoring = (
                 settings.enabled
                 and self._platform_name == "darwin"
@@ -2739,8 +2732,7 @@ class CatTypeApp:
             self._input_monitoring_requested = False
             self._cancel_input_monitoring_poll()
         self.settings = self.settings_store.save(settings)
-        if not app_store_distribution:
-            set_launch_at_startup(self.settings.launch_at_startup)
+        set_launch_at_startup(self.settings.launch_at_startup)
         self.animation.hide_after = self.settings.hold_seconds
         self.animation.fade_seconds = min(
             self.settings.fade_seconds,
@@ -2770,7 +2762,7 @@ class CatTypeApp:
     def _set_enabled(self, enabled: bool) -> None:
         if (
             enabled
-            and getattr(self, "_app_store_distribution", False)
+            and getattr(self, "_requires_input_monitoring", False)
             and self._platform_name == "darwin"
             and not self._input_monitoring_preflight()
         ):

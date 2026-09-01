@@ -366,7 +366,7 @@
     <span class="eyebrow">Throwaway prototype — not production</span>
     <h1>Where should the cat appear when macOS cannot see the text caret?</h1>
     <p class="lede">
-      This demo tests a pointer-only state model for the Mac App Store build. The design question is whether the cat should use a recent click, the pointer at the first keystroke, or continuously follow the pointer—and when that position should be allowed to change.
+      This demo tests a pointer-only state model for the directly distributed macOS build. The design question is whether the cat should use a recent click, the pointer at the first keystroke, or continuously follow the pointer—and when that position should be allowed to change.
     </p>
 
     <div class="recommendation">
@@ -446,7 +446,7 @@
       </article>
       <article class="note">
         <h3>Password limitation</h3>
-        <p>A pointer-only sandboxed app cannot know whether the focused control is a password field. The animation may appear there, but it still records no key identity or typed content.</p>
+        <p>A pointer-only app cannot know whether the focused control is a password field. The animation may appear there, but it still records no key identity or typed content.</p>
       </article>
       <article class="note">
         <h3>Settings language</h3>
@@ -454,7 +454,7 @@
       </article>
       <article class="note">
         <h3>Feasibility gate</h3>
-        <p>Before committing to recent-click anchoring, verify global mouse-click callbacks inside the signed App Store sandbox. If that fails, use the first-key pointer strategy.</p>
+        <p>Before committing to recent-click anchoring, verify global mouse-click callbacks inside the signed and notarized Developer ID build. If that fails, use the first-key pointer strategy.</p>
       </article>
     </section>
   </main>

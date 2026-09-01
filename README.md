@@ -28,10 +28,11 @@ cat, open Settings, or quit.
 
 ## Install on macOS
 
-Cat Type for macOS is distributed only through the Mac App Store. On first
-launch, open Settings and choose **Enable Input Monitoring**. macOS controls
-the permission under **System Settings > Privacy & Security > Input
-Monitoring**. Cat Type never shows a separate consent alert.
+Download **Cat-Type-macOS-arm64.dmg** for Apple Silicon (M1 and newer), or
+**Cat-Type-macOS-x64.dmg** for an Intel Mac. Open the signed and notarized disk
+image, then drag Cat Type to Applications. On first launch, open Settings and
+choose **Enable Input Monitoring**. macOS controls the permission under
+**System Settings > Privacy & Security > Input Monitoring**.
 
 ## Install on Linux
 
@@ -65,19 +66,19 @@ Press **Ctrl+Alt+Q** at any time to quit.
 
 ## Automatic updates
 
-Packaged Windows and Linux builds check GitHub for a newer stable release at
-startup. After a successful check, Cat Type waits at least 24 hours before
-checking automatically again. You can check at any time with **Check for
-updates** in Settings. Cat Type always asks for confirmation before it
-downloads or installs an available update; declining leaves the running copy
-unchanged.
+Packaged Windows, macOS, and Linux builds check GitHub for a newer stable
+release at startup. After a successful check, Cat Type waits at least 24 hours
+before checking automatically again. You can check at any time with **Check
+for updates** in Settings. Windows and Linux ask for confirmation before
+downloading or installing an available update. macOS reports the new version
+and links to its GitHub release so the notarized DMG can be installed manually.
 
 Downloads come from the public Cat Type GitHub release and are accepted only
 when their SHA-256 digest matches the exact asset entry in the release's
 `SHA256SUMS.txt`. This detects corruption and asset mix-ups, but the checksum
-and download have the same GitHub release as their trust source. Current
-releases are not code-signed, and macOS builds are not notarized, so checksum
-verification is not a substitute for platform signing.
+and download have the same GitHub release as their trust source. macOS DMGs are
+also signed with Developer ID, notarized by Apple, and stapled before release.
+Windows and Linux releases are not currently code-signed.
 
 On Windows, a confirmed update starts the verified installer silently, shuts
 down Cat Type through its normal cleanup path, and relaunches the new version.
@@ -94,10 +95,9 @@ left unchanged and show instructions to update manually. The replacement
 helper requires Linux `/proc` plus the standard `sh`, `mv`, `sed`, and `awk`
 command-line tools included by mainstream desktop distributions.
 
-macOS updates are delivered through the Mac App Store, and apps run from source
-never self-install.
-Checking or downloading contacts GitHub's API and release download hosts; Cat
-Type does not include keyboard input or local usage metrics in those requests.
+macOS and source checkouts never self-install. Checking or downloading contacts
+GitHub's API and release download hosts; Cat Type does not include keyboard
+input or local usage metrics in those requests.
 
 ## Run from source
 
@@ -147,12 +147,12 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.32` to build the
-Windows and Linux architectures and publish those assets on a GitHub Release.
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.33` to build the
+Windows, macOS, and Linux architectures and publish those assets on a GitHub
+Release.
 
-The only supported macOS package is the sandboxed Mac App Store build. See
-[`docs/app-store-release.md`](docs/app-store-release.md) for its build and
-upload workflow.
+See [`docs/macos-release.md`](docs/macos-release.md) for the Developer ID
+signing, notarization, and DMG release workflow.
 
 ## Privacy behavior
 

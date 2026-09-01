@@ -295,7 +295,7 @@ class SettingsWindow:
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
         on_close: Callable[[], None] | None = None,
-        app_store_distribution: bool = False,
+        requires_input_monitoring: bool = False,
         input_monitoring_granted: bool | None = None,
         input_monitoring_request_attempted: bool = False,
         on_request_input_monitoring: Callable[[], bool] | None = None,
@@ -306,7 +306,7 @@ class SettingsWindow:
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
         self._on_close = on_close
-        self._app_store_distribution = app_store_distribution
+        self._requires_input_monitoring = requires_input_monitoring
         self._input_monitoring_granted = bool(input_monitoring_granted)
         self._input_monitoring_request_attempted = (
             input_monitoring_request_attempted
@@ -799,8 +799,7 @@ class SettingsWindow:
             title_font=self.fonts["control"],
         )
         self.launch_at_startup_toggle.pack(fill="x")
-        if self._app_store_distribution:
-            self.launch_at_startup_toggle.pack_forget()
+        if self._requires_input_monitoring:
             privacy = tk.Frame(content, background=self.CARD)
             privacy.pack(fill="x")
             self.privacy_details_button = ttk.Button(
@@ -1886,10 +1885,6 @@ class SettingsWindow:
             font=self.fonts["control"],
         )
         self.update_version_label.pack(anchor="w")
-        if self._app_store_distribution:
-            self.update_status_text.set(
-                "Updates are delivered automatically by the App Store."
-            )
         self.update_status_label = tk.Label(
             content,
             textvariable=self.update_status_text,
@@ -1902,9 +1897,6 @@ class SettingsWindow:
         )
         self.update_status_label.pack(anchor="w", fill="x", pady=(5, 10))
         content.bind("<Configure>", self._on_update_card_configure, add="+")
-        if self._app_store_distribution:
-            card.pack(fill="x", pady=(0, 14))
-            return
         update_actions = tk.Frame(content, background=self.CARD)
         update_actions.pack(fill="x")
         self.check_for_updates_button = ttk.Button(

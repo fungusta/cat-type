@@ -522,7 +522,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertFalse(icon.visible_during_setup)
         self.assertTrue(icon.visible)
 
-    def test_app_store_run_has_no_custom_monitoring_consent_prompt(self) -> None:
+    def test_macos_run_has_no_custom_monitoring_consent_prompt(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app._start_tray = Mock()
         app._ensure_activity_monitoring = Mock()
@@ -532,7 +532,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app._tick = Mock()
         app._first_run = False
         app._platform_name = "darwin"
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app.settings = AppSettings(enabled=False)
         app.usage_tracker = Mock()
 
@@ -549,7 +549,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
     def test_windows_and_linux_preserve_disabled_global_hotkey_listener(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
-        app._app_store_distribution = False
+        app._requires_input_monitoring = False
         app._activity_monitoring_started = False
         app._tray_icon = None
         app.keyboard = Mock()
@@ -560,12 +560,12 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.keyboard.start.assert_called_once_with()
         app.tracker.start.assert_called_once_with()
 
-    def test_app_store_permission_request_enables_after_access(self) -> None:
+    def test_macos_permission_request_enables_after_access(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
         app.settings_store = Mock()
         app.settings_store.save.side_effect = lambda value: value.normalized()
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app._platform_name = "darwin"
         app._activity_monitoring_started = False
         app._input_monitoring_requested = False
@@ -585,12 +585,12 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertTrue(app.settings.enabled)
         app._ensure_activity_monitoring.assert_called_once_with()
 
-    def test_app_store_permission_denial_stays_disabled_and_polls(self) -> None:
+    def test_macos_permission_denial_stays_disabled_and_polls(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
         app.settings_store = Mock()
         app.settings_store.save.side_effect = lambda value: value.normalized()
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app._platform_name = "darwin"
         app._input_monitoring_requested = False
         app._monitoring_permission_poll_id = None
@@ -618,12 +618,12 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         )
         app._ensure_activity_monitoring.assert_not_called()
 
-    def test_app_store_permission_poll_enables_after_system_settings(self) -> None:
+    def test_macos_permission_poll_enables_after_system_settings(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
         app.settings_store = Mock()
         app.settings_store.save.side_effect = lambda value: value.normalized()
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app._platform_name = "darwin"
         app._input_monitoring_requested = True
         app._monitoring_permission_poll_id = "permission-poll"
@@ -641,9 +641,9 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertFalse(app._input_monitoring_requested)
         app._ensure_activity_monitoring.assert_called_once_with()
 
-    def test_app_store_tray_title_indicates_monitoring_status(self) -> None:
+    def test_macos_tray_title_indicates_monitoring_status(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app._activity_monitoring_started = False
         app.settings = AppSettings(enabled=True)
 
@@ -659,10 +659,10 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             "Cat Type — Input monitoring active",
         )
 
-    def test_app_store_enabled_menu_requests_native_permission_directly(self) -> None:
+    def test_macos_enabled_menu_requests_native_permission_directly(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
-        app._app_store_distribution = True
+        app._requires_input_monitoring = True
         app._platform_name = "darwin"
         app._input_monitoring_preflight = Mock(return_value=False)
         app._request_input_monitoring_access = Mock(return_value=False)

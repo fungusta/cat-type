@@ -206,12 +206,12 @@ class UpdateControllerTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             availability.can_install = True  # type: ignore[misc]
 
-    def test_startup_check_runs_only_when_due_on_windows_or_linux(self) -> None:
+    def test_startup_check_runs_only_when_due_on_packaged_platforms(self) -> None:
         for platform_name, due, expected_checks in (
             ("linux", True, 1),
             ("win32", True, 1),
             ("linux", False, 0),
-            ("darwin", True, 0),
+            ("darwin", True, 1),
         ):
             with self.subTest(platform=platform_name, due=due):
                 state = FakeState(due=due)
@@ -650,28 +650,44 @@ class UpdateControllerTests(unittest.TestCase):
         self.assertFalse(shutdown_thread.is_alive())
         self.assertTrue(shutdown_done.is_set())
 
-    def test_source_and_macos_statuses_never_check_or_download(self) -> None:
-        cases = (
-            ("darwin", True, "Mac App Store"),
-            ("linux", False, "Source checkouts cannot update themselves."),
+    def test_source_checkout_never_checks_or_downloads(self) -> None:
+        status = "Source checkouts cannot update themselves."
+        service = FakeService(result=available_update())
+        installer = FakeInstaller(InstallerAvailability(False, status))
+        app = self.make_app(
+            service=service,
+            installer=installer,
+            platform_name="linux",
+            frozen=False,
         )
-        for platform_name, frozen, status in cases:
-            with self.subTest(status=status):
-                service = FakeService(result=available_update())
-                installer = FakeInstaller(InstallerAvailability(False, status))
-                app = self.make_app(
-                    service=service,
-                    installer=installer,
-                    platform_name=platform_name,
-                    frozen=frozen,
-                )
 
-                app.check_for_updates(manual=True)
-                app._drain_update_events()
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
 
-                self.assertEqual(service.check_calls, [])
-                self.assertEqual(service.downloads, [])
-                self.assertEqual(app._update_status, status)
+        self.assertEqual(service.check_calls, [])
+        self.assertEqual(service.downloads, [])
+        self.assertEqual(app._update_status, status)
+
+    def test_packaged_macos_discovers_update_without_downloading_it(self) -> None:
+        status = "Download the signed macOS release manually."
+        service = FakeService(result=available_update())
+        installer = FakeInstaller(InstallerAvailability(False, status))
+        app = self.make_app(
+            service=service,
+            installer=installer,
+            platform_name="darwin",
+            frozen=True,
+        )
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(service.check_calls, [("darwin", "x86_64")])
+        self.assertEqual(service.downloads, [])
+        self.assertEqual(
+            app._update_status,
+            f"Cat Type {available_update().version} is available. {status}",
+        )
 
     def test_protected_packaged_linux_still_discovers_available_update(self) -> None:
         update = available_update()

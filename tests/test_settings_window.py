@@ -731,98 +731,102 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.on_check_for_updates.assert_called_once_with()
         self.on_open_release_page.assert_called_once_with()
 
-    def test_app_store_updates_card_has_no_direct_download_controls(self) -> None:
-        app_store_window = SettingsWindow(
+    def test_macos_updates_card_keeps_direct_download_controls(self) -> None:
+        macos_window = SettingsWindow(
             self.root,
             AppSettings(),
             Mock(),
-            app_store_distribution=True,
+            requires_input_monitoring=True,
+            on_check_for_updates=self.on_check_for_updates,
+            on_open_release_page=self.on_open_release_page,
         )
-        self.addCleanup(app_store_window.close)
+        self.addCleanup(macos_window.close)
 
-        texts = self._widget_texts(app_store_window.window)
+        texts = self._widget_texts(macos_window.window)
 
-        self.assertIn(
-            "Updates are delivered automatically by the App Store.",
-            texts,
+        self.assertIn("Check for updates", texts)
+        self.assertIn("Open release page", texts)
+        self.assertEqual(
+            macos_window.launch_at_startup_toggle.winfo_manager(),
+            "pack",
         )
-        self.assertNotIn("Check for updates", texts)
-        self.assertNotIn("Open release page", texts)
-        self.assertFalse(hasattr(app_store_window, "check_for_updates_button"))
-        app_store_window.set_update_status("A harmless late update event.")
+        macos_window.check_for_updates_button.invoke()
+        macos_window.open_release_page_button.invoke()
+        self.on_check_for_updates.assert_called_once_with()
+        self.on_open_release_page.assert_called_once_with()
 
-    def test_app_store_permission_control_uses_native_request_then_settings(
+    def test_macos_permission_control_uses_native_request_then_settings(
         self,
     ) -> None:
         request_permission = Mock(return_value=False)
         open_system_settings = Mock(return_value=True)
-        app_store_window = SettingsWindow(
+        macos_window = SettingsWindow(
             self.root,
             AppSettings(enabled=False),
             Mock(),
-            app_store_distribution=True,
+            requires_input_monitoring=True,
             input_monitoring_granted=False,
             on_request_input_monitoring=request_permission,
             on_open_input_monitoring_settings=open_system_settings,
         )
-        self.addCleanup(app_store_window.close)
+        self.addCleanup(macos_window.close)
 
-        texts = self._widget_texts(app_store_window.window)
+        texts = self._widget_texts(macos_window.window)
         self.assertIn(
             "Input Monitoring is required to show the cat.",
             texts,
         )
         self.assertEqual(
-            app_store_window.input_monitoring_button.cget("text"),
+            macos_window.input_monitoring_button.cget("text"),
             "Enable Input Monitoring",
         )
 
-        app_store_window.input_monitoring_button.invoke()
+        macos_window.input_monitoring_button.invoke()
 
         request_permission.assert_called_once_with()
         self.assertEqual(
-            app_store_window.input_monitoring_button.cget("text"),
+            macos_window.input_monitoring_button.cget("text"),
             "Open System Settings",
         )
-        self.assertFalse(app_store_window.enabled.get())
+        self.assertFalse(macos_window.enabled.get())
 
-        app_store_window.input_monitoring_button.invoke()
+        macos_window.input_monitoring_button.invoke()
 
         open_system_settings.assert_called_once_with()
 
-    def test_app_store_privacy_explanation_toggles_from_details_button(
+    def test_macos_privacy_explanation_toggles_from_details_button(
         self,
     ) -> None:
-        app_store_window = SettingsWindow(
+        macos_window = SettingsWindow(
             self.root,
             AppSettings(enabled=False),
             Mock(),
-            app_store_distribution=True,
+            requires_input_monitoring=True,
         )
-        self.addCleanup(app_store_window.close)
+        self.addCleanup(macos_window.close)
 
-        self.assertEqual(app_store_window.privacy_explanation.winfo_manager(), "")
+        self.assertEqual(macos_window.privacy_explanation.winfo_manager(), "")
         self.assertEqual(
-            app_store_window.privacy_details_button.cget("text"),
+            macos_window.privacy_details_button.cget("text"),
             "Privacy details",
         )
 
-        app_store_window.privacy_details_button.invoke()
-        app_store_window.window.update_idletasks()
+        macos_window.privacy_details_button.invoke()
+        macos_window.window.update_idletasks()
 
         self.assertEqual(
-            app_store_window.privacy_explanation.winfo_manager(),
+            macos_window.privacy_explanation.winfo_manager(),
             "pack",
         )
         self.assertEqual(
-            app_store_window.privacy_details_button.cget("text"),
+            macos_window.privacy_details_button.cget("text"),
             "Hide privacy details",
         )
 
-        app_store_window.privacy_details_button.invoke()
-        app_store_window.window.update_idletasks()
+        macos_window.privacy_details_button.invoke()
+        macos_window.window.update_idletasks()
 
-        self.assertEqual(app_store_window.privacy_explanation.winfo_manager(), "")
+        self.assertEqual(macos_window.privacy_explanation.winfo_manager(), "")
 
     def test_update_status_changes_live_and_disables_button_while_checking(
         self,

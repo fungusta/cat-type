@@ -503,7 +503,7 @@ class LinuxControllerWiringTests(unittest.TestCase):
 
         self.assertIsInstance(installer, LinuxControllerInstaller)
 
-    def test_source_linux_and_macos_remain_manual(self) -> None:
+    def test_source_linux_and_packaged_macos_remain_manual(self) -> None:
         for platform_name, frozen in (("linux", False), ("darwin", True)):
             with self.subTest(platform=platform_name):
                 installer = cat_type._default_update_installer(

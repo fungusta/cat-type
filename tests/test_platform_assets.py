@@ -98,35 +98,31 @@ class PlatformBackendTests(unittest.TestCase):
 
 
 class PackagingContractTests(unittest.TestCase):
-    def test_macos_build_is_always_the_sandboxed_app_store_package(self) -> None:
+    def test_macos_build_is_a_developer_id_signed_direct_download(self) -> None:
         spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
-        entitlements = (
-            PROJECT_ROOT / "packaging" / "macos-app-store.entitlements"
-        ).read_text(encoding="utf-8")
         script = (
-            PROJECT_ROOT / "scripts" / "build_macos_app_store.sh"
+            PROJECT_ROOT / "scripts" / "build_macos_direct.sh"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("is_app_store = is_macos", spec_source)
-        self.assertNotIn("CAT_TYPE_APP_STORE_BUILD", spec_source)
-        self.assertNotIn("CatTypeDistributionChannel", spec_source)
+        self.assertNotIn("is_app_store", spec_source)
+        self.assertNotIn("app-sandbox", spec_source)
         self.assertIn("CFBundleVersion", spec_source)
         self.assertIn("LSMinimumSystemVersion", spec_source)
         self.assertIn('"12.0"', spec_source)
-        self.assertIn("CAT_TYPE_BUILD_NUMBER is required", spec_source)
+        self.assertIn("CAT_TYPE_BUILD_NUMBER", spec_source)
         self.assertIn("COLLECT(", spec_source)
         self.assertIn("exclude_binaries=is_macos", spec_source)
-        self.assertIn("com.apple.security.app-sandbox", entitlements)
-        self.assertIn("9B98U2J5Q2.com.fungusta.cat-type", entitlements)
-        self.assertIn("embedded.provisionprofile", script)
-        self.assertIn('chmod -R a+rX "$app_path"', script)
+        self.assertIn("entitlements_file=None", spec_source)
         self.assertIn("scripts.check_bundled_icon", script)
-        self.assertIn("productbuild", script)
+        self.assertIn("Developer ID Application", script)
+        self.assertIn("create-dmg", script)
         self.assertIn("one to three numeric segments", script)
         self.assertIn("retry codesign", script)
-        self.assertIn("retry productbuild", script)
-        self.assertIn("Cat-Type-macOS-App-Store.pkg", script)
+        self.assertIn("hdiutil verify", script)
+        self.assertIn("Cat-Type-macOS-$package_arch.dmg", script)
         self.assertIn("CAT_TYPE_PYTHON", script)
+        self.assertNotIn("embedded.provisionprofile", script)
+        self.assertNotIn("productbuild", script)
 
     def test_pyinstaller_explicitly_bundles_update_runtime_modules(self) -> None:
         spec_source = (PROJECT_ROOT / "CatType.spec").read_text(encoding="utf-8")
@@ -173,7 +169,7 @@ class PackagingContractTests(unittest.TestCase):
             with self.subTest(path=relative_path):
                 self.assertTrue((PROJECT_ROOT / relative_path).is_file())
 
-    def test_github_release_does_not_publish_a_direct_macos_build(self) -> None:
+    def test_github_workflows_build_both_direct_macos_architectures(self) -> None:
         release = (
             PROJECT_ROOT / ".github" / "workflows" / "release.yml"
         ).read_text(encoding="utf-8")
@@ -181,31 +177,27 @@ class PackagingContractTests(unittest.TestCase):
             PROJECT_ROOT / ".github" / "workflows" / "build.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertNotIn("cat-type-macos", build.lower())
         for source in (build, release):
-            self.assertNotIn(".dmg", source.lower())
-            self.assertNotIn("create-dmg", source)
-        self.assertIn("macos-tests", build)
-        self.assertIn("macos-tests", release)
-        self.assertIn('CAT_TYPE_BUILD_NUMBER: "1"', build)
-        self.assertIn('CAT_TYPE_BUILD_NUMBER: "1"', release)
+            self.assertIn("macos-15-intel", source)
+            self.assertIn("macos-15", source)
+        self.assertIn("Cat-Type-macOS-x64.dmg", release)
+        self.assertIn("Cat-Type-macOS-arm64.dmg", release)
+        self.assertIn("build_macos_direct.sh", release)
         self.assertIn("pattern: Cat-Type-*", release)
-        self.assertIn("name: mac-app-store-pkg-", release)
+        self.assertNotIn("mac-app-store", release.lower())
+        self.assertNotIn("altool --upload-app", release)
 
-    def test_release_workflow_signs_and_uploads_mac_app_store_package(self) -> None:
+    def test_release_workflow_signs_notarizes_and_publishes_macos_dmgs(self) -> None:
         release = (
             PROJECT_ROOT / ".github" / "workflows" / "release.yml"
         ).read_text(encoding="utf-8")
         credential_script = (
-            PROJECT_ROOT / "scripts" / "macos-app-store-credentials.sh"
+            PROJECT_ROOT / "scripts" / "macos-direct-credentials.sh"
         ).read_text(encoding="utf-8")
 
         for secret in (
-            "CAT_TYPE_MAC_APP_CERTIFICATE_P12_B64",
-            "CAT_TYPE_MAC_APP_CERTIFICATE_PASSWORD",
-            "CAT_TYPE_MAC_INSTALLER_CERTIFICATE_P12_B64",
-            "CAT_TYPE_MAC_INSTALLER_CERTIFICATE_PASSWORD",
-            "CAT_TYPE_MAC_APP_STORE_PROFILE_B64",
+            "APPLE_DEVELOPER_ID_CERT_BASE64",
+            "APPLE_DEVELOPER_ID_CERT_PASSWORD",
             "ASC_KEY_ID",
             "ASC_ISSUER_ID",
             "ASC_PRIVATE_KEY_B64",
@@ -213,19 +205,18 @@ class PackagingContractTests(unittest.TestCase):
             with self.subTest(secret=secret):
                 self.assertIn(f"secrets.{secret}", release)
 
-        self.assertIn("macos-app-store-credentials.sh install", release)
-        self.assertIn("macos-app-store-credentials.sh cleanup", release)
-        self.assertIn("build_macos_app_store.sh", release)
-        self.assertIn("xcrun altool --validate-app", release)
-        self.assertIn("xcrun altool --upload-app", release)
-        self.assertIn('$HOME/.appstoreconnect/private_keys', release)
-        self.assertNotIn("--p8-file-path", release)
-        self.assertIn('ASC_APP_ID: "6806567925"', release)
+        self.assertIn("macos-direct-credentials.sh install", release)
+        self.assertIn("macos-direct-credentials.sh cleanup", release)
+        self.assertIn("build_macos_direct.sh", release)
+        self.assertIn("xcrun notarytool submit", release)
+        self.assertIn("xcrun stapler staple", release)
+        self.assertIn("spctl --assess", release)
+        self.assertNotIn("altool --upload-app", release)
+        self.assertNotIn("ASC_APP_ID", release)
         self.assertIn("CAT_TYPE_BUILD_NUMBER", release)
         self.assertIn("CAT_TYPE_PYTHON: python", release)
-        self.assertIn("com.apple.application-identifier", credential_script)
-        self.assertIn("ExpirationDate", credential_script)
-        self.assertIn("ProvisionsAllDevices", credential_script)
+        self.assertIn("Developer ID Application", credential_script)
+        self.assertNotIn("provisionprofile", credential_script)
         self.assertIn("security delete-keychain", credential_script)
 
 

@@ -280,6 +280,10 @@ class UpdateService:
         machine_key = machine.lower()
         if platform_key == "win32" and machine_key in {"amd64", "x86_64"}:
             return "Cat-Type-Windows-x64.exe"
+        if platform_key == "darwin" and machine_key == "x86_64":
+            return "Cat-Type-macOS-x64.dmg"
+        if platform_key == "darwin" and machine_key in {"aarch64", "arm64"}:
+            return "Cat-Type-macOS-arm64.dmg"
         if platform_key == "linux" and machine_key in {"amd64", "x86_64"}:
             return "Cat-Type-Linux-x64.tar.gz"
         if platform_key == "linux" and machine_key in {"aarch64", "arm64"}:
