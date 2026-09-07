@@ -18,6 +18,17 @@ from cat_settings import CAT_VARIANTS
 
 
 class VectorPlatformSurfaceTests(unittest.TestCase):
+    def soft_edge_pixels(self, variant):
+        preview = cat_type.load_frame(cat_type.APP_DIR / "assets", variant, "idle", 120)
+        # Ear silhouettes vary; sample their rendered edges instead of a fixed point.
+        pixels = [
+            (index % preview.width, index // preview.width)
+            for index, alpha in enumerate(preview.getchannel("A").get_flattened_data())
+            if 0 < alpha < 128
+        ]
+        self.assertTrue(pixels, "The vector preview must contain soft edge pixels")
+        return pixels
+
     def test_macos_native_image_receives_vector_pixels_at_backing_resolution(self):
         class NativeImage:
             @classmethod
@@ -141,7 +152,8 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                 )
                 expected = displayed.getchannel("A").point(lambda alpha: 1 if alpha else 0, "1")
                 self.assertEqual(mask.tobytes(), expected.tobytes())
-                self.assertEqual(mask.getpixel((25, 16)), 0)
+                self.assertTrue(all(mask.getpixel(point) == 0
+                                    for point in self.soft_edge_pixels(variant)))
 
     def test_linux_tk_vector_frames_use_binary_alpha(self):
         try:
@@ -164,7 +176,8 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                         set(displayed.getchannel("A").get_flattened_data()),
                         {0, 255},
                     )
-                    self.assertEqual(displayed.getpixel((25, 16))[3], 0)
+                    self.assertTrue(all(displayed.getpixel(point)[3] == 0
+                                        for point in self.soft_edge_pixels(variant)))
 
         finally:
             root.destroy()

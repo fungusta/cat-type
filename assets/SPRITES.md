@@ -14,6 +14,9 @@ IDs:
 - `paw-left` and `paw-right` identify the paws moved for tapping poses.
 - `pads-left` and `pads-right` identify the toe beans hidden while tapping.
 - `mouth-idle` and `mouth-excited` identify the two expressions.
+- `outline` is the continuous outer contour of the body, head, and both ears.
+- `ear-inner-left` and `ear-inner-right` are the colored ear interiors. Change
+  their `fill` values to recolor the ears without changing the outer contour.
 
 Keep artwork inside the existing canvas, retain transparent areas, and edit the
 fur shapes and colors directly in the master. Changes take effect after Cat

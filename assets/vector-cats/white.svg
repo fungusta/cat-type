@@ -1,16 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
   <title>White cat — editable idle pose</title>
-  <desc>Vector redraw of Cat Type's white cat. Paws and face are separate groups; no fur markings.</desc>
+  <desc>Editable white cat with a continuous head, ear and body outline. Inner-ear fills, face, paws and toe beans are separate editable parts.</desc>
   <g stroke="#171717" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-    <g id="ears">
-      <!-- Bases extend inside the body, whose contour hides the ear joins. -->
-      <path fill="#fffefd" d="M23.5 49 C23 43 21.5 29 24.4 19.8 C25.4 17.8 27.1 17.1 29.2 18.5 C33.5 21.1 38 25.5 42.8 31.4 C45 35 46 40 47 45 Z"/>
-      <path fill="#f59aac" stroke="none" d="M25 43 C24.2 36 24.6 26 26.3 22.1 C26.7 21 27.4 20.8 28.4 21.4 C32 23.8 35.3 27 38.7 30.7 L43 40 Z"/>
-      <path fill="#fffefd" d="M96.5 49 C97 43 98.5 29 95.6 19.8 C94.6 17.8 92.9 17.1 90.8 18.5 C86.5 21.1 82 25.5 77.2 31.4 C75 35 74 40 73 45 Z"/>
-      <path fill="#f59aac" stroke="none" d="M95 43 C95.8 36 95.4 26 93.7 22.1 C93.3 21 92.6 20.8 91.6 21.4 C88 23.8 84.7 27 81.3 30.7 L77 40 Z"/>
-    </g>
     <g id="body">
-      <path fill="#fffefd" d="M7 102 C5 82 10 58 22 43 C31 32 43 27 59 27 C77 26 89 32 99 45 C110 61 114 83 112 102 Z"/>
+      <path fill="#fffefd" d="M6.85 102 C4.342 81.5 5.683 61 19.517 40.5 C19.974 33.5 20.194 26.5 23.85 19.5 C26.1636 15.0702 30.1774 17.4806 33.14 19.5493 C36.26 21.728 39.38 25.0709 42.5 28.85 C53.833 24.238 65.167 25.901 76.5 27.85 C79.62 24.9149 82.74 21.0981 85.86 19.1456 C88.6346 17.4092 93.3691 15.1441 95.15 19.5 C98.012 26.5 97.925 33.5 99.483 40.5 C112.542 61 115.694 81.5 111.15 102 Z" id="outline" />
+      <g id="ears" stroke="none">
+        <path id="ear-inner-left" fill="#f59aac" d="M23.8204 34.2293 C24.689 30.2759 24.9564 25.9048 26.9185 22.1351 C27.0651 21.8535 27.6617 21.3901 27.8163 21.4617 C29.8846 22.4205 33.9613 26.4856 36.9614 29.1859 C37.1855 29.3877 37.1657 29.8165 36.9237 29.8511 C33.685 30.3138 28.4324 31.9126 24.4779 34.5093 C24.1824 34.7033 23.7555 34.5247 23.8204 34.2293 Z" />
+        <path id="ear-inner-right" fill="#f59aac" d="M95.1855 34.1096 C94.3219 30.1765 94.0607 25.8638 92.1026 22.0546 C91.9563 21.77 91.3599 21.2833 91.2051 21.3457 C89.1339 22.1813 85.0484 25.9678 82.0422 28.4678 C81.8176 28.6545 81.8368 29.0773 82.0789 29.1239 C85.3193 29.747 90.5735 31.5919 94.5271 34.3509 C94.8225 34.557 95.25 34.4035 95.1855 34.1096 Z" />
+      </g>
     </g>
     <g id="head">
       <g id="eyes" fill="#111111" stroke="none">
