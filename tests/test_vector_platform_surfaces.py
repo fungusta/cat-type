@@ -14,12 +14,12 @@ from unittest.mock import patch
 from PIL import Image, ImageTk
 
 import cat_type
-from cat_settings import CAT_VARIANTS
+from cat_settings import CAT_VARIANTS, AppSettings
 
 
 class VectorPlatformSurfaceTests(unittest.TestCase):
-    def soft_edge_pixels(self, variant):
-        preview = cat_type.load_frame(cat_type.APP_DIR / "assets", variant, "idle", 120)
+    def soft_edge_pixels(self, variant, **outfit):
+        preview = cat_type.load_frame(cat_type.APP_DIR / "assets", variant, "idle", 120, **outfit)
         # Ear silhouettes vary; sample their rendered edges instead of a fixed point.
         pixels = [
             (index % preview.width, index // preview.width)
@@ -74,6 +74,16 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                     surface.set_frame(variant, "tap-left")
                     self.assertEqual(view.image.pixels.size, (420, 420))
                     self.assertIsNot(view.image, first_image)
+                    surface.set_outfit("crown", "round-glasses")
+                    surface.set_frame(variant, "tap-left")
+                    dressed = cat_type.load_frame(
+                        cat_type.ASSETS_ROOT, variant, "tap-left", 420,
+                        hat="crown", glasses="round-glasses",
+                    )
+                    self.assertEqual(view.image.pixels.tobytes(), dressed.tobytes())
+                    surface.set_outfit("none", "none")
+                    surface.set_frame(variant, "tap-left")
+                    self.assertNotEqual(view.image.pixels.tobytes(), dressed.tobytes())
 
     def test_linux_shape_uses_vector_alpha_at_overlay_size_and_empty_input_region(self):
         rectangles_by_kind = {}
@@ -87,6 +97,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
             sync=lambda: None,
         )
         app = SimpleNamespace(
+            settings=AppSettings(),
             _x_display=native_display,
             root=SimpleNamespace(winfo_id=lambda: 123),
             frame_width=210,
@@ -121,6 +132,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
             sync=lambda: None,
         )
         app = SimpleNamespace(
+            settings=AppSettings(hat="crown", glasses="round-glasses"),
             _x_display=native_display,
             root=SimpleNamespace(winfo_id=lambda: 123),
             frame_width=120,
@@ -149,11 +161,14 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                     "idle",
                     120,
                     color_key_safe=True,
+                    hat=app.settings.hat,
+                    glasses=app.settings.glasses,
                 )
                 expected = displayed.getchannel("A").point(lambda alpha: 1 if alpha else 0, "1")
                 self.assertEqual(mask.tobytes(), expected.tobytes())
                 self.assertTrue(all(mask.getpixel(point) == 0
-                                    for point in self.soft_edge_pixels(variant)))
+                                    for point in self.soft_edge_pixels(
+                                        variant, hat=app.settings.hat, glasses=app.settings.glasses)))
 
     def test_linux_tk_vector_frames_use_binary_alpha(self):
         try:
@@ -164,6 +179,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
         try:
             app = cat_type.CatTypeApp.__new__(cat_type.CatTypeApp)
             app.root = root
+            app.settings = AppSettings(hat="beanie", glasses="star-glasses")
             with (
                 patch.object(cat_type, "IS_WINDOWS", False),
                 patch.object(cat_type, "IS_LINUX", True),
@@ -177,7 +193,8 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                         {0, 255},
                     )
                     self.assertTrue(all(displayed.getpixel(point)[3] == 0
-                                        for point in self.soft_edge_pixels(variant)))
+                                        for point in self.soft_edge_pixels(
+                                            variant, hat=app.settings.hat, glasses=app.settings.glasses)))
 
         finally:
             root.destroy()

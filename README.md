@@ -61,6 +61,28 @@ Settings are saved for the current user and take effect immediately:
 - View all-time activity and navigate through current or previous 1-day, 7-day,
   or 30-day trends as an exact line or columns; Cat Type remembers the selected
   chart view.
+- Open **Wardrobe** to preview and equip a hat and glasses. One outfit applies
+  to every cat, including **Mix it up**. Select **None** to remove an item, then
+  choose **Save changes** to apply your outfit. Cancel keeps your previous outfit.
+
+## Accessory achievements
+
+Type while Cat Type is enabled to earn permanent accessories. Locked items show
+their requirements and progress in Wardrobe. New rewards unlock automatically;
+you choose when to equip them. Existing typing history counts toward every reward.
+
+| Accessory | Achievement | Requirement |
+| --- | --- | --- |
+| Round glasses | First Steps | 1,000 total keystrokes |
+| Beanie | Getting Comfortable | 10,000 total keystrokes |
+| Star glasses | Star Typist | 25,000 total keystrokes |
+| Party hat | Cause for Celebration | 50,000 total keystrokes |
+| Crown | Keyboard Royalty | 100,000 total keystrokes |
+| Sunglasses | Regular Companion | Type on 7 different days; they need not be consecutive |
+
+Rewards are saved locally in `achievements.json` beside `settings.json` and
+`usage.json`. They remain unlocked even if activity totals later decrease.
+The feature uses existing aggregate counts and does not collect typed text.
 
 Press **Ctrl+Alt+Q** at any time to quit.
 

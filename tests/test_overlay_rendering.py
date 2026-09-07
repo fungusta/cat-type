@@ -3,10 +3,14 @@ import sys
 import time
 import tkinter as tk
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image, ImageTk
 from cat_settings import AppSettings
 from cat_artwork import load_frame
+from achievements import AchievementStore
 
 if sys.platform == "win32":
     import win32gui
@@ -30,6 +34,47 @@ from cat_type import (
     "Windows-only rendering integration",
 )
 class OverlayRenderingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        settings_path = Path(directory.name) / "settings.json"
+        self.settings_path = settings_path
+        settings_patch = patch("cat_settings.default_settings_path", return_value=settings_path)
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
+
+    def test_saved_outfit_renders_on_windows_at_all_supported_preview_sizes(self) -> None:
+        AchievementStore(self.settings_path.with_name("achievements.json")).save({"crown", "round-glasses"})
+        for percent in (60, 100, 175):
+            with self.subTest(percent=percent):
+                app = CatTypeApp(settings=AppSettings(
+                    cat_style="white", size_percent=percent, hat="crown", glasses="round-glasses",
+                ))
+                try:
+                    self.assertEqual((app.settings.hat, app.settings.glasses), ("crown", "round-glasses"))
+                    size = round(120 * percent / 100)
+                    displayed = ImageTk.getimage(app.frames["white"]["idle"]).convert("RGBA")
+                    expected = load_frame(
+                        ASSETS_ROOT, "white", "idle", size, color_key_safe=True,
+                        hat="crown", glasses="round-glasses",
+                    )
+                    self.assertEqual(displayed.tobytes(), expected.tobytes())
+                    now = time.monotonic()
+                    app.animation.record_key(now)
+                    app._show(CaretSnapshot(now, ScreenRect(400, 300, 402, 320), "outfit-test"), now)
+                    app.root.update()
+                    capture = self._capture_window(app.root.winfo_id(), size, size)
+                    # Compare interior opaque crown pixels in the actual native window.
+                    gold_pixels = [
+                        (index % size, index // size)
+                        for index, (red, green, blue, alpha) in enumerate(expected.get_flattened_data())
+                        if alpha == 255 and red > 200 and 100 < green < 230 and blue < 100
+                    ]
+                    self.assertGreater(len(gold_pixels), 10)
+                    self.assertTrue(all(capture.getpixel(point) == expected.getpixel(point)[:3] for point in gold_pixels))
+                finally:
+                    app.root.destroy()
+
     def test_vector_cat_renders_all_input_poses_and_returns_to_idle(self) -> None:
         for variant in CAT_VARIANTS:
             with self.subTest(variant=variant):

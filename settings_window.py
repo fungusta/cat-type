@@ -15,6 +15,8 @@ from app_version import APP_VERSION
 from cat_artwork import load_frame
 from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
+from cat_accessories import Accessory, normalize_accessory
+from wardrobe_view import WardrobeView
 
 
 CAT_STYLE_LABELS = {
@@ -301,8 +303,11 @@ class SettingsWindow:
         input_monitoring_request_attempted: bool = False,
         on_request_input_monitoring: Callable[[], bool] | None = None,
         on_open_input_monitoring_settings: Callable[[], bool] | None = None,
+        unlocked_accessories: set[str] | None = None,
     ) -> None:
         self._on_save = on_save
+        self.unlocked_accessories = set(unlocked_accessories or ())
+        self._assets_root = Path(icon_path).parent if icon_path else Path(__file__).resolve().parent / "assets"
         self._on_metrics_view_change = on_metrics_view_change
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
@@ -346,6 +351,8 @@ class SettingsWindow:
         self.cat_style = tk.StringVar(
             value=self._label_for(CAT_STYLE_LABELS, settings.cat_style)
         )
+        self.hat = tk.StringVar(value=self._allowed_accessory(settings.hat, "hat"))
+        self.glasses = tk.StringVar(value=self._allowed_accessory(settings.glasses, "glasses"))
         self.size_percent = tk.IntVar(value=settings.size_percent)
         self.hold_seconds = tk.DoubleVar(value=settings.hold_seconds)
         self.fade_seconds = tk.DoubleVar(value=settings.fade_seconds)
@@ -378,6 +385,7 @@ class SettingsWindow:
         self._configure_styles()
         self._load_preview_frames(icon_path)
         self._build()
+        self._refresh_outfit_preview()
         self.window.bind("<Escape>", self._close_from_shortcut)
         self.window.bind("<Control-s>", self._save_from_shortcut)
         if sys.platform == "darwin":
@@ -585,7 +593,11 @@ class SettingsWindow:
         for variant in CAT_VARIANTS:
             vector_frames: dict[str, ImageTk.PhotoImage] = {}
             for name in ("idle", "tap-left", "tap-right", "excited"):
-                image = load_frame(assets_root, variant, name, 148)
+                image = load_frame(
+                    assets_root, variant, name, 148,
+                    hat=self._allowed_accessory(self.hat.get(), "hat"),
+                    glasses=self._allowed_accessory(self.glasses.get(), "glasses"),
+                )
                 vector_frames[name] = ImageTk.PhotoImage(
                     image,
                     master=self.window,
@@ -690,6 +702,16 @@ class SettingsWindow:
         self._build_timing_card(self.right_column)
         self._build_updates_card(self.right_column)
         self._build_metrics_page(self.scroll_content)
+        self.wardrobe = WardrobeView(
+            self.scroll_content, assets_root=self._assets_root,
+            hat=self.hat, glasses=self.glasses, unlocked=self.unlocked_accessories,
+            metrics=self.usage_metrics, on_change=self._refresh_outfit_preview,
+            palette={
+                "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
+                "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
+                "accent_dark": self.ACCENT_DARK, "border": self.BORDER,
+            }, fonts=self.fonts,
+        )
         self._refresh_usage_metrics()
 
     def _build_page_switcher(self, parent: tk.Frame) -> None:
@@ -698,7 +720,7 @@ class SettingsWindow:
         tabs = tk.Frame(self.page_switcher, background=self.BLUSH)
         tabs.pack(anchor="w")
         self.page_buttons: dict[str, tk.Radiobutton] = {}
-        for index, label in enumerate(("Settings", "Metrics")):
+        for index, label in enumerate(("Settings", "Metrics", "Wardrobe")):
             button = tk.Radiobutton(
                 tabs,
                 text=label,
@@ -738,14 +760,18 @@ class SettingsWindow:
             )
 
     def _switch_page(self) -> None:
-        show_metrics = self.active_page.get() == "Metrics"
+        selected = self.active_page.get()
         self._refresh_page_buttons()
-        if show_metrics:
-            self.columns.pack_forget()
+        self.columns.pack_forget()
+        self.metrics_page.pack_forget()
+        self.wardrobe.pack_forget()
+        if selected == "Metrics":
             self.metrics_page.pack(fill="x", padx=26)
             self._refresh_usage_metrics()
+        elif selected == "Wardrobe":
+            self.wardrobe.pack(fill="x", padx=26)
+            self.wardrobe.update_progress(self.usage_metrics, self.unlocked_accessories)
         else:
-            self.metrics_page.pack_forget()
             self.columns.pack(fill="x", padx=26)
         self.scroll_canvas.yview_moveto(0)
         self.window.after_idle(self._sync_scrollbar_visibility)
@@ -2166,7 +2192,15 @@ class SettingsWindow:
         self.scroll_canvas.yview_scroll(units, "units")
         return "break"
 
-    def _animate_preview(self) -> None:
+    def _allowed_accessory(self, value: object, slot: str) -> str:
+        item_id = normalize_accessory(value, slot)
+        return item_id if item_id in self.unlocked_accessories else "none"
+
+    def _refresh_outfit_preview(self) -> None:
+        self._load_preview_frames(str(self._assets_root / "cat-type.png"))
+        self._display_preview()
+
+    def _display_preview(self) -> None:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
         if self._preview_frames:
             selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
@@ -2181,6 +2215,10 @@ class SettingsWindow:
             frame = frames.get(sequence[self._preview_step % len(sequence)])
             if frame is not None:
                 self.preview_canvas.itemconfigure(self._preview_image, image=frame)
+                self.wardrobe.set_preview(frame)
+
+    def _animate_preview(self) -> None:
+        self._display_preview()
         self._preview_step += 1
         self._after_id = self.window.after(520, self._animate_preview)
 
@@ -2194,6 +2232,8 @@ class SettingsWindow:
             placement=PLACEMENT_LABELS[self.placement.get()],
             launch_at_startup=self.launch_at_startup.get(),
             metrics_view=self.metrics_view.get(),
+            hat=self._allowed_accessory(self.hat.get(), "hat"),
+            glasses=self._allowed_accessory(self.glasses.get(), "glasses"),
         ).normalized()
         self._on_save(settings)
         self.close()
@@ -2334,6 +2374,14 @@ class SettingsWindow:
     def update_usage_metrics(self, metrics: UsageMetrics) -> None:
         self.usage_metrics = metrics
         self._refresh_usage_metrics()
+        if self.active_page.get() == "Wardrobe":
+            self.wardrobe.update_progress(metrics, self.unlocked_accessories)
+
+    def update_achievements(
+        self, unlocked: set[str], newly_unlocked: tuple[Accessory, ...] = (),
+    ) -> None:
+        self.unlocked_accessories = set(unlocked)
+        self.wardrobe.update_progress(self.usage_metrics, unlocked, newly_unlocked)
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)

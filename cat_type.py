@@ -22,6 +22,8 @@ from ctypes import wintypes
 from PIL import Image, ImageTk
 
 from cat_artwork import BASE_SIZE, frame_source_path, load_frame, vector_png
+from achievements import AchievementStore, AchievementTracker
+from cat_accessories import Accessory
 
 from auto_update import (
     AvailableUpdate,
@@ -664,6 +666,13 @@ class _MacOSNativeOverlaySurface:
         self._tk_content_view: object | None = None
         self._image_view: object | None = None
         self._images: dict[tuple[str, str, int], object] = {}
+        self.hat = "none"
+        self.glasses = "none"
+
+    def set_outfit(self, hat: str, glasses: str) -> None:
+        if (hat, glasses) != (self.hat, self.glasses):
+            self.hat, self.glasses = hat, glasses
+            self._images.clear()
 
     @property
     def installed(self) -> bool:
@@ -733,6 +742,8 @@ class _MacOSNativeOverlaySurface:
                 frame_source_path(ASSETS_ROOT, variant, frame_name),
                 frame_name,
                 size,
+                hat=self.hat,
+                glasses=self.glasses,
             )
             image = NSImage.alloc().initWithData_(
                 NSData.dataWithBytes_length_(png, len(png))
@@ -1599,6 +1610,11 @@ class CatTypeApp:
             UsageStore(self.settings_store.path.with_name("usage.json"))
         )
         self.keystroke_count = self.usage_tracker.metrics.total_keystrokes
+        self.achievement_tracker = AchievementTracker(
+            AchievementStore(self.settings_store.path.with_name("achievements.json")),
+            self.usage_tracker.metrics,
+        )
+        self.settings = self._validated_outfit(self.settings)
         self.animation = AnimationState(
             hide_after=self.settings.hold_seconds,
             fade_seconds=self.settings.fade_seconds,
@@ -1719,6 +1735,7 @@ class CatTypeApp:
             self._macos_overlay_surface = _MacOSNativeOverlaySurface(
                 self.root.title()
             )
+            self._macos_overlay_surface.set_outfit(self.settings.hat, self.settings.glasses)
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
 
@@ -2217,6 +2234,9 @@ class CatTypeApp:
         usage_tracker = getattr(self, "usage_tracker", None)
         if usage_tracker is not None:
             usage_tracker.flush()
+        achievement_tracker = getattr(self, "achievement_tracker", None)
+        if achievement_tracker is not None:
+            achievement_tracker.flush()
         shutdown_signal = getattr(self, "_shutdown_signal", None)
         if shutdown_signal is not None:
             shutdown_signal.close()
@@ -2248,6 +2268,9 @@ class CatTypeApp:
         usage_tracker = getattr(self, "usage_tracker", None)
         if usage_tracker is not None:
             usage_tracker.flush()
+        achievement_tracker = getattr(self, "achievement_tracker", None)
+        if achievement_tracker is not None:
+            achievement_tracker.flush()
         if self._shutting_down:
             return
         try:
@@ -2350,11 +2373,32 @@ class CatTypeApp:
             self.keystroke_count = usage_metrics.total_keystrokes
         self.animation.record_key(happened_at, paw)
         self.tracker.notify_activity(happened_at)
+        achievement_tracker = getattr(self, "achievement_tracker", None)
+        earned = achievement_tracker.evaluate(usage_metrics) if achievement_tracker else ()
         if (
             self._settings_window is not None
             and self._settings_window.window.winfo_exists()
         ):
             self._settings_window.update_usage_metrics(usage_metrics)
+            if earned:
+                self._settings_window.update_achievements(achievement_tracker.unlocked, earned)
+        if earned:
+            self._notify_accessories(earned)
+
+    def _notify_accessories(self, earned: tuple[Accessory, ...]) -> None:
+        icon = getattr(self, "_tray_icon", None)
+        if icon is None or not getattr(icon, "HAS_NOTIFICATION", False):
+            return
+        message = ", ".join(item.name for item in earned) + " unlocked. Open Settings → Wardrobe to equip."
+
+        def notify() -> None:
+            try:
+                icon.notify(message, "Cat Type · New accessories")
+            except Exception:
+                # Desktop notifications are optional on some tray backends.
+                pass
+
+        threading.Thread(target=notify, name="cat-type-unlock-notice", daemon=True).start()
 
     def _show(self, snapshot: CaretSnapshot, now: float) -> None:
         assert snapshot.rect is not None
@@ -2508,6 +2552,8 @@ class CatTypeApp:
                 frame_name,
                 self.frame_width,
                 color_key_safe=True,
+                hat=getattr(self.settings, "hat", "none"),
+                glasses=getattr(self.settings, "glasses", "none"),
             ) as source:
                 alpha = source.convert("RGBA").getchannel("A")
                 rectangles = []
@@ -2554,6 +2600,8 @@ class CatTypeApp:
                     load_frame(
                         ASSETS_ROOT, variant, name, size,
                         color_key_safe=IS_WINDOWS or IS_LINUX,
+                        hat=getattr(self.settings, "hat", "none"),
+                        glasses=getattr(self.settings, "glasses", "none"),
                     ),
                     master=self.root,
                 )
@@ -2660,6 +2708,11 @@ class CatTypeApp:
                 else UsageMetrics(total_keystrokes=self.keystroke_count)
             ),
             on_metrics_view_change=self._persist_metrics_view,
+            unlocked_accessories=(
+                self.achievement_tracker.unlocked
+                if getattr(self, "achievement_tracker", None) is not None
+                else set()
+            ),
             on_check_for_updates=lambda: self.check_for_updates(manual=True),
             on_open_release_page=lambda: webbrowser.open(
                 _UnavailableUpdateInstaller.RELEASES_URL
@@ -2711,8 +2764,18 @@ class CatTypeApp:
         except OSError:
             return
 
+    def _validated_outfit(self, settings: AppSettings) -> AppSettings:
+        tracker = getattr(self, "achievement_tracker", None)
+        return replace(
+            settings,
+            hat=tracker.allowed(settings.hat, "hat") if tracker else "none",
+            glasses=tracker.allowed(settings.glasses, "glasses") if tracker else "none",
+        )
+
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent
+        previous_outfit = (self.settings.hat, self.settings.glasses)
+        settings = self._validated_outfit(settings.normalized())
         requires_input_monitoring = getattr(
             self,
             "_requires_input_monitoring",
@@ -2737,10 +2800,16 @@ class CatTypeApp:
             self.settings.fade_seconds,
             self.settings.hold_seconds,
         )
-        if self.settings.size_percent != previous_size:
+        if (
+            self.settings.size_percent != previous_size
+            or (self.settings.hat, self.settings.glasses) != previous_outfit
+        ):
             if self._overlay_visible:
                 self._hide()
             self.frames = self._load_frames(self.settings.size_percent)
+            surface = getattr(self, "_macos_overlay_surface", None)
+            if surface is not None:
+                surface.set_outfit(self.settings.hat, self.settings.glasses)
             self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
             self.frame_height = self.frames[CAT_VARIANTS[0]]["idle"].height()
             self.label.configure(

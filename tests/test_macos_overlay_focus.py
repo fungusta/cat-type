@@ -3,6 +3,9 @@ import re
 import subprocess
 import time
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 from cat_type import (
     IS_MACOS,
@@ -15,6 +18,16 @@ from cat_type import (
 
 @unittest.skipUnless(IS_MACOS, "requires the macOS window manager")
 class MacOSOverlayFocusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        settings_patch = patch(
+            "cat_settings.default_settings_path",
+            return_value=Path(directory.name) / "settings.json",
+        )
+        settings_patch.start()
+        self.addCleanup(settings_patch.stop)
+
     def test_showing_overlay_does_not_activate_cat_type(self) -> None:
         frontmost_before = self._frontmost_pid()
         if frontmost_before == os.getpid():

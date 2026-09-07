@@ -435,7 +435,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_settings_uses_only_functional_copy_and_starts_with_switcher(
         self,
     ) -> None:
-        texts = self._widget_texts(self.settings_window.window)
+        # Wardrobe copy and reward progress are covered in test_wardrobe.py.
+        texts = set().union(*(self._widget_texts(widget) for widget in (
+            self.settings_window.columns, self.settings_window.metrics_page,
+            self.settings_window.footer, self.settings_window.page_switcher,
+        )))
         filler_copy = {
             "  YOUR TINY TYPING PAL  ",
             "Make it feel like yours.",
@@ -469,6 +473,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "30d",
             "Settings",
             "Metrics",
+            "Wardrobe",
             "Companion",
             "Cat style",
             "Cat size",
