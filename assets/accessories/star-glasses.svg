@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Star glasses</title>
+  <desc>Editable gold star glasses aligned with the cat's eyes.</desc>
+  <g id="star-glasses" fill="#ffd84e" fill-opacity="0.38" stroke="#332827" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M42 50 L45.4 56.5 L53 57.5 L47.5 62.8 L48.8 70.3 L42 66.8 L35.2 70.3 L36.5 62.8 L31 57.5 L38.6 56.5 Z"/>
+    <path d="M78 50 L81.4 56.5 L89 57.5 L83.5 62.8 L84.8 70.3 L78 66.8 L71.2 70.3 L72.5 62.8 L67 57.5 L74.6 56.5 Z"/>
+    <path fill="none" d="M52 59 Q60 56 68 59 M31 58 L23 55 M89 58 L97 55"/>
+  </g>
+</svg>

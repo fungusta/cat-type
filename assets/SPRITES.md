@@ -22,6 +22,22 @@ Keep artwork inside the existing canvas, retain transparent areas, and edit the
 fur shapes and colors directly in the master. Changes take effect after Cat
 Type restarts and clears its in-memory render cache.
 
+## Editing accessories
+
+The six unlockable accessories are standalone SVG masters in
+`assets/accessories`: `round-glasses.svg`, `sunglasses.svg`,
+`star-glasses.svg`, `beanie.svg`, `party-hat.svg`, and `crown.svg`. They share
+the cats' `0 0 120 120` view box, so their coordinates map directly onto every
+cat master. Glasses are centered on the eyes at `(42, 62)` and `(78, 62)`;
+hats sit between or across the ears. Keep all accessory artwork above y=74 so
+it cannot alter the animated paws, and leave the mouth readable.
+
+Each accessory is made from ordinary editable SVG shapes inside a group whose
+ID matches its catalog ID. Preserve that group ID and the shared view box when
+editing. Do not add raster images, linked images, or external references. Cat
+Type reads the selected files and composes their shapes into the posed cat
+before rasterizing and caching the frame.
+
 ## Checking artwork
 
 Open the focused preview to inspect every cat at 60%, 100%, and 175% and test

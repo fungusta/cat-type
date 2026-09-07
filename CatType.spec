@@ -46,6 +46,10 @@ a = Analysis(
             str(project_root / "assets" / "vector-cats"),
             "assets/vector-cats",
         ),
+        (
+            str(project_root / "assets" / "accessories"),
+            "assets/accessories",
+        ),
         (str(icon_path), "assets"),
     ],
     hiddenimports=hidden_imports,

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Sunglasses</title>
+  <desc>Editable dark sunglasses aligned with the cat's eyes.</desc>
+  <g id="sunglasses" stroke="#171717" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#302e3b" d="M31 55 Q42 52 53 56 L51 64 Q49 70 41 70 Q34 69 32 63 Z"/>
+    <path fill="#302e3b" d="M67 56 Q78 52 89 55 L88 63 Q86 69 79 70 Q71 70 69 64 Z"/>
+    <path fill="none" d="M52 58 Q60 55 68 58 M31 57 L23 54 M89 57 L97 54"/>
+    <path fill="none" stroke="#807da0" stroke-width="1.5" d="M36 57 L47 55 M72 58 L83 55"/>
+  </g>
+</svg>

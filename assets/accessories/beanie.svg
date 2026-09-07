@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Beanie</title>
+  <desc>Editable knit beanie fitted between the cat's ears.</desc>
+  <g id="beanie" stroke="#27202d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#8a69d4" d="M37 31 C37 16 46 8 60 8 C74 8 83 16 83 31 Z"/>
+    <path fill="#a98bec" d="M34 29 Q60 25 86 29 L85 40 Q60 36 35 40 Z"/>
+    <path fill="none" stroke="#d8c8ff" stroke-width="1.7" d="M43 29 L43 38 M52 27 L52 37 M61 27 L61 36 M70 27 L70 37 M79 29 L79 38"/>
+    <circle cx="60" cy="8" r="5" fill="#f4b6cf"/>
+  </g>
+</svg>
