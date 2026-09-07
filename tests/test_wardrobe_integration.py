@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -45,6 +46,32 @@ class WardrobeIntegrationTests(unittest.TestCase):
         app._handle_key_activity(1.0, 'left')
         self.assertEqual(app.achievement_tracker.unlocked, set())
         self.assertEqual(app.keystroke_count, 999)
+
+    def test_unlock_notice_does_not_block_typing_or_repeat(self):
+        app = self.app()
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        notices = []
+
+        class Tray:
+            HAS_NOTIFICATION = True
+
+            def notify(self, message, title):
+                notices.append((message, title))
+                entered.set()
+                release.wait(2)
+                finished.set()
+
+        app._tray_icon = Tray()
+        try:
+            app._handle_key_activity(1.0, 'left')
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(finished.is_set(), 'Typing must return before the slow notification finishes')
+            app._handle_key_activity(1.1, 'right')
+            self.assertEqual(len(notices), 1)
+            self.assertIn('Round glasses', notices[0][0])
+        finally:
+            release.set()
+            self.assertTrue(finished.wait(1))
 
     def test_live_unlock_reaches_open_wardrobe(self):
         app = self.app()
