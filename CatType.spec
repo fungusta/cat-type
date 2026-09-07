@@ -43,8 +43,8 @@ a = Analysis(
     binaries=[],
     datas=[
         (
-            str(project_root / "assets" / "tabby-frames"),
-            "assets/tabby-frames",
+            str(project_root / "assets" / "vector-cats"),
+            "assets/vector-cats",
         ),
         (str(icon_path), "assets"),
     ],
@@ -99,7 +99,7 @@ if is_macos:
         name="Cat Type.app",
         icon=str(icon_path),
         bundle_identifier="com.fungusta.cat-type",
-        version="1.0.33",
+        version="1.0.34",
         info_plist={
             "LSUIElement": True,
             "NSHighResolutionCapable": True,

@@ -12,6 +12,7 @@ from typing import Callable
 from PIL import Image, ImageDraw, ImageTk
 
 from app_version import APP_VERSION
+from cat_artwork import load_frame
 from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
 
@@ -580,22 +581,16 @@ class SettingsWindow:
     def _load_preview_frames(self, icon_path: str | None) -> None:
         if not icon_path:
             return
-        frames_root = Path(icon_path).parent / "tabby-frames"
-        resampling = getattr(Image, "Resampling", Image).LANCZOS
+        assets_root = Path(icon_path).parent
         for variant in CAT_VARIANTS:
-            variant_frames: dict[str, ImageTk.PhotoImage] = {}
+            vector_frames: dict[str, ImageTk.PhotoImage] = {}
             for name in ("idle", "tap-left", "tap-right", "excited"):
-                path = frames_root / variant / f"{name}.png"
-                if not path.exists():
-                    continue
-                with Image.open(path) as image:
-                    scaled = image.convert("RGBA").resize((148, 148), resampling)
-                    variant_frames[name] = ImageTk.PhotoImage(
-                        scaled,
-                        master=self.window,
-                    )
-            if variant_frames:
-                self._preview_frames[variant] = variant_frames
+                image = load_frame(assets_root, variant, name, 148)
+                vector_frames[name] = ImageTk.PhotoImage(
+                    image,
+                    master=self.window,
+                )
+            self._preview_frames[variant] = vector_frames
 
     def _build(self) -> None:
         self.body = tk.Frame(self.window, background=self.BACKGROUND)

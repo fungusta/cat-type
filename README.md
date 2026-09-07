@@ -11,7 +11,7 @@ create my own take on it.
 
 On Windows, Cat Type puts the companion beside the place where text is being
 inserted. On macOS and Linux, it uses pointer placement instead. Its four-frame
-cat sprite sheets are original artwork created for this project; it does not
+cat illustrations are original artwork created for this project; it does not
 extract or redistribute Bongo Cat's game assets.
 
 ## Install on Windows
@@ -52,8 +52,8 @@ pointer directly.
 Settings are saved for the current user and take effect immediately:
 
 - Enable or pause the typing companion.
-- Choose gray, ginger, charcoal, brown-tabby, white, or black-and-white cats,
-  or cycle through all of them.
+- Choose gray, ginger, charcoal, brown-tabby, white, or black-and-white, or
+  cycle through all of them.
 - Change the cat size from 60% to 175%.
 - Choose which corner of the caret or pointer the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.
@@ -126,6 +126,38 @@ For diagnostics, run it in a visible terminal:
 .\.venv\Scripts\python.exe .\cat_type.py --debug
 ```
 
+To preview any shipped SVG cat using the same animation state and keyboard-side
+classification as the app, run:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\preview_svg_cat.py
+```
+
+The preview defaults to White and reacts only while it has keyboard focus. It
+does not start a global keyboard hook or change saved settings. Choose any of
+the six cats, use its pose buttons and 60%, 100%, and 175% size choices, or
+export all 24 editable posed SVGs and a six-row preview sheet without opening a
+window:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\preview_svg_cat.py --export-dir .\.debug\svg-cat-preview
+```
+
+The packaged Windows build can open the same preview against its bundled
+artwork and renderer:
+
+```powershell
+& '.\Cat Type.exe' --preview-cats
+```
+
+Each master in `assets\vector-cats` is posed programmatically for idle, left
+paw, right paw, and excited states. `cat_artwork.py` renders those SVG poses at
+the requested size and caches the rendered frames; the app, settings preview,
+and preview tool all load images through that shared boundary. To revise the
+artwork, edit the relevant master SVG's named groups and IDs in a vector editor,
+restart Cat Type to clear the in-memory render cache, and rerun the export
+command above to regenerate the posed inspection files.
+
 ## Build
 
 Create the Windows portable app and installer:
@@ -136,8 +168,8 @@ Create the Windows portable app and installer:
 
 The outputs are `dist\Cat Type.exe` and, when Inno Setup 6 is installed,
 `dist\Cat Type Setup.exe`. They bundle Python, the runtime dependencies, the
-application icon, and both tabby sprite sets. Windows may warn about local
-builds because they are not code-signed.
+application icon and six editable SVG cat sources.
+Windows may warn about local builds because they are not code-signed.
 
 On Linux:
 
@@ -147,7 +179,7 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.33` to build the
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.34` to build the
 Windows, macOS, and Linux architectures and publish those assets on a GitHub
 Release.
 
@@ -192,5 +224,5 @@ stay hidden and never use the pointer fallback.
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-See [`assets/SPRITES.md`](assets/SPRITES.md) to edit or replace the sprite
-sheet.
+See [`assets/SPRITES.md`](assets/SPRITES.md) to edit the SVG artwork while
+preserving the IDs used to derive each pose.

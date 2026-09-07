@@ -1,4 +1,4 @@
-"""Verify that a PyInstaller executable contains its runtime icon."""
+"""Verify a PyInstaller package's native icon, SVG artwork and runtime modules."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from pathlib import Path
 from PyInstaller.archive.readers import CArchiveReader
 
 from platform_assets import icon_filename, runtime_modules
+from cat_settings import CAT_VARIANTS
 
 
 def expected_icon_entry(platform: str) -> str:
@@ -51,9 +52,23 @@ def validate_bundled_runtime_modules(
     return expected
 
 
+def validate_bundled_cat_artwork(entries: Collection[str]) -> tuple[str, ...]:
+    normalized = {entry.replace("\\", "/") for entry in entries}
+    expected = tuple(f"assets/vector-cats/{cat}.svg" for cat in CAT_VARIANTS)
+    missing = [entry for entry in expected if entry not in normalized]
+    if missing:
+        raise ValueError("PyInstaller package is missing SVG artwork: " + ", ".join(missing))
+    obsolete = sorted(entry for entry in normalized if entry.startswith((
+        "assets/tabby-frames/", "assets/bongo-frames/", "assets/frames/",
+    )))
+    if obsolete:
+        raise ValueError("PyInstaller package contains obsolete animation frames: " + ", ".join(obsolete))
+    return expected
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Verify the runtime icon in a PyInstaller executable."
+        description="Verify native icons, SVG artwork and runtime modules in a PyInstaller package."
     )
     parser.add_argument("executable", type=Path)
     args = parser.parse_args()
@@ -62,6 +77,7 @@ def main() -> None:
         entries = set(archive.toc)
         entries.update(external_bundle_entries(args.executable, sys.platform))
         expected = validate_bundled_icon(entries, sys.platform)
+        artwork = validate_bundled_cat_artwork(entries)
         expected_modules = runtime_modules(sys.platform)
         if expected_modules:
             pyz = archive.open_embedded_archive("PYZ.pyz")
@@ -69,6 +85,7 @@ def main() -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     print(f"Verified bundled runtime icon: {expected}")
+    print(f"Verified {len(artwork)} bundled SVG cats; no raster animation frames.")
     if expected_modules:
         print(
             "Verified bundled runtime modules: "

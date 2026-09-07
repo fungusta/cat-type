@@ -93,6 +93,7 @@ class BundledRuntimeModuleCheckTests(unittest.TestCase):
                 "linux",
             )
 
+
     def test_rejects_missing_windows_pynput_backends(self) -> None:
         checker = self._module()
         with self.assertRaisesRegex(ValueError, "pynput.keyboard._win32"):
@@ -112,6 +113,27 @@ class BundledRuntimeModuleCheckTests(unittest.TestCase):
                 },
                 "linux",
             )
+
+
+class BundledCatArtworkCheckTests(unittest.TestCase):
+    def test_all_six_svg_masters_are_required(self):
+        from cat_settings import CAT_VARIANTS
+        checker = importlib.import_module("scripts.check_bundled_icon")
+        entries = {f"assets/vector-cats/{cat}.svg" for cat in CAT_VARIANTS}
+        self.assertEqual(set(checker.validate_bundled_cat_artwork(entries)), entries)
+        entries.remove("assets/vector-cats/ginger.svg")
+        with self.assertRaisesRegex(ValueError, "ginger.svg"):
+            checker.validate_bundled_cat_artwork(entries)
+
+    def test_obsolete_animation_pngs_are_rejected_but_native_icon_is_allowed(self):
+        from cat_settings import CAT_VARIANTS
+        checker = importlib.import_module("scripts.check_bundled_icon")
+        entries = {f"assets\\vector-cats\\{cat}.svg" for cat in CAT_VARIANTS}
+        entries.add("assets/cat-type.png")
+        checker.validate_bundled_cat_artwork(entries)
+        for legacy in ("tabby-frames/gray/idle.png", "bongo-frames/idle.png", "frames/idle.png"):
+            with self.subTest(legacy=legacy), self.assertRaisesRegex(ValueError, "obsolete"):
+                checker.validate_bundled_cat_artwork(entries | {f"assets/{legacy}"})
 
 
 if __name__ == "__main__":

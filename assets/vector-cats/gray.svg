@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Gray cat — editable idle pose</title>
+  <desc>Vector redraw of Cat Type's gray cat. Editable coat, ears, face, paws and toe beans; four poses share the approved white-cat silhouette.</desc>
+  <defs>
+    <clipPath id="body-clip">
+      <path d="M7 102 C5 82 10 58 22 43 C31 32 43 27 59 27 C77 26 89 32 99 45 C110 61 114 83 112 102 Z" />
+    </clipPath>
+    <clipPath id="paw-left-clip">
+      <path d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" />
+    </clipPath>
+    <clipPath id="paw-right-clip">
+      <path d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" />
+    </clipPath>
+  </defs>
+  <g stroke="#171717" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <g id="ears">
+      <path fill="#dedada" d="M23.5 49 C23 43 21.5 29 24.4 19.8 C25.4 17.8 27.1 17.1 29.2 18.5 C33.5 21.1 38 25.5 42.8 31.4 C45 35 46 40 47 45 Z" />
+      <path fill="#f29aa8" stroke="none" d="M25 43 C24.2 36 24.6 26 26.3 22.1 C26.7 21 27.4 20.8 28.4 21.4 C32 23.8 35.3 27 38.7 30.7 L43 40 Z" />
+      <path fill="#dedada" d="M96.5 49 C97 43 98.5 29 95.6 19.8 C94.6 17.8 92.9 17.1 90.8 18.5 C86.5 21.1 82 25.5 77.2 31.4 C75 35 74 40 73 45 Z" />
+      <path fill="#f29aa8" stroke="none" d="M95 43 C95.8 36 95.4 26 93.7 22.1 C93.3 21 92.6 20.8 91.6 21.4 C88 23.8 84.7 27 81.3 30.7 L77 40 Z" />
+    </g>
+    <g id="body">
+      <path fill="#dedada" d="M7 102 C5 82 10 58 22 43 C31 32 43 27 59 27 C77 26 89 32 99 45 C110 61 114 83 112 102 Z" stroke="none" />
+      <g id="body-markings" clip-path="url(#body-clip)" stroke="none">
+        <path d="M34 103 L34 95 C34 82 45 76 59 76 C74 76 86 84 86 95 L86 103 Z" fill="#e9e6e6" />
+        <path d="M43 25 C43 33 46 41 51 44 C50 36 49 30 49 25 Z" fill="#979493" />
+        <path d="M55 25 C55 32 56 40 60 42 C63 39 64 32 64 25 Z" fill="#979493" />
+        <path d="M69 25 C69 31 68 37 67 44 C73 40 75 32 75 25 Z" fill="#979493" />
+        <path d="M9 57 C16 57 22 58 26 61 C21 62 15 62 9 61 Z" fill="#979493" />
+        <path d="M9 57 C16 57 22 58 26 61 C21 62 15 62 9 61 Z" fill="#979493" transform="translate(120 0) scale(-1 1)" />
+        <path d="M6 66 C14 66 20 66 25 65 C20 69 12 71 6 70 Z" fill="#979493" />
+        <path d="M6 66 C14 66 20 66 25 65 C20 69 12 71 6 70 Z" fill="#979493" transform="translate(120 0) scale(-1 1)" />
+        <path d="M5 80 C12 79 16 79 20 78 C17 81 10 84 5 84 Z" fill="#979493" />
+        <path d="M5 80 C12 79 16 79 20 78 C17 81 10 84 5 84 Z" fill="#979493" transform="translate(120 0) scale(-1 1)" />
+        <path d="M5 90 C11 90 14 90 18 89 C14 92 9 94 5 94 Z" fill="#979493" />
+        <path d="M5 90 C11 90 14 90 18 89 C14 92 9 94 5 94 Z" fill="#979493" transform="translate(120 0) scale(-1 1)" />
+      </g>
+      <path fill="none" d="M7 102 C5 82 10 58 22 43 C31 32 43 27 59 27 C77 26 89 32 99 45 C110 61 114 83 112 102 Z" />
+    </g>
+    <g id="head">
+      <g id="eyes" fill="#111111" stroke="none">
+        <ellipse cx="42" cy="62" rx="4.2" ry="4.6" />
+        <ellipse cx="78" cy="62" rx="4.2" ry="4.6" />
+      </g>
+      <g id="mouth">
+        <g id="mouth-idle" fill="none" stroke-width="2.2">
+          <path d="M52 66 Q51 71 56 70 Q59 70 60 66 Q61 70 64 70 Q69 71 68 66" />
+        </g>
+        <g id="mouth-excited" display="none">
+          <path fill="#f58ba5" stroke="none" d="M56 70 Q59 70 60 66 Q61 70 64 70 C64 74 62 76 60 76 C58 76 56 74 56 70 Z" />
+          <path fill="none" stroke-width="2.2" d="M52 66 Q51 71 56 70 Q59 70 60 66 Q61 70 64 70 Q69 71 68 66 M56 70 C56 74 58 76 60 76 C62 76 64 74 64 70" />
+        </g>
+      </g>
+    </g>
+    <g id="paw-left">
+      <path fill="#e9e6e6" d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" stroke="none" />
+      <g id="paw-left-markings" clip-path="url(#paw-left-clip)" stroke="none">
+        <path d="M11 93 C16 93 20 95 21 97 L11 97 Z" fill="#979493" />
+      </g>
+      <path fill="none" d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" />
+      <g id="pads-left" fill="#64576d" stroke="none">
+        <ellipse cx="25" cy="89" rx="3.8" ry="3.2" />
+        <ellipse cx="19.5" cy="85" rx="1.8" ry="2" transform="rotate(-22 19.5 85)" />
+        <ellipse cx="24" cy="81.4" rx="1.8" ry="2" />
+        <ellipse cx="29" cy="83.6" rx="1.8" ry="2" transform="rotate(22 29 83.6)" />
+      </g>
+    </g>
+    <g id="paw-right">
+      <path fill="#e9e6e6" d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" stroke="none" />
+      <g id="paw-right-markings" clip-path="url(#paw-right-clip)" stroke="none">
+        <path d="M11 93 C16 93 20 95 21 97 L11 97 Z" fill="#979493" transform="translate(120 0) scale(-1 1)" />
+      </g>
+      <path fill="none" d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" />
+      <g id="pads-right" fill="#64576d" stroke="none">
+        <ellipse cx="95" cy="89" rx="3.8" ry="3.2" />
+        <ellipse cx="101" cy="85" rx="1.8" ry="2" transform="rotate(22 101 85)" />
+        <ellipse cx="96" cy="81.4" rx="1.8" ry="2" />
+        <ellipse cx="91" cy="83.6" rx="1.8" ry="2" transform="rotate(-22 91 83.6)" />
+      </g>
+    </g>
+  </g>
+</svg>

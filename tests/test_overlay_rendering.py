@@ -4,7 +4,9 @@ import time
 import tkinter as tk
 import unittest
 
-from PIL import Image
+from PIL import Image, ImageTk
+from cat_settings import AppSettings
+from cat_artwork import load_frame
 
 if sys.platform == "win32":
     import win32gui
@@ -17,8 +19,7 @@ from cat_type import (
     CAT_VARIANTS,
     CaretSnapshot,
     CatTypeApp,
-    FRAME_DIR,
-    FRAME_ROOT,
+    ASSETS_ROOT,
     ScreenRect,
     make_window_non_interactive,
 )
@@ -29,6 +30,54 @@ from cat_type import (
     "Windows-only rendering integration",
 )
 class OverlayRenderingTests(unittest.TestCase):
+    def test_vector_cat_renders_all_input_poses_and_returns_to_idle(self) -> None:
+        for variant in CAT_VARIANTS:
+            with self.subTest(variant=variant):
+                app = CatTypeApp(settings=AppSettings(cat_style=variant))
+                try:
+                    now = time.monotonic()
+                    captures = {}
+                    for index, (paw, expected) in enumerate(
+                        (("left", "tap-left"), ("right", "tap-right"), ("both", "excited"))
+                    ):
+                        at = now + index
+                        app.animation.record_key(at, paw)
+                        snapshot = CaretSnapshot(at, ScreenRect(400, 300, 402, 320), "vector-test")
+                        app._show(snapshot, at)
+                        app.root.update()
+                        self.assertEqual(app._last_rendered_frame, (variant, expected))
+                        capture = self._capture_window(app.root.winfo_id(), 120, 120)
+                        coat = load_frame(ASSETS_ROOT, variant, expected, 120).getpixel((60, 50))[:3]
+                        self.assertGreater(sum(pixel == coat for pixel in capture.get_flattened_data()), 1000)
+                        self._assert_no_green_fringe(capture)
+                        captures[expected] = capture.tobytes()
+                    self.assertEqual(len(set(captures.values())), 3)
+                    app._show(snapshot, at + 0.2)
+                    self.assertEqual(app._last_rendered_frame, (variant, "idle"))
+                    app._show(snapshot, at + 1.325)
+                    self.assertAlmostEqual(float(app.root.wm_attributes("-alpha")), 0.5, places=1)
+                finally:
+                    app.root.destroy()
+
+    def test_vector_cat_renders_at_every_supported_size_and_is_clickthrough(self) -> None:
+        for percent in (60, 100, 175):
+            with self.subTest(percent=percent):
+                app = CatTypeApp(settings=AppSettings(cat_style="white", size_percent=percent))
+                try:
+                    now = time.monotonic()
+                    app.animation.record_key(now)
+                    app._show(CaretSnapshot(now, ScreenRect(400, 300, 402, 320), "vector-size"), now)
+                    app.root.update()
+                    size = round(120 * percent / 100)
+                    self.assertEqual((app.frame_width, app.frame_height), (size, size))
+                    self.assertEqual(app.label.cget("image"), str(app.frames["white"]["tap-left"]))
+                    hwnd = app.root.winfo_id()
+                    style = win32gui.GetWindowLong(hwnd, -20)
+                    self.assertTrue(style & 0x20, "SVG overlay must let mouse input pass through")
+                    self._assert_no_green_fringe(self._capture_window(app.root.winfo_id(), size, size))
+                finally:
+                    app.root.destroy()
+
     def test_keystroke_counter_is_not_rendered_in_the_cat_overlay(self) -> None:
         app = CatTypeApp(hold_seconds=10.0)
         try:
@@ -173,8 +222,9 @@ class OverlayRenderingTests(unittest.TestCase):
             root.wm_attributes("-topmost", True)
             root.wm_attributes("-transparentcolor", transparent)
 
-            image = tk.PhotoImage(
-                file=str(FRAME_DIR / "idle.png")
+            image = ImageTk.PhotoImage(
+                load_frame(ASSETS_ROOT, "gray", "idle", 120, color_key_safe=True),
+                master=root,
             )
             label = tk.Label(
                 root,
@@ -262,105 +312,26 @@ class OverlayRenderingTests(unittest.TestCase):
             win32gui.ReleaseDC(hwnd, window_dc)
 
 
-class SpriteAssetTests(unittest.TestCase):
-    @staticmethod
-    def _frame_paths() -> list:
-        return [
-            frame_path
-            for variant in CAT_VARIANTS
-            for frame_path in sorted((FRAME_ROOT / variant).glob("*.png"))
-        ]
-
-    def test_runtime_frames_use_binary_alpha_for_windows_color_key(self) -> None:
-        for frame_path in self._frame_paths():
-            with self.subTest(frame=frame_path.name), Image.open(frame_path) as frame:
-                alpha_values = {
-                    alpha
-                    for _, _, _, alpha in frame.convert(
-                        "RGBA"
-                    ).get_flattened_data()
-                }
-                self.assertLessEqual(
-                    alpha_values,
-                    {0, 255},
-                    f"{frame_path.name} has soft alpha that can blend with "
-                    "the green Windows color key",
-                )
-
-    def test_runtime_frames_are_the_smaller_size(self) -> None:
-        for frame_path in self._frame_paths():
-            with self.subTest(frame=str(frame_path)), Image.open(frame_path) as frame:
-                self.assertEqual(frame.size, (120, 120))
-
-    def test_every_cat_variant_has_all_four_runtime_frames(self) -> None:
-        expected_names = {
-            "idle.png",
-            "tap-left.png",
-            "tap-right.png",
-            "excited.png",
-        }
-        for variant in CAT_VARIANTS:
-            with self.subTest(variant=variant):
-                actual_names = {
-                    path.name for path in (FRAME_ROOT / variant).glob("*.png")
-                }
-                self.assertEqual(actual_names, expected_names)
-
+class CatSurfaceArtworkTests(unittest.TestCase):
     def test_gray_tabby_has_dark_purple_pads_not_purple_paw_fur(self) -> None:
-        with Image.open(FRAME_ROOT / "gray" / "idle.png") as frame:
-            dark_gray_purple_pixels = sum(
-                1
-                for red, green, blue, alpha in frame.convert(
-                    "RGBA"
-                ).get_flattened_data()
-                if alpha
-                and blue > red * 1.1
-                and green < red
-                and red > 20
-            )
-        self.assertGreater(dark_gray_purple_pixels, 20)
-        self.assertLess(
-            dark_gray_purple_pixels,
-            300,
-            "Only the small pads should be purple, not the surrounding paw fur",
+        frame = load_frame(ASSETS_ROOT, "gray", "idle", 120)
+        purple_pixels = sum(
+            1 for red, green, blue, alpha in frame.get_flattened_data()
+            if alpha and blue > red and green < red and red > 20
         )
+        self.assertGreater(purple_pixels, 20)
+        self.assertLess(purple_pixels, 300)
 
-    def test_pose_frames_share_the_same_upper_body_center(self) -> None:
+    def test_all_rendered_poses_have_no_green_chroma_key_fringe(self) -> None:
         for variant in CAT_VARIANTS:
-            centers = []
-            for frame_path in sorted((FRAME_ROOT / variant).glob("*.png")):
-                alpha = Image.open(frame_path).convert("RGBA").getchannel("A")
-                upper_bounds = alpha.crop((0, 0, 120, 72)).getbbox()
-                self.assertIsNotNone(upper_bounds)
-                assert upper_bounds is not None
-                centers.append(
-                    (upper_bounds[0] + upper_bounds[2] - 1) / 2
-                )
-
-            with self.subTest(variant=variant):
-                self.assertLessEqual(
-                    max(centers) - min(centers),
-                    0.5,
-                    f"{variant} pose frames are horizontally misregistered",
-                )
-
-    def test_runtime_frames_have_no_green_chroma_key_fringe(self) -> None:
-        for frame_path in self._frame_paths():
-            with self.subTest(frame=frame_path.name), Image.open(frame_path) as frame:
-                green_fringe_pixels = sum(
-                    1
-                    for red, green, blue, alpha in frame.convert(
-                        "RGBA"
-                    ).get_flattened_data()
-                    if alpha >= 16
-                    and green > red * 1.15
-                    and green > blue * 1.15
-                )
-                self.assertEqual(
-                    green_fringe_pixels,
-                    0,
-                    f"{frame_path.name} still contains green matte pixels",
-                )
+            for pose in ("idle", "tap-left", "tap-right", "excited"):
+                with self.subTest(variant=variant, pose=pose):
+                    frame = load_frame(ASSETS_ROOT, variant, pose, 120, color_key_safe=True)
+                    fringe = sum(
+                        1 for red, green, blue, alpha in frame.get_flattened_data()
+                        if alpha >= 16 and green > red * 1.15 and green > blue * 1.15
+                    )
+                    self.assertEqual(fringe, 0)
 
 
 if __name__ == "__main__":

@@ -84,6 +84,10 @@ jobs:
           tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
+          tests.test_cat_artwork
+          tests.test_cat_comparison
+          tests.test_vector_platform_surfaces
+          tests.test_overlay_rendering
           tests.test_usage_metrics
           tests.test_settings_window
           tests.test_platform_assets
@@ -105,6 +109,10 @@ jobs:
           tests.test_macos_pointer
           tests.test_behavior
           tests.test_settings
+          tests.test_cat_artwork
+          tests.test_cat_comparison
+          tests.test_vector_platform_surfaces
+          tests.test_overlay_rendering
           tests.test_usage_metrics
           tests.test_settings_window
           tests.test_platform_assets

@@ -1478,6 +1478,25 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
         self.assertFalse(hasattr(self.settings_window, "hero_headline"))
 
+    def test_narrow_layout_can_scroll_to_every_cat_style_choice(self) -> None:
+        self.settings_window.window.geometry("700x480")
+        self.settings_window.window.update()
+        last_button = self.settings_window.cat_style_buttons["Black & white"]
+        fully_visible = False
+        for step in range(21):
+            self.settings_window.scroll_canvas.yview_moveto(step / 20)
+            self.settings_window.window.update()
+            viewport_top = self.settings_window.scroll_canvas.winfo_rooty()
+            viewport_bottom = (
+                viewport_top + self.settings_window.scroll_canvas.winfo_height()
+            )
+            button_top = last_button.winfo_rooty()
+            button_bottom = button_top + last_button.winfo_height()
+            if button_top >= viewport_top and button_bottom <= viewport_bottom:
+                fully_visible = True
+                break
+        self.assertTrue(fully_visible)
+
     def test_wide_layout_keeps_the_preview_and_two_columns(self) -> None:
         self.settings_window.window.geometry("920x800")
         self.settings_window.window.update()
@@ -1607,6 +1626,46 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     set(frames),
                     {"idle", "tap-left", "tap-right", "excited"},
                 )
+
+    def test_all_cats_have_four_real_148_pixel_svg_previews(self) -> None:
+        icon_path = (
+            Path(__file__).resolve().parents[1] / "assets" / "cat-type.png"
+        )
+        self.settings_window._preview_frames.clear()
+
+        self.settings_window._load_preview_frames(str(icon_path))
+
+        for variant in CAT_VARIANTS:
+            frames = self.settings_window._preview_frames[variant]
+            self.assertEqual(
+                set(frames),
+                {"idle", "tap-left", "tap-right", "excited"},
+            )
+            for name, frame in frames.items():
+                with self.subTest(variant=variant, name=name):
+                    self.assertEqual((frame.width(), frame.height()), (148, 148))
+
+    def test_settings_offer_six_cats_and_mix_it_up(self) -> None:
+        self.assertEqual(
+            tuple(self.settings_window.cat_style_buttons),
+            (
+                "Mix it up",
+                "Gray tabby",
+                "Ginger tabby",
+                "Charcoal",
+                "Brown tabby",
+                "White",
+                "Black & white",
+            ),
+        )
+
+    def test_non_white_cat_choice_is_applied_when_saved(self) -> None:
+        self.settings_window.cat_style_buttons["Black & white"].invoke()
+
+        self.settings_window._save()
+
+        saved_settings = self.on_save.call_args.args[0]
+        self.assertEqual(saved_settings.cat_style, "black-white")
 
     def test_footer_actions_use_settings_language(self) -> None:
         self.assertEqual(self.settings_window.cancel_button.cget("text"), "Cancel")

@@ -36,9 +36,15 @@ class AppSettings:
     metrics_view: str = "line"
 
     def normalized(self) -> "AppSettings":
+        # Early SVG previews used separate style IDs; keep those selections.
+        selected_style = (
+            self.cat_style.removesuffix("-svg")
+            if isinstance(self.cat_style, str)
+            else None
+        )
         cat_style = (
-            self.cat_style
-            if self.cat_style in VALID_CAT_STYLES
+            selected_style
+            if selected_style in VALID_CAT_STYLES
             else AppSettings.cat_style
         )
         placement = (

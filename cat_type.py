@@ -21,6 +21,8 @@ from ctypes import wintypes
 
 from PIL import Image, ImageTk
 
+from cat_artwork import BASE_SIZE, frame_source_path, load_frame, vector_png
+
 from auto_update import (
     AvailableUpdate,
     InstallerAvailability,
@@ -58,9 +60,8 @@ IS_LINUX = sys.platform.startswith("linux")
 APP_DIR = Path(
     getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)
 )
-FRAME_ROOT = APP_DIR / "assets" / "tabby-frames"
+ASSETS_ROOT = APP_DIR / "assets"
 APP_ICON = APP_DIR / "assets" / icon_filename(sys.platform)
-FRAME_DIR = FRAME_ROOT / CAT_VARIANTS[0]
 FRAME_NAMES = ("idle", "tap-left", "tap-right", "excited")
 
 WM_KEYDOWN = 0x0100
@@ -662,7 +663,7 @@ class _MacOSNativeOverlaySurface:
         self._window: object | None = None
         self._tk_content_view: object | None = None
         self._image_view: object | None = None
-        self._images: dict[tuple[str, str], object] = {}
+        self._images: dict[tuple[str, str, int], object] = {}
 
     @property
     def installed(self) -> bool:
@@ -718,11 +719,23 @@ class _MacOSNativeOverlaySurface:
             return
         from AppKit import NSImage
 
-        key = (variant, frame_name)
+        # Render every cat at backing-pixel size, including Retina displays.
+        size = max(1, round(
+            self._image_view.bounds().size.width
+            * self._window.backingScaleFactor()
+        ))
+        key = (variant, frame_name, size)
         image = self._images.get(key)
         if image is None:
-            image = NSImage.alloc().initWithContentsOfFile_(
-                str(FRAME_ROOT / variant / f"{frame_name}.png")
+            from Foundation import NSData
+
+            png = vector_png(
+                frame_source_path(ASSETS_ROOT, variant, frame_name),
+                frame_name,
+                size,
+            )
+            image = NSImage.alloc().initWithData_(
+                NSData.dataWithBytes_length_(png, len(png))
             )
             if image is None:
                 raise RuntimeError(
@@ -2489,15 +2502,14 @@ class CatTypeApp:
                 "window",
                 self.root.winfo_id(),
             )
-            with Image.open(
-                FRAME_ROOT / variant / f"{frame_name}.png"
+            with load_frame(
+                APP_DIR / "assets",
+                variant,
+                frame_name,
+                self.frame_width,
+                color_key_safe=True,
             ) as source:
                 alpha = source.convert("RGBA").getchannel("A")
-                if self.settings.size_percent != 100:
-                    alpha = alpha.resize(
-                        (self.frame_width, self.frame_height),
-                        Image.Resampling.NEAREST,
-                    )
                 rectangles = []
                 pixels = alpha.load()
                 for y in range(alpha.height):
@@ -2535,33 +2547,20 @@ class CatTypeApp:
         self,
         size_percent: int,
     ) -> dict[str, dict[str, tk.PhotoImage | ImageTk.PhotoImage]]:
-        if size_percent == 100:
-            return {
-                variant: {
-                    name: tk.PhotoImage(
-                        file=str(FRAME_ROOT / variant / f"{name}.png")
-                    )
-                    for name in FRAME_NAMES
-                }
-                for variant in CAT_VARIANTS
+        size = max(1, round(BASE_SIZE * size_percent / 100))
+        return {
+            variant: {
+                name: ImageTk.PhotoImage(
+                    load_frame(
+                        ASSETS_ROOT, variant, name, size,
+                        color_key_safe=IS_WINDOWS or IS_LINUX,
+                    ),
+                    master=self.root,
+                )
+                for name in FRAME_NAMES
             }
-
-        frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
-        for variant in CAT_VARIANTS:
-            frames[variant] = {}
-            for name in FRAME_NAMES:
-                with Image.open(FRAME_ROOT / variant / f"{name}.png") as source:
-                    width = max(1, round(source.width * size_percent / 100))
-                    height = max(1, round(source.height * size_percent / 100))
-                    resized = source.convert("RGBA").resize(
-                        (width, height),
-                        Image.Resampling.NEAREST,
-                    )
-                    frames[variant][name] = ImageTk.PhotoImage(
-                        resized,
-                        master=self.root,
-                    )
-        return frames
+            for variant in CAT_VARIANTS
+        }
 
     def _start_tray(self) -> None:
         import pystray
@@ -2788,6 +2787,11 @@ def parse_args() -> argparse.Namespace:
         help="Print caret-provider errors to the terminal.",
     )
     parser.add_argument(
+        "--preview-cats",
+        action="store_true",
+        help="Preview the SVG cats and keyboard reactions without changing settings.",
+    )
+    parser.add_argument(
         "--hold-seconds",
         type=float,
         default=None,
@@ -2799,6 +2803,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     set_per_monitor_dpi_awareness()
+    if args.preview_cats:
+        from scripts.preview_svg_cat import run_preview
+
+        run_preview()
+        return
     if not acquire_single_instance():
         message = (
             "Cat Type is already running. Use its cat icon in the system tray "
@@ -2815,14 +2824,14 @@ def main() -> None:
             messagebox.showinfo("Cat Type", message, parent=duplicate_root)
             duplicate_root.destroy()
         return
-    missing = [
-        str(FRAME_ROOT / variant / f"{name}.png")
+    missing = sorted({
+        str(frame_source_path(ASSETS_ROOT, variant, name))
         for variant in CAT_VARIANTS
         for name in FRAME_NAMES
-        if not (FRAME_ROOT / variant / f"{name}.png").exists()
-    ]
+        if not frame_source_path(ASSETS_ROOT, variant, name).exists()
+    })
     if missing:
-        raise SystemExit(f"Missing sprite frames: {', '.join(missing)}")
+        raise SystemExit(f"Missing cat artwork: {', '.join(missing)}")
     settings_store = SettingsStore()
     settings = settings_store.load()
     if args.hold_seconds is not None:

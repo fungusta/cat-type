@@ -1,20 +1,24 @@
-"""Build application icons from the gray tabby idle frame."""
+"""Build native application icons from the gray tabby SVG."""
 
 from pathlib import Path
+import sys
 
 from PIL import Image
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-SOURCE = PROJECT_ROOT / "assets" / "tabby-frames" / "gray" / "idle.png"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from cat_artwork import load_frame
+
 ICO_OUTPUT = PROJECT_ROOT / "assets" / "cat-type.ico"
 ICNS_OUTPUT = PROJECT_ROOT / "assets" / "cat-type.icns"
 PNG_OUTPUT = PROJECT_ROOT / "assets" / "cat-type.png"
 
 
 def main() -> None:
-    source = Image.open(SOURCE).convert("RGBA")
-    source.thumbnail((224, 224), Image.Resampling.LANCZOS)
+    source = load_frame(PROJECT_ROOT / "assets", "gray", "idle", 224)
 
     icon = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     position = (
@@ -30,8 +34,7 @@ def main() -> None:
     icon.save(PNG_OUTPUT, format="PNG")
 
     mac_icon = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-    mac_source = Image.open(SOURCE).convert("RGBA")
-    mac_source = mac_source.resize((896, 896), Image.Resampling.NEAREST)
+    mac_source = load_frame(PROJECT_ROOT / "assets", "gray", "idle", 896)
     mac_icon.alpha_composite(mac_source, (64, 64))
     mac_icon.save(ICNS_OUTPUT, format="ICNS")
 
