@@ -28,9 +28,9 @@ asset checks in CI, validate the candidate, then tag the exact tested commit.
   test modules to both workflow test commands.
 - [x] Run the full local suite and build a versioned Windows candidate; verify
   package metadata, bundled accessories, and candidate diff.
-- [ ] Commit and fast-forward main, push without force, dispatch Release on main,
+- [x] Commit and fast-forward main, push without force, dispatch Release on main,
   and wait for both ordinary CI and all five dry-run builds at the same commit.
-- [ ] Create and push annotated v1.0.36 on the tested commit. Wait for all tag
+- [x] Create and push annotated v1.0.36 on the tested commit. Wait for all tag
   builds and publication. Replace generated notes with reviewed wardrobe notes.
-- [ ] Verify latest release/tag/commit, all six assets, and downloaded SHA-256
+- [x] Verify latest release/tag/commit, all six assets, and downloaded SHA-256
   digests. Record final release evidence and return the public release URL.
