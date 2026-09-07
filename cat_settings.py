@@ -8,6 +8,8 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
+from cat_accessories import normalize_accessory
+
 
 APP_NAME = "Cat Type"
 SETTINGS_VERSION = 1
@@ -34,6 +36,8 @@ class AppSettings:
     placement: str = "above-right"
     launch_at_startup: bool = False
     metrics_view: str = "line"
+    hat: str = "none"
+    glasses: str = "none"
 
     def normalized(self) -> "AppSettings":
         # Early SVG previews used separate style IDs; keep those selections.
@@ -69,6 +73,8 @@ class AppSettings:
             placement=placement,
             launch_at_startup=bool(self.launch_at_startup),
             metrics_view=metrics_view,
+            hat=normalize_accessory(self.hat, "hat"),
+            glasses=normalize_accessory(self.glasses, "glasses"),
         )
 
 
