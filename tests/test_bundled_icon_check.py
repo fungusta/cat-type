@@ -116,6 +116,18 @@ class BundledRuntimeModuleCheckTests(unittest.TestCase):
 
 
 class BundledCatArtworkCheckTests(unittest.TestCase):
+    def test_every_wardrobe_accessory_is_required_in_release_packages(self):
+        from cat_accessories import ACCESSORIES
+        checker = importlib.import_module("scripts.check_bundled_icon")
+        validator = getattr(checker, "validate_bundled_accessories", None)
+        self.assertIsNotNone(validator, "Release checks must validate accessory assets")
+        entries = {f"assets/accessories/{item.id}.svg" for item in ACCESSORIES}
+        self.assertEqual(set(validator(entries)), entries)
+        self.assertEqual(set(validator({entry.replace('/', '\\') for entry in entries})), entries)
+        for entry in entries:
+            with self.subTest(missing=entry), self.assertRaisesRegex(ValueError, entry):
+                validator(entries - {entry})
+
     def test_all_six_svg_masters_are_required(self):
         from cat_settings import CAT_VARIANTS
         checker = importlib.import_module("scripts.check_bundled_icon")
