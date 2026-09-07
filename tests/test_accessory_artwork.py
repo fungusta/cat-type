@@ -131,6 +131,29 @@ class AccessoryArtworkTests(unittest.TestCase):
                             dressed.crop((0, paw_top, size, size)).tobytes(),
                         )
 
+    def test_each_accessory_stays_strictly_inside_every_canvas_edge(self):
+        import cat_artwork as art
+
+        outfits = (
+            {"glasses": "round-glasses"},
+            {"glasses": "sunglasses"},
+            {"glasses": "star-glasses"},
+            {"hat": "beanie"},
+            {"hat": "party-hat"},
+            {"hat": "crown"},
+        )
+        for outfit in outfits:
+            for size in (72, 120, 210):
+                with self.subTest(outfit=outfit, size=size):
+                    frame = art.load_frame(
+                        ASSETS, "gray", "idle", size, **outfit
+                    )
+                    left, top, right, bottom = frame.getchannel("A").getbbox()
+                    self.assertGreater(left, 0)
+                    self.assertGreater(top, 0)
+                    self.assertLess(right, size)
+                    self.assertLess(bottom, size)
+
     def test_packaging_includes_accessory_vectors(self):
         spec = (ASSETS.parent / "CatType.spec").read_text(encoding="utf-8")
         self.assertIn('project_root / "assets" / "accessories"', spec)

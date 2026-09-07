@@ -2,10 +2,10 @@
   <title>Party hat</title>
   <desc>Editable striped party hat fitted between the cat's ears.</desc>
   <g id="party-hat" stroke="#29212a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-    <path fill="#ff718f" d="M44 37 L61 6 L78 37 Q61 33 44 37 Z"/>
-    <path fill="#ffd85d" stroke="none" d="M53 21 L58 12 L67 34 Q61 33 55 34 Z"/>
+    <path fill="#ff718f" d="M44 37 L61 10 L78 37 Q61 33 44 37 Z"/>
+    <path fill="#ffd85d" stroke="none" d="M53 23 L58 15 L67 34 Q61 33 55 34 Z"/>
     <path fill="none" d="M42 38 Q61 32 80 38"/>
-    <circle cx="61" cy="6" r="4.5" fill="#69d5c4"/>
+    <circle cx="61" cy="9.5" r="4" fill="#69d5c4"/>
     <circle cx="47" cy="17" r="2" fill="#69d5c4" stroke="none"/>
     <circle cx="70" cy="21" r="2" fill="#69d5c4" stroke="none"/>
   </g>
