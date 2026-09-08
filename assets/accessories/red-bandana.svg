@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Red bandana</title>
+  <desc>Editable cherry-red triangular bandana with a cream stitched border, fitted below the mouth.</desc>
+  <g id="red-bandana" stroke="#36242c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#e8666f" d="M31 79 Q60 84 89 79 L64 101 Q60 104 56 101 Z"/>
+    <path fill="#c44457" d="M31 79 Q60 84 89 79 L84 85 Q60 90 36 85 Z"/>
+    <path fill="none" stroke="#ffe3c0" stroke-width="1.7" d="M41 87 L57 99 M79 87 L63 99"/>
+    <path fill="#ffe3c0" stroke="none" d="M60 89 L63 92 L60 95 L57 92 Z"/>
+  </g>
+</svg>

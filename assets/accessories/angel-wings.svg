@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Angel wings</title>
+  <desc>Editable rounded ivory wings with pale blue feather folds, spread behind the cat's shoulders.</desc>
+  <g id="angel-wings" stroke="#64768b" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <g id="angel-wing-left">
+      <path fill="#f7fbff" d="M32 73 C18 70 7 61 5 51 Q4 46 9 47 C5 41 4 33 8 31 Q11 30 15 35 C10 28 6 19 10 16 Q14 13 19 23 C16 16 16 10 20 10 Q24 10 29 25 C34 38 40 47 42 56 Z"/>
+      <path fill="#d6e8f5" stroke="none" d="M31 68 Q17 63 10 52 Q18 57 24 57 Q13 44 12 37 Q20 46 27 49 Q19 35 17 29 Q26 39 35 45 L37 55 Z"/>
+      <path fill="none" stroke-width="1.7" d="M10 48 Q17 57 27 60 M15 35 Q23 47 32 52 M19 23 Q23 34 30 40"/>
+    </g>
+    <g id="angel-wing-right" transform="translate(120 0) scale(-1 1)">
+      <path fill="#f7fbff" d="M32 73 C18 70 7 61 5 51 Q4 46 9 47 C5 41 4 33 8 31 Q11 30 15 35 C10 28 6 19 10 16 Q14 13 19 23 C16 16 16 10 20 10 Q24 10 29 25 C34 38 40 47 42 56 Z"/>
+      <path fill="#d6e8f5" stroke="none" d="M31 68 Q17 63 10 52 Q18 57 24 57 Q13 44 12 37 Q20 46 27 49 Q19 35 17 29 Q26 39 35 45 L37 55 Z"/>
+      <path fill="none" stroke-width="1.7" d="M10 48 Q17 57 27 60 M15 35 Q23 47 32 52 M19 23 Q23 34 30 40"/>
+    </g>
+  </g>
+</svg>

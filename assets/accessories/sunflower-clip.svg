@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Sunflower clip</title>
+  <desc>Editable golden sunflower clipped to the outer right ear, away from hats in the center of the head.</desc>
+  <g id="sunflower-clip" stroke="#5d402d" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#77ad6c" d="M98 36 Q109 35 110 45 Q101 47 98 36 Z"/>
+    <path fill="none" stroke="#497446" stroke-width="1.5" d="M100 38 L106 43"/>
+    <g id="sunflower-petals" fill="#ffd264">
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(45 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(90 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(135 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(180 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(225 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(270 99 30)"/>
+      <ellipse cx="99" cy="22" rx="3.2" ry="5.1" transform="rotate(315 99 30)"/>
+    </g>
+    <circle cx="99" cy="30" r="5.4" fill="#9d633d"/>
+    <path fill="none" stroke="#f5c67c" stroke-width="1.7" d="M97 28 L97.1 28 M101 29 L101.1 29 M99 32 L99.1 32"/>
+  </g>
+</svg>

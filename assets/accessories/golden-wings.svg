@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Golden wings</title>
+  <desc>Editable swept golden feather wings with amber tips. Tall angular fans remain visible behind the cat's shoulders.</desc>
+  <g id="golden-wings" stroke="#68422a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <g id="golden-wing-left">
+      <path fill="#f4bd47" d="M31 76 Q12 66 6 48 L12 47 Q5 39 5 30 L11 32 Q5 22 5 9 Q15 20 26 25 L30 19 Q34 40 42 54 Z"/>
+      <path fill="#ffe18a" d="M31 70 Q17 58 12 43 L20 47 Q10 34 10 23 Q20 34 28 36 L29 29 Q34 47 40 57 Z"/>
+      <path fill="none" stroke="#cc862e" stroke-width="1.8" d="M11 20 L24 32 M10 35 L20 41 M11 51 L23 59"/>
+    </g>
+    <g id="golden-wing-right" transform="translate(120 0) scale(-1 1)">
+      <path fill="#f4bd47" d="M31 76 Q12 66 6 48 L12 47 Q5 39 5 30 L11 32 Q5 22 5 9 Q15 20 26 25 L30 19 Q34 40 42 54 Z"/>
+      <path fill="#ffe18a" d="M31 70 Q17 58 12 43 L20 47 Q10 34 10 23 Q20 34 28 36 L29 29 Q34 47 40 57 Z"/>
+      <path fill="none" stroke="#cc862e" stroke-width="1.8" d="M11 20 L24 32 M10 35 L20 41 M11 51 L23 59"/>
+    </g>
+  </g>
+</svg>

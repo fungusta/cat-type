@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Moon pendant</title>
+  <desc>Editable gold crescent pendant suspended from a midnight-blue cord below the mouth.</desc>
+  <g id="moon-pendant" stroke="#353447" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" stroke="#52669a" stroke-width="2.8" d="M36 79 Q43 88 59 89 Q76 88 84 79"/>
+    <circle cx="59" cy="89" r="2.3" fill="#edb65a"/>
+    <path fill="#f7ce71" d="M65 89 C58 86 51 90 52 97 C53 104 62 106 67 99 C60 102 55 94 65 89 Z"/>
+    <path fill="#ffe5a3" stroke="none" d="M70 88 L71 91 L74 92 L71 93 L70 96 L69 93 L66 92 L69 91 Z"/>
+  </g>
+</svg>

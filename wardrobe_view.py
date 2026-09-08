@@ -8,20 +8,24 @@ from typing import Callable
 
 from PIL import ImageTk
 
-from cat_accessories import ACCESSORIES, Accessory
+from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, SLOT_LABELS, Accessory, visible_accessories
 from cat_artwork import load_frame
 
 
 class WardrobeView(tk.Frame):
     def __init__(
         self, parent: tk.Misc, *, assets_root: Path,
-        hat: tk.StringVar, glasses: tk.StringVar, unlocked: set[str],
+        slots: dict[str, tk.StringVar], unlocked: set[str],
         on_change: Callable[[], None], on_achievement: Callable[[str], None],
         palette: dict[str, str], fonts: dict,
     ) -> None:
         super().__init__(parent, background=palette["background"])
         self.palette = palette
-        self.slots = {"hat": hat, "glasses": glasses}
+        self.slots = slots
+        self.assets_root = assets_root
+        self.fonts = fonts
+        self.on_achievement = on_achievement
+        self._visible_ids: tuple[str, ...] = ()
         self.unlocked = set(unlocked)
         self.on_change = on_change
         self.buttons: dict[str, tk.Radiobutton] = {}
@@ -49,10 +53,26 @@ class WardrobeView(tk.Frame):
                  font=fonts["small"], bg=palette["peach"],
                  fg=palette["accent_dark"]).pack(anchor="w", pady=(8, 0))
 
-        for slot, title in (("hat", "Hats"), ("glasses", "Glasses")):
-            header = tk.Frame(self, background=palette["background"])
+        self.choices_area = tk.Frame(self, background=palette["background"])
+        self.choices_area.pack(fill="x")
+        self.update_unlocks(unlocked)
+
+    def _build_choices(self, visible: tuple[Accessory, ...]) -> None:
+        for child in self.choices_area.winfo_children():
+            child.destroy()
+        self.buttons.clear()
+        self.none_buttons.clear()
+        self.status_text.clear()
+        self.achievement_links.clear()
+        self._thumbnails.clear()
+        palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
+        for slot in ACCESSORY_SLOTS:
+            items = [item for item in visible if item.slot == slot]
+            if not items:
+                continue
+            header = tk.Frame(self.choices_area, background=palette["background"])
             header.pack(fill="x", pady=(6, 8))
-            tk.Label(header, text=title, font=fonts["section"],
+            tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
                      bg=palette["background"], fg=palette["ink"]).pack(side="left")
             none_button = tk.Radiobutton(
                 header, text="None", variable=self.slots[slot], value="none",
@@ -65,13 +85,15 @@ class WardrobeView(tk.Frame):
             )
             none_button.pack(side="right")
             self.none_buttons[slot] = none_button
-            choices = tk.Frame(self, background=palette["background"])
+            choices = tk.Frame(self.choices_area, background=palette["background"])
             choices.pack(fill="x", pady=(0, 10))
-            for column, item in enumerate(item for item in ACCESSORIES if item.slot == slot):
+            for column in range(3):
                 choices.grid_columnconfigure(column, weight=1, uniform=slot)
+            for index, item in enumerate(items):
+                row, column = divmod(index, 3)
                 tile = tk.Frame(choices, background=palette["card"],
                                 highlightthickness=1, highlightbackground=palette["border"])
-                tile.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0))
+                tile.grid(row=row, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0), pady=(0, 8))
                 with load_frame(assets_root, "white", "idle", 76, **{slot: item.id}) as frame:
                     thumbnail = ImageTk.PhotoImage(frame, master=self)
                 self._thumbnails.append(thumbnail)
@@ -94,7 +116,7 @@ class WardrobeView(tk.Frame):
                          wraplength=145).pack(padx=5, pady=(4, 2))
                 link = tk.Button(
                     tile, text="View achievement →", font=fonts["small"],
-                    command=lambda accessory_id=item.id: on_achievement(accessory_id),
+                    command=lambda accessory_id=item.id: self.on_achievement(accessory_id),
                     bg=palette["card"], fg=palette["accent_dark"],
                     activebackground=palette["peach"], activeforeground=palette["ink"],
                     relief="flat", borderwidth=0, highlightthickness=1,
@@ -103,14 +125,14 @@ class WardrobeView(tk.Frame):
                 )
                 link.pack(padx=5, pady=(0, 6))
                 self.achievement_links[item.id] = link
-        self.update_unlocks(unlocked)
 
     def _choose(self) -> None:
         self._refresh_selection()
         self.on_change()
 
     def _refresh_selection(self) -> None:
-        for item in ACCESSORIES:
+        for item_id in self.buttons:
+            item = ACCESSORY_BY_ID[item_id]
             selected = self.slots[item.slot].get() == item.id
             self.buttons[item.id].configure(
                 highlightbackground=self.palette["accent"] if selected else self.palette["card"],
@@ -125,7 +147,12 @@ class WardrobeView(tk.Frame):
         newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
         self.unlocked = set(unlocked)
-        for item in ACCESSORIES:
+        visible = visible_accessories(self.unlocked)
+        visible_ids = tuple(item.id for item in visible)
+        if visible_ids != self._visible_ids:
+            self._build_choices(visible)
+            self._visible_ids = visible_ids
+        for item in visible:
             earned = item.id in self.unlocked
             self.buttons[item.id].configure(state="normal" if earned else "disabled")
             value = "Unlocked" if earned else "Locked"

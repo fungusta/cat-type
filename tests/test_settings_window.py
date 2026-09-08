@@ -8,7 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
-from app_version import APP_VERSION
+from app_version import APP_VERSION, IS_BETA_BUILD
 from cat_settings import CAT_VARIANTS, AppSettings
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
@@ -508,7 +508,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Save changes",
             "Today",
             "White",
-            f"Version {APP_VERSION}",
+            f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
             "View",
             "keystrokes",
             "← Previous",
@@ -720,7 +720,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     ) -> None:
         self.assertEqual(
             self.settings_window.update_version_label.cget("text"),
-            f"Version {APP_VERSION}",
+            f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
         )
         self.assertEqual(
             self.settings_window.update_status_text.get(),

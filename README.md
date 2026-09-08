@@ -61,7 +61,8 @@ Settings are saved for the current user and take effect immediately:
 - View all-time activity and navigate through current or previous 1-day, 7-day,
   or 30-day trends as an exact line or columns; Cat Type remembers the selected
   chart view.
-- Open **Wardrobe** to preview and equip a hat and glasses. One outfit applies
+- Open **Wardrobe** to combine hats, glasses, neckwear, back accessories, and ear
+  accessories. Equip one item per category. One outfit applies
   to every cat, including **Mix it up**. Select **None** to remove an item, then
   choose **Save changes** to apply your outfit. Cancel keeps your previous outfit.
 
@@ -75,11 +76,23 @@ you choose when to equip them. Existing typing history counts toward every rewar
 | Accessory | Achievement | Requirement |
 | --- | --- | --- |
 | Round glasses | First Steps | 1,000 total keystrokes |
+| Bow tie | Helping Paw | 5,000 total keystrokes |
 | Beanie | Getting Comfortable | 10,000 total keystrokes |
 | Star glasses | Star Typist | 25,000 total keystrokes |
 | Party hat | Cause for Celebration | 50,000 total keystrokes |
 | Crown | Keyboard Royalty | 100,000 total keystrokes |
 | Sunglasses | Regular Companion | Type on 7 different days; they need not be consecutive |
+| Red bandana | Daily Purr | Type on 30 different days |
+| Adventure cape | Faithful Feline | Type on 100 different days |
+| Golden wings | Million Meows | 1,000,000 total keystrokes |
+
+Some achievements are secret. Their names, requirements, items, and contribution
+to the displayed total appear only after you earn them. Every achievement unlocks
+an equippable item, and discoveries appear in both tabs immediately.
+
+Designated beta builds grant **Beta Buddy** and an exclusive purple bandana with
+a gold β emblem. This unlock stays with you when you upgrade to a stable build.
+This development preview is designated beta; Settings labels it **Beta**.
 
 Rewards are saved locally in `achievements.json` beside `settings.json` and
 `usage.json`. They remain unlocked even if activity totals later decrease.
@@ -182,6 +195,10 @@ restart Cat Type to clear the in-memory render cache, and rerun the export
 command above to regenerate the posed inspection files.
 
 ## Build
+
+Designate beta builds with `IS_BETA_BUILD` in `app_version.py`; set it to `False`
+for stable releases. Beta Buddy eligibility uses this explicit build flag, not
+the numeric version or existing installation files.
 
 Create the Windows portable app and installer:
 

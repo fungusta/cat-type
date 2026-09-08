@@ -1,14 +1,38 @@
 import unittest
+import inspect
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from cat_settings import CAT_VARIANTS
+from cat_accessories import ACCESSORIES
+import cat_artwork as art
 
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
 class AccessoryArtworkTests(unittest.TestCase):
+    def test_new_slots_change_pixels_and_cache_independently(self):
+        self.assertIn('neck', inspect.signature(art.load_frame).parameters)
+        source = art.frame_source_path(ASSETS, 'white', 'idle')
+        plain = art.vector_png(source, 'idle', 120)
+        choices = ({'neck': 'bow-tie'}, {'back': 'angel-wings'}, {'ears': 'sunflower-clip'})
+        images = [art.vector_png(source, 'idle', 120, **choice) for choice in choices]
+        self.assertEqual(len(set([plain, *images])), 4)
+        for choice, result in zip(choices, images):
+            self.assertIs(result, art.vector_png(source, 'idle', 120, **choice))
+
+    def test_back_neck_and_ears_render_in_their_intended_layers(self):
+        self.assertIn('neck', inspect.signature(art.posed_svg).parameters)
+        source = art.frame_source_path(ASSETS, 'white', 'idle')
+        root = ET.fromstring(art.posed_svg(source, 'idle', back='angel-wings',
+                                         neck='bow-tie', ears='sunflower-clip', hat='beanie'))
+        ids = [node.get('id') for node in root.iter()]
+        self.assertLess(ids.index('accessory-back'), ids.index('body'))
+        self.assertLess(ids.index('body'), ids.index('accessory-neck'))
+        self.assertLess(ids.index('accessory-neck'), ids.index('paw-left'))
+        self.assertLess(ids.index('accessory-hat'), ids.index('accessory-ears'))
+
     def test_empty_outfit_preserves_existing_svg_and_pixels(self):
         import cat_artwork as art
 
@@ -74,15 +98,7 @@ class AccessoryArtworkTests(unittest.TestCase):
                 art.vector_png(source, "idle", 120, **kwargs)
 
     def test_accessory_masters_are_editable_standalone_vectors(self):
-        expected = {
-            "round-glasses",
-            "sunglasses",
-            "star-glasses",
-            "beanie",
-            "party-hat",
-            "crown",
-        }
-        for accessory_id in expected:
+        for accessory_id in (item.id for item in ACCESSORIES):
             with self.subTest(accessory=accessory_id):
                 root = ET.parse(
                     ASSETS / "accessories" / f"{accessory_id}.svg"
@@ -134,14 +150,7 @@ class AccessoryArtworkTests(unittest.TestCase):
     def test_each_accessory_stays_strictly_inside_every_canvas_edge(self):
         import cat_artwork as art
 
-        outfits = (
-            {"glasses": "round-glasses"},
-            {"glasses": "sunglasses"},
-            {"glasses": "star-glasses"},
-            {"hat": "beanie"},
-            {"hat": "party-hat"},
-            {"hat": "crown"},
-        )
+        outfits = ({item.slot: item.id} for item in ACCESSORIES)
         for outfit in outfits:
             for size in (72, 120, 210):
                 with self.subTest(outfit=outfit, size=size):
@@ -153,6 +162,21 @@ class AccessoryArtworkTests(unittest.TestCase):
                     self.assertGreater(top, 0)
                     self.assertLess(right, size)
                     self.assertLess(bottom, size)
+
+    def test_new_items_render_across_cats_poses_and_sizes_without_covering_face(self):
+        for item in ACCESSORIES:
+            if item.slot in {'hat', 'glasses'}:
+                continue
+            for variant in CAT_VARIANTS:
+                for pose in art.POSE_NAMES:
+                    for size in (72, 120, 210):
+                        with self.subTest(item=item.id, cat=variant, pose=pose, size=size):
+                            with art.load_frame(ASSETS, variant, pose, size) as plain, art.load_frame(
+                                ASSETS, variant, pose, size, **{item.slot: item.id}
+                            ) as dressed:
+                                self.assertNotEqual(plain.tobytes(), dressed.tobytes())
+                                face = tuple(round(value * size / 120) for value in (36, 50, 84, 76))
+                                self.assertEqual(plain.crop(face).tobytes(), dressed.crop(face).tobytes())
 
     def test_packaging_includes_accessory_vectors(self):
         spec = (ASSETS.parent / "CatType.spec").read_text(encoding="utf-8")

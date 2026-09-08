@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from cat_accessories import normalize_accessory
+from cat_accessories import ACCESSORY_SLOTS, normalize_accessory
 
 
 APP_NAME = "Cat Type"
@@ -38,6 +38,12 @@ class AppSettings:
     metrics_view: str = "line"
     hat: str = "none"
     glasses: str = "none"
+    neck: str = "none"
+    back: str = "none"
+    ears: str = "none"
+
+    def outfit(self) -> dict[str, str]:
+        return {slot: getattr(self, slot) for slot in ACCESSORY_SLOTS}
 
     def normalized(self) -> "AppSettings":
         # Early SVG previews used separate style IDs; keep those selections.
@@ -73,8 +79,7 @@ class AppSettings:
             placement=placement,
             launch_at_startup=bool(self.launch_at_startup),
             metrics_view=metrics_view,
-            hat=normalize_accessory(self.hat, "hat"),
-            glasses=normalize_accessory(self.glasses, "glasses"),
+            **{slot: normalize_accessory(value, slot) for slot, value in self.outfit().items()},
         )
 
 

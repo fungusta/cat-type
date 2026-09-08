@@ -7,12 +7,57 @@ from PIL import ImageTk
 from cat_settings import AppSettings
 from settings_window import SettingsWindow
 from usage_metrics import UsageMetrics
+from cat_accessories import ACCESSORY_BY_ID
+from wardrobe_view import WardrobeView
+import inspect
 
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_secrets_and_their_items_are_absent_from_both_tabs_and_totals(self):
+        self.assertIn('slots', inspect.signature(WardrobeView).parameters)
+        window = self.window()
+        hidden = {'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf', 'beta-bandana'}
+        self.assertFalse(hidden & window.wardrobe.buttons.keys())
+        self.assertFalse(hidden & window.achievements.cards.keys())
+        self.assertIn('0 of 10', window.achievements.summary.get())
+        self.assertNotIn('ears', window.wardrobe.none_buttons)
+        self.assertIn('bow-tie', window.wardrobe.buttons)
+
+    def test_live_secret_reveal_keeps_pending_choices_and_supports_all_slots(self):
+        self.assertIn('slots', inspect.signature(WardrobeView).parameters)
+        window = self.window({'crown', 'round-glasses'})
+        window.wardrobe.buttons['crown'].invoke()
+        window.wardrobe.buttons['round-glasses'].invoke()
+        new_ids = {'beta-bandana', 'angel-wings', 'sunflower-clip'}
+        window.update_achievements({'crown', 'round-glasses'} | new_ids,
+                                   tuple(ACCESSORY_BY_ID[item] for item in sorted(new_ids)))
+        window.window.update()
+        self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
+        self.assertIn('5 of 13', window.achievements.summary.get())
+        for item_id in new_ids:
+            self.assertIn(item_id, window.achievements.cards)
+            window.wardrobe.buttons[item_id].invoke()
+        plain = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
+        window.page_buttons['Achievements'].invoke()
+        window.page_buttons['Wardrobe'].invoke()
+        window.window.update()
+        self.assertEqual(ImageTk.getimage(window._preview_frames['white']['idle']).tobytes(), plain)
+        window._save()
+        self.assertEqual(self.saved[0].outfit(), {'hat': 'crown', 'glasses': 'round-glasses',
+                                               'neck': 'beta-bandana', 'back': 'angel-wings', 'ears': 'sunflower-clip'})
+
+    def test_new_slots_none_and_cancel_preserve_saved_outfit(self):
+        self.assertIn('slots', inspect.signature(WardrobeView).parameters)
+        window = self.window({'beta-bandana', 'angel-wings', 'sunflower-clip'},
+                             neck='beta-bandana', back='angel-wings', ears='sunflower-clip')
+        window.wardrobe.none_buttons['neck'].invoke()
+        self.assertEqual((window.neck.get(), window.back.get(), window.ears.get()), ('none', 'angel-wings', 'sunflower-clip'))
+        window.close()
+        self.assertEqual(self.saved, [])
+
     def setUp(self):
         try:
             self.root = tk.Tk()

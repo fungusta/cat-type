@@ -7,8 +7,8 @@ from pathlib import Path
 
 from PIL import ImageTk
 
-from achievements import progress
-from cat_accessories import ACCESSORIES
+from achievements import progress, requirement
+from cat_accessories import Accessory, visible_accessories
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
 
@@ -20,6 +20,9 @@ class AchievementsView(tk.Frame):
     ) -> None:
         super().__init__(parent, background=palette["background"])
         self.palette = palette
+        self.fonts = fonts
+        self.assets_root = assets_root
+        self._visible_ids: tuple[str, ...] = ()
         self.cards: dict[str, tk.Frame] = {}
         self.progress_text: dict[str, tk.StringVar] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
@@ -29,7 +32,16 @@ class AchievementsView(tk.Frame):
         tk.Label(self, text="Equip unlocked rewards in Wardrobe.", font=fonts["body"],
                  bg=palette["background"], fg=palette["muted"]).pack(anchor="w", pady=(4, 14))
 
-        for item in ACCESSORIES:
+        self.update_progress(metrics, unlocked)
+
+    def _build_cards(self, visible: tuple[Accessory, ...]) -> None:
+        for card in self.cards.values():
+            card.destroy()
+        self.cards.clear()
+        self.progress_text.clear()
+        self._thumbnails.clear()
+        palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
+        for item in visible:
             card = tk.Frame(self, background=palette["card"], takefocus=True,
                             highlightthickness=2, highlightbackground=palette["border"],
                             highlightcolor=palette["accent"])
@@ -45,27 +57,31 @@ class AchievementsView(tk.Frame):
                      bg=palette["card"], fg=palette["ink"]).pack(fill="x")
             tk.Label(copy, text=f"Reward: {item.name}", font=fonts["small"], anchor="w",
                      bg=palette["card"], fg=palette["ink"]).pack(fill="x", pady=(2, 0))
-            requirement = (
-                f"Type on {item.target} different days"
-                if item.metric == "days" else f"{item.target:,} total keystrokes"
-            )
-            tk.Label(copy, text=requirement, font=fonts["small"], anchor="w",
+            tk.Label(copy, text=requirement(item), font=fonts["small"], anchor="w",
+                     wraplength=340, justify="left",
                      bg=palette["card"], fg=palette["muted"]).pack(fill="x", pady=(4, 0))
             value = tk.StringVar(master=self)
             self.progress_text[item.id] = value
             tk.Label(copy, textvariable=value, font=fonts["small"], anchor="w",
                      bg=palette["card"], fg=palette["accent_dark"]).pack(fill="x", pady=(2, 0))
-        self.update_progress(metrics, unlocked)
 
     def update_progress(self, metrics: UsageMetrics, unlocked: set[str]) -> None:
-        earned_count = sum(item.id in unlocked for item in ACCESSORIES)
-        summary = f"{earned_count} of {len(ACCESSORIES)} achievements unlocked"
+        visible = visible_accessories(unlocked)
+        visible_ids = tuple(item.id for item in visible)
+        if visible_ids != self._visible_ids:
+            self._build_cards(visible)
+            self._visible_ids = visible_ids
+        earned_count = sum(item.id in unlocked for item in visible)
+        summary = f"{earned_count} of {len(visible)} achievements unlocked"
         if self.summary.get() != summary:
             self.summary.set(summary)
-        for item in ACCESSORIES:
-            current = progress(item, metrics)
-            unit = " days" if item.metric == "days" else ""
-            value = "Unlocked" if item.id in unlocked else f"{current:,} / {item.target:,}{unit} · Locked"
+        for item in visible:
+            if item.id in unlocked:
+                value = "Unlocked"
+            else:
+                current = progress(item, metrics)
+                unit = " days" if item.metric == "days" else ""
+                value = f"{current:,} / {item.target:,}{unit} · Locked"
             if self.progress_text[item.id].get() != value:
                 self.progress_text[item.id].set(value)
 

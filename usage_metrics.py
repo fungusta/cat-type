@@ -38,12 +38,13 @@ def _clean_buckets(
         if not isinstance(key, str):
             continue
         try:
-            datetime.strptime(key, key_format)
+            parsed = datetime.strptime(key, key_format)
         except ValueError:
             continue
         cleaned_count = _clean_count(count)
         if cleaned_count:
-            cleaned[key] = cleaned_count
+            canonical_key = parsed.strftime(key_format)
+            cleaned[canonical_key] = cleaned.get(canonical_key, 0) + cleaned_count
     return cleaned
 
 
@@ -169,9 +170,11 @@ class UsageTracker:
         self.flush_threshold = max(1, flush_threshold)
         self.metrics = self.store.load()
         self.pending_keystrokes = 0
+        self.last_recorded_at: datetime | None = None
 
     def record(self) -> UsageMetrics:
-        self.metrics.record(self.now())
+        self.last_recorded_at = self.now()
+        self.metrics.record(self.last_recorded_at)
         self.pending_keystrokes += 1
         if self.pending_keystrokes >= self.flush_threshold:
             self.flush()

@@ -10,7 +10,7 @@ from xml.etree import ElementTree as ET
 from PIL import Image
 import resvg_py
 
-from cat_accessories import normalize_accessory
+from cat_accessories import ACCESSORY_SLOTS, normalize_accessory
 from cat_settings import CAT_VARIANTS
 
 
@@ -37,7 +37,19 @@ def _add_accessory(root: ET.Element, source: Path, accessory_id: str, slot: str)
     for child in accessory:
         if child.tag.rsplit("}", 1)[-1] not in {"title", "desc"}:
             layer.append(child)
-    root.append(layer)
+    if slot == "back":
+        root.insert(0, layer)
+    elif slot == "neck":
+        # The cats share a body/head/paw structure; neckwear must sit behind
+        # the animated paws without being hidden by the continuous body.
+        for parent in root.iter():
+            for index, child in enumerate(parent):
+                if child.get("id") == "paw-left":
+                    parent.insert(index, layer)
+                    return
+        raise ValueError("Cat artwork has no paw layer for neckwear")
+    else:
+        root.append(layer)
 
 
 def frame_source_path(assets_root: Path, variant: str, name: str) -> Path:
@@ -52,12 +64,18 @@ def posed_svg(
     *,
     hat: object = "none",
     glasses: object = "none",
+    neck: object = "none",
+    back: object = "none",
+    ears: object = "none",
 ) -> str:
     """Derive a pose from the master without changing the editable source."""
     if name not in POSE_NAMES:
         raise ValueError(f"Unknown cat pose: {name}")
     hat_id = _accessory_id(hat, "hat")
     glasses_id = _accessory_id(glasses, "glasses")
+    neck_id = _accessory_id(neck, "neck")
+    back_id = _accessory_id(back, "back")
+    ears_id = _accessory_id(ears, "ears")
     root = ET.fromstring(source.read_text(encoding="utf-8"))
     parts = {element.get("id"): element for element in root.iter()}
     for side in ("left", "right"):
@@ -70,8 +88,11 @@ def posed_svg(
             )
     parts["mouth-idle"].set("display", "none" if name == "excited" else "inline")
     parts["mouth-excited"].set("display", "inline" if name == "excited" else "none")
+    _add_accessory(root, source, back_id, "back")
+    _add_accessory(root, source, neck_id, "neck")
     _add_accessory(root, source, glasses_id, "glasses")
     _add_accessory(root, source, hat_id, "hat")
+    _add_accessory(root, source, ears_id, "ears")
     return ET.tostring(root, encoding="unicode")
 
 
@@ -82,21 +103,24 @@ def vector_png(
     *,
     hat: object = "none",
     glasses: object = "none",
+    neck: object = "none",
+    back: object = "none",
+    ears: object = "none",
 ) -> bytes:
     """Cache rendered bytes, never mutable Pillow or interpreter-owned Tk images."""
     if size < 1:
         raise ValueError("Cat render size must be positive")
-    hat_id = _accessory_id(hat, "hat")
-    glasses_id = _accessory_id(glasses, "glasses")
-    return _cached_vector_png(source, name, size, hat_id, glasses_id)
+    outfit = tuple(_accessory_id(value, slot) for slot, value in
+                   zip(ACCESSORY_SLOTS, (hat, glasses, neck, back, ears)))
+    return _cached_vector_png(source, name, size, outfit)
 
 
 @lru_cache(maxsize=256)
 def _cached_vector_png(
-    source: Path, name: str, size: int, hat: str, glasses: str
+    source: Path, name: str, size: int, outfit: tuple[str, ...]
 ) -> bytes:
     return resvg_py.svg_to_bytes(
-        svg_string=posed_svg(source, name, hat=hat, glasses=glasses),
+        svg_string=posed_svg(source, name, **dict(zip(ACCESSORY_SLOTS, outfit))),
         width=size,
         height=size,
         skip_system_fonts=True,
@@ -112,11 +136,15 @@ def load_frame(
     color_key_safe: bool = False,
     hat: object = "none",
     glasses: object = "none",
+    neck: object = "none",
+    back: object = "none",
+    ears: object = "none",
 ) -> Image.Image:
     """Return an independent RGBA frame for a preview or platform surface."""
     source = frame_source_path(assets_root, variant, name)
     with Image.open(
-        BytesIO(vector_png(source, name, size, hat=hat, glasses=glasses))
+        BytesIO(vector_png(source, name, size, hat=hat, glasses=glasses,
+                           neck=neck, back=back, ears=ears))
     ) as image:
         frame = image.convert("RGBA")
     if color_key_safe:

@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 from achievements import AchievementStore, AchievementTracker
 from cat_settings import AppSettings, SettingsStore
-from cat_type import AnimationState, CatTypeApp
+from cat_type import AnimationState, CatTypeApp, _MacOSNativeOverlaySurface
 from usage_metrics import UsageStore, UsageTracker
 
 
@@ -108,6 +108,42 @@ class WardrobeIntegrationTests(unittest.TestCase):
         app._shutting_down = True
         app._flush_usage_periodically()
         self.assertEqual(AchievementStore(self.directory / 'achievements.json').load(), {'round-glasses'})
+
+    def test_new_slot_validation_preserves_unlocked_and_rejects_locked_items(self):
+        app = self.app()
+        app.achievement_tracker.unlocked.update({'beta-bandana', 'angel-wings'})
+        validated = app._validated_outfit(AppSettings(neck='beta-bandana', back='angel-wings', ears='sunflower-clip'))
+        self.assertEqual((validated.neck, validated.back, validated.ears), ('beta-bandana', 'angel-wings', 'none'))
+
+    def test_native_surface_invalidates_cache_for_new_slots(self):
+        import inspect
+        self.assertIn('neck', inspect.signature(_MacOSNativeOverlaySurface.set_outfit).parameters)
+        surface = _MacOSNativeOverlaySurface('test')
+        surface._images[('white', 'idle', 120)] = object()
+        surface.set_outfit('none', 'none', neck='bow-tie')
+        self.assertEqual(surface._images, {})
+        sentinel = object()
+        surface._images[('white', 'idle', 120)] = sentinel
+        surface.set_outfit('none', 'none', neck='bow-tie')
+        self.assertIs(surface._images[('white', 'idle', 120)], sentinel)
+        surface.set_outfit('none', 'none', neck='bow-tie', back='angel-wings', ears='sunflower-clip')
+        self.assertEqual(surface._images, {})
+
+    def test_changing_only_neckwear_rebuilds_live_frames_and_persists(self):
+        app = self.app(5000)
+        app.root = Mock()
+        app.label = Mock()
+        app._overlay_visible = False
+        app._active_variant = 'white'
+        app._last_rendered_frame = ('white', 'idle')
+        app._load_frames = Mock(return_value={'gray': {'idle': Mock()}, 'white': {'idle': Mock()}})
+        app._ensure_activity_monitoring = Mock()
+        app._macos_overlay_surface = None
+        with patch('cat_type.set_launch_at_startup'):
+            app.apply_settings(AppSettings(neck='bow-tie'))
+        self.assertEqual(app.settings_store.load().neck, 'bow-tie')
+        app._load_frames.assert_called_once()
+        self.assertIsNone(app._last_rendered_frame)
 
 
 if __name__ == '__main__':

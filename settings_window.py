@@ -11,7 +11,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageTk
 
-from app_version import APP_VERSION
+from app_version import APP_VERSION, IS_BETA_BUILD
 from achievements_view import AchievementsView
 from cat_artwork import load_frame
 from cat_settings import CAT_VARIANTS, AppSettings
@@ -352,8 +352,10 @@ class SettingsWindow:
         self.cat_style = tk.StringVar(
             value=self._label_for(CAT_STYLE_LABELS, settings.cat_style)
         )
-        self.hat = tk.StringVar(value=self._allowed_accessory(settings.hat, "hat"))
-        self.glasses = tk.StringVar(value=self._allowed_accessory(settings.glasses, "glasses"))
+        self.outfit_vars = {slot: tk.StringVar(value=self._allowed_accessory(value, slot))
+                           for slot, value in settings.outfit().items()}
+        for slot, variable in self.outfit_vars.items():
+            setattr(self, slot, variable)
         self.size_percent = tk.IntVar(value=settings.size_percent)
         self.hold_seconds = tk.DoubleVar(value=settings.hold_seconds)
         self.fade_seconds = tk.DoubleVar(value=settings.fade_seconds)
@@ -596,8 +598,7 @@ class SettingsWindow:
             for name in ("idle", "tap-left", "tap-right", "excited"):
                 image = load_frame(
                     assets_root, variant, name, 148,
-                    hat=self._allowed_accessory(self.hat.get(), "hat"),
-                    glasses=self._allowed_accessory(self.glasses.get(), "glasses"),
+                    **self._selected_outfit(),
                 )
                 vector_frames[name] = ImageTk.PhotoImage(
                     image,
@@ -710,7 +711,7 @@ class SettingsWindow:
         }
         self.wardrobe = WardrobeView(
             self.scroll_content, assets_root=self._assets_root,
-            hat=self.hat, glasses=self.glasses, unlocked=self.unlocked_accessories,
+            slots=self.outfit_vars, unlocked=self.unlocked_accessories,
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
             palette=reward_palette, fonts=self.fonts,
         )
@@ -1919,7 +1920,7 @@ class SettingsWindow:
         card, content = self._card(parent, "Updates")
         self.update_version_label = tk.Label(
             content,
-            text=f"Version {APP_VERSION}",
+            text=f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
             background=self.CARD,
             foreground=self.INK,
             font=self.fonts["control"],
@@ -2215,6 +2216,10 @@ class SettingsWindow:
         item_id = normalize_accessory(value, slot)
         return item_id if item_id in self.unlocked_accessories else "none"
 
+    def _selected_outfit(self) -> dict[str, str]:
+        return {slot: self._allowed_accessory(variable.get(), slot)
+                for slot, variable in self.outfit_vars.items()}
+
     def _refresh_outfit_preview(self) -> None:
         self._load_preview_frames(str(self._assets_root / "cat-type.png"))
         self._display_preview()
@@ -2251,8 +2256,7 @@ class SettingsWindow:
             placement=PLACEMENT_LABELS[self.placement.get()],
             launch_at_startup=self.launch_at_startup.get(),
             metrics_view=self.metrics_view.get(),
-            hat=self._allowed_accessory(self.hat.get(), "hat"),
-            glasses=self._allowed_accessory(self.glasses.get(), "glasses"),
+            **self._selected_outfit(),
         ).normalized()
         self._on_save(settings)
         self.close()

@@ -23,7 +23,8 @@ from PIL import Image, ImageTk
 
 from cat_artwork import BASE_SIZE, frame_source_path, load_frame, vector_png
 from achievements import AchievementStore, AchievementTracker
-from cat_accessories import Accessory
+from cat_accessories import ACCESSORY_SLOTS, Accessory
+from app_version import IS_BETA_BUILD
 
 from auto_update import (
     AvailableUpdate,
@@ -668,10 +669,16 @@ class _MacOSNativeOverlaySurface:
         self._images: dict[tuple[str, str, int], object] = {}
         self.hat = "none"
         self.glasses = "none"
+        self.neck = "none"
+        self.back = "none"
+        self.ears = "none"
 
-    def set_outfit(self, hat: str, glasses: str) -> None:
-        if (hat, glasses) != (self.hat, self.glasses):
-            self.hat, self.glasses = hat, glasses
+    def set_outfit(self, hat: str, glasses: str, *, neck: str = "none",
+                   back: str = "none", ears: str = "none") -> None:
+        outfit = (hat, glasses, neck, back, ears)
+        if outfit != tuple(getattr(self, slot) for slot in ACCESSORY_SLOTS):
+            for slot, value in zip(ACCESSORY_SLOTS, outfit):
+                setattr(self, slot, value)
             self._images.clear()
 
     @property
@@ -742,8 +749,7 @@ class _MacOSNativeOverlaySurface:
                 frame_source_path(ASSETS_ROOT, variant, frame_name),
                 frame_name,
                 size,
-                hat=self.hat,
-                glasses=self.glasses,
+                **{slot: getattr(self, slot) for slot in ACCESSORY_SLOTS},
             )
             image = NSImage.alloc().initWithData_(
                 NSData.dataWithBytes_length_(png, len(png))
@@ -1613,6 +1619,7 @@ class CatTypeApp:
         self.achievement_tracker = AchievementTracker(
             AchievementStore(self.settings_store.path.with_name("achievements.json")),
             self.usage_tracker.metrics,
+            beta_eligible=IS_BETA_BUILD,
         )
         self.settings = self._validated_outfit(self.settings)
         self.animation = AnimationState(
@@ -1735,7 +1742,7 @@ class CatTypeApp:
             self._macos_overlay_surface = _MacOSNativeOverlaySurface(
                 self.root.title()
             )
-            self._macos_overlay_surface.set_outfit(self.settings.hat, self.settings.glasses)
+            self._macos_overlay_surface.set_outfit(**self.settings.outfit())
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
 
@@ -2374,7 +2381,9 @@ class CatTypeApp:
         self.animation.record_key(happened_at, paw)
         self.tracker.notify_activity(happened_at)
         achievement_tracker = getattr(self, "achievement_tracker", None)
-        earned = achievement_tracker.evaluate(usage_metrics) if achievement_tracker else ()
+        earned = achievement_tracker.evaluate(
+            usage_metrics, recorded_at=getattr(usage_tracker, "last_recorded_at", None),
+        ) if achievement_tracker else ()
         if (
             self._settings_window is not None
             and self._settings_window.window.winfo_exists()
@@ -2552,8 +2561,7 @@ class CatTypeApp:
                 frame_name,
                 self.frame_width,
                 color_key_safe=True,
-                hat=getattr(self.settings, "hat", "none"),
-                glasses=getattr(self.settings, "glasses", "none"),
+                **{slot: getattr(self.settings, slot, "none") for slot in ACCESSORY_SLOTS},
             ) as source:
                 alpha = source.convert("RGBA").getchannel("A")
                 rectangles = []
@@ -2600,8 +2608,7 @@ class CatTypeApp:
                     load_frame(
                         ASSETS_ROOT, variant, name, size,
                         color_key_safe=IS_WINDOWS or IS_LINUX,
-                        hat=getattr(self.settings, "hat", "none"),
-                        glasses=getattr(self.settings, "glasses", "none"),
+                        **{slot: getattr(self.settings, slot, "none") for slot in ACCESSORY_SLOTS},
                     ),
                     master=self.root,
                 )
@@ -2768,13 +2775,13 @@ class CatTypeApp:
         tracker = getattr(self, "achievement_tracker", None)
         return replace(
             settings,
-            hat=tracker.allowed(settings.hat, "hat") if tracker else "none",
-            glasses=tracker.allowed(settings.glasses, "glasses") if tracker else "none",
+            **{slot: tracker.allowed(value, slot) if tracker else "none"
+               for slot, value in settings.outfit().items()},
         )
 
     def apply_settings(self, settings: AppSettings) -> None:
         previous_size = self.settings.size_percent
-        previous_outfit = (self.settings.hat, self.settings.glasses)
+        previous_outfit = self.settings.outfit()
         settings = self._validated_outfit(settings.normalized())
         requires_input_monitoring = getattr(
             self,
@@ -2802,14 +2809,14 @@ class CatTypeApp:
         )
         if (
             self.settings.size_percent != previous_size
-            or (self.settings.hat, self.settings.glasses) != previous_outfit
+            or self.settings.outfit() != previous_outfit
         ):
             if self._overlay_visible:
                 self._hide()
             self.frames = self._load_frames(self.settings.size_percent)
             surface = getattr(self, "_macos_overlay_surface", None)
             if surface is not None:
-                surface.set_outfit(self.settings.hat, self.settings.glasses)
+                surface.set_outfit(**self.settings.outfit())
             self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
             self.frame_height = self.frames[CAT_VARIANTS[0]]["idle"].height()
             self.label.configure(

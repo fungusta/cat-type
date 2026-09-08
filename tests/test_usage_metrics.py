@@ -8,6 +8,16 @@ from usage_metrics import UsageMetrics, UsageStore, UsageTracker
 
 
 class UsageMetricsTests(unittest.TestCase):
+    def test_legacy_bucket_aliases_merge_without_losing_counts_or_double_counting(self):
+        metrics = UsageMetrics.from_payload({
+            'daily': {'2026-1-1': 2, '2026-01-01': 3},
+            'hourly': {'2026-1-1T0': 2, '2026-01-01T00': 3},
+        })
+        self.assertEqual(metrics.count_for_day(date(2026, 1, 1)), 5)
+        self.assertEqual(metrics.hourly_series(date(2026, 1, 1))[0], 5)
+        self.assertEqual(metrics.total_keystrokes, 5)
+        self.assertEqual(UsageMetrics.from_payload(metrics.to_payload()), metrics)
+
     def test_records_only_daily_and_hourly_aggregate_counts(self) -> None:
         metrics = UsageMetrics()
 

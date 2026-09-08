@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Cozy scarf</title>
+  <desc>Editable apricot knit scarf with cream stripes and short tassels. The wrap and hanging end sit below the mouth and behind the paws.</desc>
+  <g id="cozy-scarf" stroke="#563531" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#eb9a64" d="M42 84 L55 86 L52 103 L39 101 Z"/>
+    <path fill="none" stroke="#ffdfae" stroke-width="3" d="M42 92 L53 94 M41 98 L52 100"/>
+    <path fill="none" stroke-width="1.8" d="M41 102 L40 105 M45 103 L44 106 M49 104 L48 106"/>
+    <path fill="#efaa76" d="M31 79 Q59 85 89 79 L88 88 Q60 96 32 88 Z"/>
+    <path fill="none" stroke="#ffe4bb" stroke-width="2.5" d="M34 84 Q60 91 86 84"/>
+    <path fill="none" stroke="#ce7851" stroke-width="1.6" d="M40 83 L39 88 M49 85 L48 90 M61 86 L61 91 M73 85 L74 90 M82 83 L83 88"/>
+  </g>
+</svg>

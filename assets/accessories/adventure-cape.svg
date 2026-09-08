@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Adventure cape</title>
+  <desc>Editable forest-green traveling cape. The side folds and gold-edged curved hem remain visible behind the whole cat.</desc>
+  <g id="adventure-cape" stroke="#273630" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#4d9480" d="M26 38 Q60 54 94 38 Q108 43 115 57 L115 104 L110 113 Q88 117 60 109 Q32 117 10 113 L5 104 L5 57 Q12 43 26 38 Z"/>
+    <path fill="#326959" stroke="none" d="M26 48 L17 110 Q36 115 51 109 L60 64 L69 109 Q84 115 103 110 L94 48 L60 61 Z"/>
+    <path fill="none" stroke="#e8c279" stroke-width="2.2" d="M8 103 L13 109 Q34 113 60 105 Q86 113 107 109 L112 103"/>
+    <path fill="none" stroke="#83b69b" stroke-width="1.6" d="M20 45 Q11 51 9 64 M100 45 Q109 51 111 64"/>
+  </g>
+</svg>
