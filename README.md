@@ -92,7 +92,7 @@ an equippable item, and discoveries appear in both tabs immediately.
 
 Designated beta builds grant **Beta Buddy** and an exclusive purple bandana with
 a gold β emblem. This unlock stays with you when you upgrade to a stable build.
-This development preview is designated beta; Settings labels it **Beta**.
+This release is designated beta; Settings labels it **Beta**.
 
 Rewards are saved locally in `achievements.json` beside `settings.json` and
 `usage.json`. They remain unlocked even if activity totals later decrease.
@@ -219,7 +219,7 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.36` to build the
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.37` to build the
 Windows, macOS, and Linux architectures and publish those assets on a GitHub
 Release.
 

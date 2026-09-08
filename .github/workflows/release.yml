@@ -280,6 +280,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           path: release-assets
@@ -291,6 +293,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
+          is_beta="$(python -c 'from app_version import IS_BETA_BUILD; print("true" if IS_BETA_BUILD else "false")')"
+          release_flags=()
+          if [[ "$is_beta" == "true" ]]; then
+            release_flags+=(--prerelease --latest=false)
+          fi
           cd release-assets
           sha256sum Cat-Type-* > SHA256SUMS.txt
-          gh release create "${GITHUB_REF_NAME}" ./* --generate-notes
+          gh release create "${GITHUB_REF_NAME}" ./* --generate-notes "${release_flags[@]}"
