@@ -294,7 +294,6 @@ class SettingsWindow:
         icon_path: str | None = None,
         keystroke_count: int = 0,
         usage_metrics: UsageMetrics | None = None,
-        on_metrics_view_change: Callable[[str], None] | None = None,
         on_check_for_updates: Callable[[], None] | None = None,
         on_open_release_page: Callable[[], None] | None = None,
         update_status: str = "",
@@ -309,7 +308,6 @@ class SettingsWindow:
         self._on_save = on_save
         self.unlocked_accessories = set(unlocked_accessories or ())
         self._assets_root = Path(icon_path).parent if icon_path else Path(__file__).resolve().parent / "assets"
-        self._on_metrics_view_change = on_metrics_view_change
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
         self._on_close = on_close
@@ -323,6 +321,9 @@ class SettingsWindow:
             on_open_input_monitoring_settings
         )
         self._privacy_details_visible = False
+        self._saving = False
+        self._save_failed = False
+        self._save_after_id: str | None = None
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -384,6 +385,7 @@ class SettingsWindow:
         self._metrics_plot_bounds = (0, 0, 0, 0)
         self.update_status_text = tk.StringVar(value=update_status)
         self.input_monitoring_status_text = tk.StringVar(value="")
+        self.save_status = tk.StringVar(value="Changes save automatically.")
 
         self._configure_styles()
         self._load_preview_frames(icon_path)
@@ -397,6 +399,19 @@ class SettingsWindow:
         self.window.lift()
         self.window.focus_force()
         self._animate_preview()
+        self._last_saved_settings = self._settings_from_controls()
+        for variable in (
+            self.enabled,
+            self.cat_style,
+            self.hold_seconds,
+            self.fade_seconds,
+            self.placement,
+            self.launch_at_startup,
+            self.metrics_view,
+            *self.outfit_vars.values(),
+        ):
+            variable.trace_add("write", self._save)
+        self.size_percent.trace_add("write", self._schedule_save)
 
     def _configure_fonts(self) -> None:
         available = set(tkfont.families(self.window))
@@ -1231,9 +1246,6 @@ class SettingsWindow:
         self._refresh_metrics_view_buttons()
         self._draw_metrics()
 
-        if self._on_metrics_view_change is not None:
-            self._on_metrics_view_change(self.metrics_view.get())
-
     def _refresh_metrics_view_buttons(self) -> None:
         selected = self.metrics_view.get()
         for view, button in self.metrics_view_buttons.items():
@@ -1975,24 +1987,23 @@ class SettingsWindow:
             background=self.BACKGROUND,
         )
         self.footer_buttons.pack(side="right")
-        self.cancel_button = ttk.Button(
+        self.close_button = ttk.Button(
             self.footer_buttons,
-            text="Cancel",
+            text="Close",
             command=self.close,
-            style=self.secondary_button_style,
-            cursor="arrow",
-            takefocus=True,
-        )
-        self.cancel_button.pack(side="left")
-        self.save_button = ttk.Button(
-            self.footer_buttons,
-            text="Save changes",
-            command=self._save,
             style=self.primary_button_style,
             cursor="arrow",
             takefocus=True,
         )
-        self.save_button.pack(side="left", padx=(8, 0))
+        self.close_button.pack(side="left")
+        tk.Label(
+            footer,
+            textvariable=self.save_status,
+            background=self.BACKGROUND,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            anchor="w",
+        ).pack(side="left", fill="x", expand=True, padx=(0, 12))
         return footer
 
     def _card(
@@ -2246,8 +2257,8 @@ class SettingsWindow:
         self._preview_step += 1
         self._after_id = self.window.after(520, self._animate_preview)
 
-    def _save(self) -> None:
-        settings = AppSettings(
+    def _settings_from_controls(self) -> AppSettings:
+        return AppSettings(
             enabled=self.enabled.get(),
             cat_style=CAT_STYLE_LABELS[self.cat_style.get()],
             size_percent=round(self.size_percent.get()),
@@ -2258,8 +2269,57 @@ class SettingsWindow:
             metrics_view=self.metrics_view.get(),
             **self._selected_outfit(),
         ).normalized()
-        self._on_save(settings)
-        self.close()
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Reflect application state without treating it as a new user edit."""
+        was_saving = self._saving
+        self._saving = True
+        try:
+            self.enabled.set(enabled)
+            self._last_saved_settings.enabled = enabled
+        finally:
+            self._saving = was_saving
+
+    def _schedule_save(self, *_args: object) -> None:
+        if self._saving:
+            return
+        if self._save_after_id is not None:
+            self.window.after_cancel(self._save_after_id)
+            self._save_after_id = None
+        if (
+            self._settings_from_controls() == self._last_saved_settings
+            and not self._save_failed
+        ):
+            self.save_status.set("Changes save automatically.")
+            return
+        self.save_status.set("Saving changes…")
+        self._save_after_id = self.window.after(200, self._save)
+
+    def _save(self, *_args: object) -> bool:
+        if self._saving:
+            return True
+        if self._save_after_id is not None:
+            self.window.after_cancel(self._save_after_id)
+            self._save_after_id = None
+        settings = self._settings_from_controls()
+        if settings == self._last_saved_settings and not self._save_failed:
+            return True
+        self._saving = True
+        try:
+            self._on_save(settings)
+        except OSError:
+            self._save_failed = True
+            self.save_status.set("Couldn't save changes. Close to retry.")
+            return False
+        else:
+            # Applying settings can update controls, e.g. when macOS denies
+            # Input Monitoring. Remember that result without saving it again.
+            self._last_saved_settings = self._settings_from_controls()
+            self._save_failed = False
+            self.save_status.set("Changes save automatically.")
+            return True
+        finally:
+            self._saving = False
 
     def _save_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
         self._save()
@@ -2420,6 +2480,8 @@ class SettingsWindow:
         self.check_for_updates_button.configure(cursor="arrow")
 
     def close(self) -> None:
+        if (self._save_after_id is not None or self._save_failed) and not self._save():
+            return
         try:
             if self._after_id is not None:
                 self.window.after_cancel(self._after_id)

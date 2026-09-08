@@ -1,5 +1,6 @@
 import tempfile
 import threading
+import tkinter as tk
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -7,6 +8,7 @@ from unittest.mock import Mock, patch
 from achievements import AchievementStore, AchievementTracker
 from cat_settings import AppSettings, SettingsStore
 from cat_type import AnimationState, CatTypeApp, _MacOSNativeOverlaySurface
+from settings_window import SettingsWindow
 from usage_metrics import UsageStore, UsageTracker
 
 
@@ -46,6 +48,61 @@ class WardrobeIntegrationTests(unittest.TestCase):
         app._handle_key_activity(1.0, 'left')
         self.assertEqual(app.achievement_tracker.unlocked, set())
         self.assertEqual(app.keystroke_count, 999)
+
+    def pending_permission_app(self):
+        app = self.app()
+        app.settings.enabled = False
+        app.root = Mock()
+        app._hide = Mock()
+        app._ensure_activity_monitoring = Mock()
+        app._requires_input_monitoring = True
+        app._platform_name = 'darwin'
+        app._input_monitoring_requested = True
+        app._monitoring_permission_poll_id = 'permission-poll'
+        app._input_monitoring_preflight = Mock(return_value=False)
+        app._shutting_down = False
+        return app
+
+    def test_autosaving_other_settings_preserves_pending_permission_request(self):
+        app = self.pending_permission_app()
+        with patch('cat_type.set_launch_at_startup'):
+            app.apply_settings(AppSettings(enabled=False, placement='below-left'))
+        self.assertTrue(app._input_monitoring_requested)
+        self.assertEqual(app._monitoring_permission_poll_id, 'permission-poll')
+        app._input_monitoring_preflight.return_value = True
+        app._poll_input_monitoring_permission()
+        self.assertTrue(app.settings_store.load().enabled)
+        self.assertEqual(app.settings_store.load().placement, 'below-left')
+
+    def test_explicit_pause_still_cancels_pending_permission_request(self):
+        app = self.pending_permission_app()
+        with patch('cat_type.set_launch_at_startup'):
+            app._set_enabled(False)
+        self.assertFalse(app._input_monitoring_requested)
+        self.assertIsNone(app._monitoring_permission_poll_id)
+        self.assertFalse(app.settings_store.load().enabled)
+
+    def test_autosaving_chart_view_keeps_a_tray_pause(self):
+        try:
+            root = tk.Tk()
+        except tk.TclError as error:
+            self.skipTest(str(error))
+        root.withdraw()
+        self.addCleanup(root.destroy)
+        app = self.app()
+        app.root = root
+        app._hide = Mock()
+        app._ensure_activity_monitoring = Mock()
+        window = SettingsWindow(root, app.settings, app.apply_settings)
+        app._settings_window = window
+        self.addCleanup(window.close)
+        with patch('cat_type.set_launch_at_startup'):
+            app._set_enabled(False)
+            self.assertFalse(window.enabled.get())
+            window.metrics_view_buttons['columns'].invoke()
+        self.assertFalse(app.settings.enabled)
+        self.assertFalse(app.settings_store.load().enabled)
+        self.assertEqual(app.settings_store.load().metrics_view, 'columns')
 
     def test_unlock_notice_does_not_block_typing_or_repeat(self):
         app = self.app()

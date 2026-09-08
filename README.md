@@ -49,7 +49,9 @@ pointer directly.
 
 ## Settings
 
-Settings are saved for the current user and take effect immediately:
+Every settings change is saved automatically for the current user and takes
+effect as you edit. Size changes save after a short pause while dragging.
+Close the settings window whenever you're done:
 
 - Enable or pause the typing companion.
 - Choose gray, ginger, charcoal, brown-tabby, white, or black-and-white, or
@@ -63,8 +65,8 @@ Settings are saved for the current user and take effect immediately:
   chart view.
 - Open **Wardrobe** to combine hats, glasses, neckwear, back accessories, and ear
   accessories. Equip one item per category. One outfit applies
-  to every cat, including **Mix it up**. Select **None** to remove an item, then
-  choose **Save changes** to apply your outfit. Cancel keeps your previous outfit.
+  to every cat, including **Mix it up**. Select **None** to remove an item.
+  Outfit changes are applied and saved automatically.
 
 ## Accessory achievements
 
@@ -92,7 +94,7 @@ an equippable item, and discoveries appear in both tabs immediately.
 
 Designated beta builds grant **Beta Buddy** and an exclusive purple bandana with
 a gold β emblem. This unlock stays with you when you upgrade to a stable build.
-This release is designated beta; Settings labels it **Beta**.
+This stable release preserves earned Beta Buddy rewards without granting new ones.
 
 Rewards are saved locally in `achievements.json` beside `settings.json` and
 `usage.json`. They remain unlocked even if activity totals later decrease.
@@ -219,7 +221,7 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.38` to build the
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.39` to build the
 Windows, macOS, and Linux architectures and publish those assets on a GitHub
 Release.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import tempfile
 import unittest
 from contextlib import ExitStack
 from datetime import datetime, timedelta
@@ -9,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
 from app_version import APP_VERSION, IS_BETA_BUILD
-from cat_settings import CAT_VARIANTS, AppSettings
+from cat_settings import CAT_VARIANTS, AppSettings, SettingsStore
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
 
@@ -35,6 +36,7 @@ class SettingsWindowSizingTests(unittest.TestCase):
                 "_build",
                 "_center",
                 "_animate_preview",
+                "_settings_from_controls",
             ):
                 stack.enter_context(patch.object(SettingsWindow, method_name))
 
@@ -395,7 +397,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.root.withdraw()
         self.addCleanup(self.root.destroy)
         self.on_save = Mock()
-        self.on_metrics_view_change = Mock()
         self.on_check_for_updates = Mock()
         self.on_open_release_page = Mock()
         self.settings_window = SettingsWindow(
@@ -403,7 +404,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             AppSettings(),
             self.on_save,
             keystroke_count=1_234,
-            on_metrics_view_change=self.on_metrics_view_change,
             on_check_for_updates=self.on_check_for_updates,
             on_open_release_page=self.on_open_release_page,
             update_status="Ready to check.",
@@ -486,7 +486,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "All-time keystrokes",
             "Black & white",
             "Brown tabby",
-            "Cancel",
+            "Close",
+            "Changes save automatically.",
             "Charcoal",
             "Check for updates",
             "Columns",
@@ -505,7 +506,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Show my cat while I type",
             "Soft fade",
             "Start Cat Type when I sign in",
-            "Save changes",
             "Today",
             "White",
             f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
@@ -985,14 +985,15 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             ),
             "0",
         )
-        self.on_metrics_view_change.assert_not_called()
+        self.on_save.assert_not_called()
 
         self.settings_window.metrics_range_days.set(1)
         self.settings_window.metrics_view.set("columns")
         self.settings_window._change_metrics_view()
 
         self.assertEqual(self.settings_window.metrics_range_days.get(), 1)
-        self.on_metrics_view_change.assert_called_once_with("columns")
+        self.assertEqual(self.on_save.call_count, 1)
+        self.assertEqual(self.on_save.call_args.args[0].metrics_view, "columns")
         self.assertTrue(
             self.settings_window.metrics_chart.find_withtag("metric-column")
         )
@@ -1004,7 +1005,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window._change_metrics_range()
 
         self.assertEqual(self.settings_window.metrics_view.get(), "columns")
-        self.on_metrics_view_change.assert_called_once_with("columns")
+        self.assertEqual(self.on_save.call_count, 1)
 
     def test_metrics_navigation_shows_previous_days_and_weeks(self) -> None:
         today = datetime.now().astimezone().date()
@@ -1386,12 +1387,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
     def test_saved_metrics_view_is_restored_and_included_on_save(self) -> None:
         on_save = Mock()
-        on_metrics_view_change = Mock()
         saved_window = SettingsWindow(
             self.root,
             AppSettings(metrics_view="columns"),
             on_save,
-            on_metrics_view_change=on_metrics_view_change,
         )
         self.addCleanup(saved_window.close)
 
@@ -1400,9 +1399,9 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             saved_window.metrics_view_buttons["columns"].cget("background"),
             saved_window.PEACH,
         )
-        on_metrics_view_change.assert_not_called()
+        on_save.assert_not_called()
 
-        saved_window._save()
+        saved_window.enabled.set(False)
 
         saved_settings = on_save.call_args.args[0]
         self.assertEqual(saved_settings.metrics_view, "columns")
@@ -1665,17 +1664,108 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             ),
         )
 
-    def test_non_white_cat_choice_is_applied_when_saved(self) -> None:
+    def test_non_white_cat_choice_is_applied_automatically(self) -> None:
         self.settings_window.cat_style_buttons["Black & white"].invoke()
-
-        self.settings_window._save()
 
         saved_settings = self.on_save.call_args.args[0]
         self.assertEqual(saved_settings.cat_style, "black-white")
 
-    def test_footer_actions_use_settings_language(self) -> None:
-        self.assertEqual(self.settings_window.cancel_button.cget("text"), "Cancel")
+    def test_settings_are_persisted_on_change_without_closing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = store.save
+            self.assertFalse(store.path.exists())
+            cases = (
+                ("enabled", False, False),
+                ("cat_style", "Black & white", "black-white"),
+                ("size_percent", 125, 125),
+                ("hold_seconds", 2.0, 2.0),
+                ("fade_seconds", 1.5, 1.5),
+                ("hold_seconds", 0.5, 0.5),
+                ("placement", "Below · left", "below-left"),
+                ("launch_at_startup", True, True),
+            )
+            for field, value, expected in cases:
+                with self.subTest(field=field, value=value):
+                    getattr(self.settings_window, field).set(value)
+                    if field == "size_percent":
+                        self.root.after(300, self.root.quit)
+                        self.root.mainloop()
+                    self.assertTrue(store.path.exists())
+                    self.assertEqual(getattr(store.load(), field), expected)
+                    self.assertTrue(self.settings_window.window.winfo_exists())
+            self.assertEqual(store.load().fade_seconds, 0.5)
+            self.settings_window.close()
+            self.assertEqual(store.load().placement, "below-left")
+            self.assertTrue(store.load().launch_at_startup)
+
+    def test_opening_or_reselecting_settings_does_not_save(self) -> None:
+        self.settings_window.enabled.set(True)
+        self.settings_window.cat_style_buttons["Mix it up"].invoke()
+        self.settings_window.size_percent.set(100)
+        self.on_save.assert_not_called()
+
+    def test_metrics_view_autosaves_with_other_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = store.save
+            self.settings_window.size_percent.set(125)
+            self.settings_window.metrics_view_buttons["columns"].invoke()
+            self.assertEqual(store.load().metrics_view, "columns")
+            self.assertEqual(store.load().size_percent, 125)
+            self.assertTrue(self.settings_window.window.winfo_exists())
+
+    def test_metrics_autosave_failure_is_retried_on_close(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = lambda settings: store.save(settings)
+            with patch.object(store, "save", side_effect=OSError("disk full")):
+                self.settings_window.metrics_view_buttons["columns"].invoke()
+                self.assertIn("Couldn't save", self.settings_window.save_status.get())
+            self.settings_window.close()
+            self.assertEqual(store.load().metrics_view, "columns")
+
+    def test_size_drag_saves_latest_value_after_a_short_pause(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = store.save
+            for size in (110, 120, 125):
+                self.settings_window.size_percent.set(size)
+            self.assertFalse(store.path.exists())
+            self.root.after(300, self.root.quit)
+            self.root.mainloop()
+            self.assertEqual(store.load().size_percent, 125)
+            self.assertTrue(self.settings_window.window.winfo_exists())
+
+    def test_closing_immediately_after_a_size_change_saves_it(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = store.save
+            self.settings_window.size_percent.set(140)
+            self.settings_window.close()
+            self.assertEqual(store.load().size_percent, 140)
+            self.assertFalse(self.settings_window.window.winfo_exists())
+
+    def test_failed_autosave_is_reported_and_retried_before_close(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = lambda settings: store.save(settings)
+            with patch.object(store, "save", side_effect=OSError("disk full")):
+                self.settings_window.enabled.set(False)
+                self.assertIn("Couldn't save", self.settings_window.save_status.get())
+                self.assertFalse(store.path.exists())
+                self.settings_window.close()
+                self.assertTrue(self.settings_window.window.winfo_exists())
+            self.settings_window.close()
+            self.assertFalse(store.load().enabled)
+            self.assertFalse(self.settings_window.window.winfo_exists())
+
+    def test_footer_closes_without_reverting_changes(self) -> None:
         self.assertEqual(
-            self.settings_window.save_button.cget("text"),
-            "Save changes",
+            [button.cget("text") for button in self.settings_window.footer_buttons.winfo_children()],
+            ["Close"],
         )
+        self.settings_window.enabled.set(False)
+        self.settings_window.close_button.invoke()
+        self.assertFalse(self.on_save.call_args.args[0].enabled)
+        self.assertFalse(self.settings_window.window.winfo_exists())

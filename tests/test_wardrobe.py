@@ -26,7 +26,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertNotIn('ears', window.wardrobe.none_buttons)
         self.assertIn('bow-tie', window.wardrobe.buttons)
 
-    def test_live_secret_reveal_keeps_pending_choices_and_supports_all_slots(self):
+    def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'crown', 'round-glasses'})
         window.wardrobe.buttons['crown'].invoke()
@@ -45,18 +45,18 @@ class WardrobeTests(unittest.TestCase):
         window.page_buttons['Wardrobe'].invoke()
         window.window.update()
         self.assertEqual(ImageTk.getimage(window._preview_frames['white']['idle']).tobytes(), plain)
-        window._save()
-        self.assertEqual(self.saved[0].outfit(), {'hat': 'crown', 'glasses': 'round-glasses',
+        self.assertEqual(self.saved[-1].outfit(), {'hat': 'crown', 'glasses': 'round-glasses',
                                                'neck': 'beta-bandana', 'back': 'angel-wings', 'ears': 'sunflower-clip'})
 
-    def test_new_slots_none_and_cancel_preserve_saved_outfit(self):
+    def test_new_slots_none_and_close_preserve_other_equipped_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'beta-bandana', 'angel-wings', 'sunflower-clip'},
                              neck='beta-bandana', back='angel-wings', ears='sunflower-clip')
         window.wardrobe.none_buttons['neck'].invoke()
         self.assertEqual((window.neck.get(), window.back.get(), window.ears.get()), ('none', 'angel-wings', 'sunflower-clip'))
         window.close()
-        self.assertEqual(self.saved, [])
+        self.assertEqual((self.saved[-1].neck, self.saved[-1].back, self.saved[-1].ears),
+                         ('none', 'angel-wings', 'sunflower-clip'))
 
     def setUp(self):
         try:
@@ -121,10 +121,10 @@ class WardrobeTests(unittest.TestCase):
         dressed = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
         self.assertNotEqual(plain, dressed)
         self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
-        window._save()
-        self.assertEqual((self.saved[0].hat, self.saved[0].glasses), ('crown', 'round-glasses'))
+        self.assertEqual((self.saved[-1].hat, self.saved[-1].glasses), ('crown', 'round-glasses'))
+        self.assertTrue(window.window.winfo_exists())
 
-    def test_none_removes_one_slot_and_cancel_discards_changes(self):
+    def test_none_removes_one_slot_and_close_keeps_changes(self):
         window = self.window({'round-glasses', 'crown'}, hat='crown', glasses='round-glasses')
         window.wardrobe.none_buttons['hat'].invoke()
         self.assertEqual((window.hat.get(), window.glasses.get()), ('none', 'round-glasses'))
@@ -132,7 +132,7 @@ class WardrobeTests(unittest.TestCase):
         window.page_buttons['Achievements'].invoke()
         window.window.update_idletasks()
         window.close()
-        self.assertEqual(self.saved, [])
+        self.assertEqual((self.saved[-1].hat, self.saved[-1].glasses), ('none', 'round-glasses'))
 
     def test_live_unlock_enables_reward_without_equipping_or_reopening(self):
         window = self.window()
@@ -157,8 +157,7 @@ class WardrobeTests(unittest.TestCase):
         window = self.window(hat='crown')
         self.assertEqual(window.hat.get(), 'none')
         window.glasses.set('sunglasses')
-        window._save()
-        self.assertEqual(self.saved[0].glasses, 'none')
+        self.assertEqual(self.saved, [])
 
     def test_wardrobe_fits_narrow_width_and_switches_pages(self):
         window = self.window()

@@ -46,7 +46,7 @@ class WardrobeView(tk.Frame):
         preview_copy.pack(side="left", fill="both", expand=True, pady=20)
         tk.Label(preview_copy, text="Your outfit", font=fonts["section"],
                  bg=palette["peach"], fg=palette["ink"]).pack(anchor="w")
-        tk.Label(preview_copy, text="One outfit for all cats.\nSave to apply your choices.",
+        tk.Label(preview_copy, text="One outfit for all cats.\nChanges save automatically.",
                  justify="left", font=fonts["body"], bg=palette["peach"],
                  fg=palette["ink"]).pack(anchor="w", pady=(8, 0))
         tk.Label(preview_copy, textvariable=self.notice, justify="left", wraplength=300,

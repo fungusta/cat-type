@@ -2159,7 +2159,7 @@ class CatTypeApp:
             or not settings_window.window.winfo_exists()
         ):
             return
-        settings_window.enabled.set(self.settings.enabled)
+        settings_window.set_enabled(self.settings.enabled)
         settings_window.set_input_monitoring_status(
             granted,
             request_attempted=request_attempted,
@@ -2714,7 +2714,6 @@ class CatTypeApp:
                 if getattr(self, "usage_tracker", None) is not None
                 else UsageMetrics(total_keystrokes=self.keystroke_count)
             ),
-            on_metrics_view_change=self._persist_metrics_view,
             unlocked_accessories=(
                 self.achievement_tracker.unlocked
                 if getattr(self, "achievement_tracker", None) is not None
@@ -2759,18 +2758,6 @@ class CatTypeApp:
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
 
-    def _persist_metrics_view(self, metrics_view: str) -> None:
-        updated = AppSettings(
-            **{
-                **self.settings.__dict__,
-                "metrics_view": metrics_view,
-            }
-        ).normalized()
-        try:
-            self.settings = self.settings_store.save(updated)
-        except OSError:
-            return
-
     def _validated_outfit(self, settings: AppSettings) -> AppSettings:
         tracker = getattr(self, "achievement_tracker", None)
         return replace(
@@ -2780,6 +2767,7 @@ class CatTypeApp:
         )
 
     def apply_settings(self, settings: AppSettings) -> None:
+        previous_enabled = self.settings.enabled
         previous_size = self.settings.size_percent
         previous_outfit = self.settings.outfit()
         settings = self._validated_outfit(settings.normalized())
@@ -2797,7 +2785,7 @@ class CatTypeApp:
             )
             if request_input_monitoring:
                 settings = replace(settings, enabled=False)
-        if not settings.enabled and not request_input_monitoring:
+        if previous_enabled and not settings.enabled and not request_input_monitoring:
             self._input_monitoring_requested = False
             self._cancel_input_monitoring_poll()
         self.settings = self.settings_store.save(settings)
@@ -2830,11 +2818,17 @@ class CatTypeApp:
             self._ensure_activity_monitoring()
         if request_input_monitoring:
             self._request_input_monitoring_access()
+        settings_window = getattr(self, "_settings_window", None)
+        if settings_window is not None and settings_window.window.winfo_exists():
+            settings_window.set_enabled(self.settings.enabled)
         if self._tray_icon is not None:
             self._update_tray_monitoring_status()
             self._tray_icon.update_menu()
 
     def _set_enabled(self, enabled: bool) -> None:
+        if not enabled:
+            self._input_monitoring_requested = False
+            self._cancel_input_monitoring_poll()
         if (
             enabled
             and getattr(self, "_requires_input_monitoring", False)
