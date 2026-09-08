@@ -1,4 +1,4 @@
-"""Tk wardrobe choices and achievement progress, independent of app persistence."""
+"""Tk outfit choices and preview, independent of app persistence."""
 
 from __future__ import annotations
 
@@ -8,17 +8,15 @@ from typing import Callable
 
 from PIL import ImageTk
 
-from achievements import progress
 from cat_accessories import ACCESSORIES, Accessory
 from cat_artwork import load_frame
-from usage_metrics import UsageMetrics
 
 
 class WardrobeView(tk.Frame):
     def __init__(
         self, parent: tk.Misc, *, assets_root: Path,
         hat: tk.StringVar, glasses: tk.StringVar, unlocked: set[str],
-        metrics: UsageMetrics, on_change: Callable[[], None],
+        on_change: Callable[[], None], on_achievement: Callable[[str], None],
         palette: dict[str, str], fonts: dict,
     ) -> None:
         super().__init__(parent, background=palette["background"])
@@ -28,7 +26,8 @@ class WardrobeView(tk.Frame):
         self.on_change = on_change
         self.buttons: dict[str, tk.Radiobutton] = {}
         self.none_buttons: dict[str, tk.Radiobutton] = {}
-        self.progress_text: dict[str, tk.StringVar] = {}
+        self.status_text: dict[str, tk.StringVar] = {}
+        self.achievement_links: dict[str, tk.Button] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
         self._preview_frame: ImageTk.PhotoImage | None = None
         self.notice = tk.StringVar(master=self, value="")
@@ -88,20 +87,23 @@ class WardrobeView(tk.Frame):
                 )
                 button.pack(fill="x")
                 self.buttons[item.id] = button
-                tk.Label(tile, text=item.achievement, font=fonts["small"],
-                         bg=palette["card"], fg=palette["ink"], wraplength=145).pack(padx=5, pady=(4, 2))
-                requirement = (
-                    f"Type on {item.target} different days"
-                    if item.metric == "days" else f"{item.target:,} total keystrokes"
-                )
-                tk.Label(tile, text=requirement, font=fonts["tiny"],
-                         bg=palette["card"], fg=palette["muted"], wraplength=145).pack(padx=5)
                 value = tk.StringVar(master=self)
-                self.progress_text[item.id] = value
+                self.status_text[item.id] = value
                 tk.Label(tile, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=145).pack(padx=5, pady=(4, 8))
-        self.update_progress(metrics, unlocked)
+                         wraplength=145).pack(padx=5, pady=(4, 2))
+                link = tk.Button(
+                    tile, text="View achievement →", font=fonts["small"],
+                    command=lambda accessory_id=item.id: on_achievement(accessory_id),
+                    bg=palette["card"], fg=palette["accent_dark"],
+                    activebackground=palette["peach"], activeforeground=palette["ink"],
+                    relief="flat", borderwidth=0, highlightthickness=1,
+                    highlightbackground=palette["card"], highlightcolor=palette["accent"],
+                    cursor="hand2", takefocus=True, wraplength=140,
+                )
+                link.pack(padx=5, pady=(0, 6))
+                self.achievement_links[item.id] = link
+        self.update_unlocks(unlocked)
 
     def _choose(self) -> None:
         self._refresh_selection()
@@ -118,19 +120,17 @@ class WardrobeView(tk.Frame):
         self._preview_frame = frame
         self.preview.configure(image=frame, width=148, height=148)
 
-    def update_progress(
-        self, metrics: UsageMetrics, unlocked: set[str],
+    def update_unlocks(
+        self, unlocked: set[str],
         newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
         self.unlocked = set(unlocked)
         for item in ACCESSORIES:
             earned = item.id in self.unlocked
             self.buttons[item.id].configure(state="normal" if earned else "disabled")
-            current = progress(item, metrics)
-            unit = " days" if item.metric == "days" else ""
-            value = "Unlocked" if earned else f"{current:,} / {item.target:,}{unit} · Locked"
-            if self.progress_text[item.id].get() != value:
-                self.progress_text[item.id].set(value)
+            value = "Unlocked" if earned else "Locked"
+            if self.status_text[item.id].get() != value:
+                self.status_text[item.id].set(value)
         if newly_unlocked:
             self.notice.set("Unlocked: " + ", ".join(item.name for item in newly_unlocked))
         self._refresh_selection()

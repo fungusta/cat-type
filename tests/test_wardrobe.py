@@ -34,20 +34,45 @@ class WardrobeTests(unittest.TestCase):
         window.window.update()
         return window
 
-    def test_locked_items_show_progress_and_cannot_be_equipped(self):
+    def test_locked_items_link_to_separate_achievement_and_cannot_be_equipped(self):
         window = self.window()
+        self.assertIn('Achievements', window.page_buttons)
         wardrobe = window.wardrobe
         self.assertEqual(wardrobe.buttons['round-glasses'].cget('state'), 'disabled')
-        self.assertIn('640 / 1,000', wardrobe.progress_text['round-glasses'].get())
+        self.assertEqual(wardrobe.status_text['round-glasses'].get(), 'Locked')
         wardrobe.buttons['round-glasses'].invoke()
         self.assertEqual(window.glasses.get(), 'none')
         self.assertTrue(wardrobe.winfo_ismapped())
+        wardrobe.achievement_links['round-glasses'].invoke()
+        window.window.update()
+        self.assertEqual(window.active_page.get(), 'Achievements')
+        self.assertFalse(wardrobe.winfo_ismapped())
+        self.assertTrue(window.achievements.winfo_ismapped())
+        self.assertIn('640 / 1,000', window.achievements.progress_text['round-glasses'].get())
+
+    def test_achievement_link_reveals_reward_below_fold(self):
+        window = self.window()
+        self.assertIn('Achievements', window.page_buttons)
+        window.window.minsize(1, 1)
+        window.window.geometry('620x500')
+        window.window.update()
+        window.wardrobe.achievement_links['crown'].invoke()
+        window.window.update()
+        card = window.achievements.cards['crown']
+        top = card.winfo_rooty() - window.scroll_canvas.winfo_rooty()
+        self.assertGreaterEqual(top, 0)
+        self.assertLess(top + card.winfo_height(), window.scroll_canvas.winfo_height())
+        self.assertEqual(window.window.focus_get(), card)
 
     def test_shared_outfit_updates_real_preview_and_is_saved(self):
         window = self.window({'round-glasses', 'crown'})
         plain = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
         window.wardrobe.buttons['round-glasses'].invoke()
         window.wardrobe.buttons['crown'].invoke()
+        self.assertIn('Achievements', window.page_buttons)
+        window.page_buttons['Achievements'].invoke()
+        window.page_buttons['Wardrobe'].invoke()
+        window.window.update_idletasks()
         dressed = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
         self.assertNotEqual(plain, dressed)
         self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
@@ -58,19 +83,30 @@ class WardrobeTests(unittest.TestCase):
         window = self.window({'round-glasses', 'crown'}, hat='crown', glasses='round-glasses')
         window.wardrobe.none_buttons['hat'].invoke()
         self.assertEqual((window.hat.get(), window.glasses.get()), ('none', 'round-glasses'))
+        self.assertIn('Achievements', window.page_buttons)
+        window.page_buttons['Achievements'].invoke()
+        window.window.update_idletasks()
         window.close()
         self.assertEqual(self.saved, [])
 
     def test_live_unlock_enables_reward_without_equipping_or_reopening(self):
         window = self.window()
+        self.assertIn('Achievements', window.page_buttons)
+        window.page_buttons['Achievements'].invoke()
         from cat_accessories import ACCESSORY_BY_ID
+        window.update_usage_metrics(UsageMetrics(total_keystrokes=900))
+        self.assertIn('900 / 1,000', window.achievements.progress_text['round-glasses'].get())
         window.update_usage_metrics(UsageMetrics(total_keystrokes=1000))
         window.update_achievements({'round-glasses'}, (ACCESSORY_BY_ID['round-glasses'],))
+        self.assertEqual(window.achievements.progress_text['round-glasses'].get(), 'Unlocked')
         self.assertEqual(window.wardrobe.buttons['round-glasses'].cget('state'), 'normal')
+        self.assertEqual(window.wardrobe.status_text['round-glasses'].get(), 'Unlocked')
         self.assertEqual(window.glasses.get(), 'none')
         self.assertIn('Round glasses', window.wardrobe.notice.get())
+        window.page_buttons['Wardrobe'].invoke()
         window.wardrobe.buttons['round-glasses'].invoke()
         self.assertEqual(window.glasses.get(), 'round-glasses')
+        window.window.update_idletasks()
 
     def test_locked_saved_or_programmatic_selection_is_not_saved(self):
         window = self.window(hat='crown')
@@ -85,10 +121,16 @@ class WardrobeTests(unittest.TestCase):
         window.window.geometry('620x500')
         window.window.update()
         self.assertLessEqual(window.wardrobe.winfo_reqwidth(), window.scroll_canvas.winfo_width())
-        for page in ('Metrics', 'Settings', 'Wardrobe'):
+        self.assertIn('Achievements', window.page_buttons)
+        for page in ('Metrics', 'Settings', 'Achievements', 'Wardrobe'):
             window.page_buttons[page].invoke()
             window.window.update()
             self.assertEqual(bool(window.wardrobe.winfo_ismapped()), page == 'Wardrobe')
+            self.assertEqual(bool(window.achievements.winfo_ismapped()), page == 'Achievements')
+            self.assertLessEqual(window.achievements.winfo_reqwidth(), window.scroll_canvas.winfo_width() - 52)
+            last_tab = window.page_buttons['Achievements']
+            self.assertLessEqual(last_tab.winfo_rootx() + last_tab.winfo_width(),
+                                 window.scroll_canvas.winfo_rootx() + window.scroll_canvas.winfo_width())
 
 
 if __name__ == '__main__':

@@ -12,6 +12,7 @@ from typing import Callable
 from PIL import Image, ImageDraw, ImageTk
 
 from app_version import APP_VERSION
+from achievements_view import AchievementsView
 from cat_artwork import load_frame
 from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
@@ -702,15 +703,21 @@ class SettingsWindow:
         self._build_timing_card(self.right_column)
         self._build_updates_card(self.right_column)
         self._build_metrics_page(self.scroll_content)
+        reward_palette = {
+            "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
+            "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
+            "accent_dark": self.ACCENT_DARK, "border": self.BORDER,
+        }
         self.wardrobe = WardrobeView(
             self.scroll_content, assets_root=self._assets_root,
             hat=self.hat, glasses=self.glasses, unlocked=self.unlocked_accessories,
-            metrics=self.usage_metrics, on_change=self._refresh_outfit_preview,
-            palette={
-                "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
-                "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
-                "accent_dark": self.ACCENT_DARK, "border": self.BORDER,
-            }, fonts=self.fonts,
+            on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
+            palette=reward_palette, fonts=self.fonts,
+        )
+        self.achievements = AchievementsView(
+            self.scroll_content, assets_root=self._assets_root,
+            metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
+            palette=reward_palette, fonts=self.fonts,
         )
         self._refresh_usage_metrics()
 
@@ -720,7 +727,7 @@ class SettingsWindow:
         tabs = tk.Frame(self.page_switcher, background=self.BLUSH)
         tabs.pack(anchor="w")
         self.page_buttons: dict[str, tk.Radiobutton] = {}
-        for index, label in enumerate(("Settings", "Metrics", "Wardrobe")):
+        for index, label in enumerate(("Settings", "Metrics", "Wardrobe", "Achievements")):
             button = tk.Radiobutton(
                 tabs,
                 text=label,
@@ -739,7 +746,7 @@ class SettingsWindow:
                 activeforeground=self.INK,
                 foreground=self.INK,
                 font=self.fonts["control"],
-                padx=22,
+                padx=16,
                 pady=8,
                 cursor="hand2",
                 takefocus=True,
@@ -765,16 +772,28 @@ class SettingsWindow:
         self.columns.pack_forget()
         self.metrics_page.pack_forget()
         self.wardrobe.pack_forget()
+        self.achievements.pack_forget()
         if selected == "Metrics":
             self.metrics_page.pack(fill="x", padx=26)
             self._refresh_usage_metrics()
         elif selected == "Wardrobe":
             self.wardrobe.pack(fill="x", padx=26)
-            self.wardrobe.update_progress(self.usage_metrics, self.unlocked_accessories)
+            self.wardrobe.update_unlocks(self.unlocked_accessories)
+        elif selected == "Achievements":
+            self.achievements.pack(fill="x", padx=26)
+            self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
         else:
             self.columns.pack(fill="x", padx=26)
         self.scroll_canvas.yview_moveto(0)
         self.window.after_idle(self._sync_scrollbar_visibility)
+
+    def _show_achievement(self, accessory_id: str) -> None:
+        self.active_page.set("Achievements")
+        self._switch_page()
+        self.window.update_idletasks()
+        card = self.achievements.focus_reward(accessory_id)
+        offset = self.achievements.winfo_y() + card.winfo_y() - 12
+        self.scroll_canvas.yview_moveto(max(0, offset) / max(1, self.scroll_content.winfo_height()))
 
     def _build_companion_card(self, parent: tk.Frame) -> None:
         card, content = self._card(parent, "Companion")
@@ -2374,14 +2393,15 @@ class SettingsWindow:
     def update_usage_metrics(self, metrics: UsageMetrics) -> None:
         self.usage_metrics = metrics
         self._refresh_usage_metrics()
-        if self.active_page.get() == "Wardrobe":
-            self.wardrobe.update_progress(metrics, self.unlocked_accessories)
+        if self.active_page.get() == "Achievements":
+            self.achievements.update_progress(metrics, self.unlocked_accessories)
 
     def update_achievements(
         self, unlocked: set[str], newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
         self.unlocked_accessories = set(unlocked)
-        self.wardrobe.update_progress(self.usage_metrics, unlocked, newly_unlocked)
+        self.wardrobe.update_unlocks(unlocked, newly_unlocked)
+        self.achievements.update_progress(self.usage_metrics, unlocked)
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)

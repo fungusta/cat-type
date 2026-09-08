@@ -474,6 +474,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Settings",
             "Metrics",
             "Wardrobe",
+            "Achievements",
             "Companion",
             "Cat style",
             "Cat size",

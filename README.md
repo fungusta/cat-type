@@ -67,8 +67,9 @@ Settings are saved for the current user and take effect immediately:
 
 ## Accessory achievements
 
-Type while Cat Type is enabled to earn permanent accessories. Locked items show
-their requirements and progress in Wardrobe. New rewards unlock automatically;
+Type while Cat Type is enabled to earn permanent accessories. Open **Achievements**
+to see reward requirements and progress. Each item in **Wardrobe** links to its
+achievement. New rewards unlock automatically;
 you choose when to equip them. Existing typing history counts toward every reward.
 
 | Accessory | Achievement | Requirement |
