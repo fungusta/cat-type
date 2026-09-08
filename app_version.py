@@ -1,6 +1,6 @@
 """Cat Type's runtime release version."""
 
-APP_VERSION: str = "1.0.37"
+APP_VERSION: str = "1.0.38"
 
-# This release is designated beta. Set False for stable builds.
-IS_BETA_BUILD: bool = True
+# Only designated beta builds grant the exclusive Beta Buddy reward.
+IS_BETA_BUILD: bool = False
