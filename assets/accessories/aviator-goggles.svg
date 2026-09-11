@@ -2,7 +2,9 @@
   <title>Aviator goggles</title>
   <desc>Editable brass aviator goggles with a leather strap and transparent sky-blue lenses.</desc>
   <g id="aviator-goggles" stroke="#664b37" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-    <path fill="#aa7851" d="M22 55 L30 57 L30 64 L22 62 Z M90 57 L98 55 L98 62 L90 64 Z"/>
+    <g id="aviator-goggles-strap" data-clip-to-body="true">
+      <path fill="#aa7851" d="M2 46 Q15 53 30 57 L30 64 Q15 61 2 54 Z M90 57 Q105 53 118 46 L118 54 Q105 61 90 64 Z"/>
+    </g>
     <path fill="none" stroke-width="3" d="M53 60 Q60 56 67 60"/>
     <path fill="#e1bb77" fill-rule="evenodd" d="M37 51 H46 Q54 51 54 59 V64 Q54 72 46 72 H37 Q29 72 29 64 V59 Q29 51 37 51 Z M38 55 H45 Q50 55 50 60 V63 Q50 68 45 68 H38 Q33 68 33 63 V60 Q33 55 38 55 Z"/>
     <path fill="#e1bb77" fill-rule="evenodd" d="M74 51 H83 Q91 51 91 59 V64 Q91 72 83 72 H74 Q66 72 66 64 V59 Q66 51 74 51 Z M75 55 H82 Q87 55 87 60 V63 Q87 68 82 68 H75 Q70 68 70 63 V60 Q70 55 75 55 Z"/>

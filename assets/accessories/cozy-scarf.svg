@@ -5,8 +5,10 @@
     <path fill="#eb9a64" d="M42 84 L55 86 L52 103 L39 101 Z"/>
     <path fill="none" stroke="#ffdfae" stroke-width="3" d="M42 92 L53 94 M41 98 L52 100"/>
     <path fill="none" stroke-width="1.8" d="M41 102 L40 105 M45 103 L44 106 M49 104 L48 106"/>
-    <path fill="#efaa76" d="M31 79 Q59 85 89 79 L88 88 Q60 96 32 88 Z"/>
-    <path fill="none" stroke="#ffe4bb" stroke-width="2.5" d="M34 84 Q60 91 86 84"/>
-    <path fill="none" stroke="#ce7851" stroke-width="1.6" d="M40 83 L39 88 M49 85 L48 90 M61 86 L61 91 M73 85 L74 90 M82 83 L83 88"/>
+    <g id="cozy-scarf-wrap" data-clip-to-body="true">
+      <path fill="#efaa76" d="M2 68 C22 78 42 83 60 83 C78 83 98 78 118 68 L118 80 C98 88 80 92 60 92 C40 92 22 88 2 80 Z"/>
+      <path fill="none" stroke="#ffe4bb" stroke-width="2.5" d="M2 74 C22 83 42 87 60 87 C78 87 98 83 118 74"/>
+      <path fill="none" stroke="#ce7851" stroke-width="1.6" d="M15 76 L14 82 M27 80 L26 86 M40 83 L39 88 M49 85 L48 90 M61 86 L61 91 M73 85 L74 90 M82 83 L83 88 M93 80 L94 86 M105 76 L106 82"/>
+    </g>
   </g>
 </svg>

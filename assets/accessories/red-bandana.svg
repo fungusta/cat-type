@@ -3,7 +3,10 @@
   <desc>Editable cherry-red triangular bandana with a cream stitched border, fitted below the mouth.</desc>
   <g id="red-bandana" stroke="#36242c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
     <path fill="#e8666f" d="M31 79 Q60 84 89 79 L64 101 Q60 104 56 101 Z"/>
-    <path fill="#c44457" d="M31 79 Q60 84 89 79 L84 85 Q60 90 36 85 Z"/>
+    <g id="red-bandana-wrap" data-clip-to-body="true">
+      <path fill="#c44457" d="M2 68 C22 78 42 82 60 82 C78 82 98 78 118 68 L118 76 C98 85 80 88 60 88 C40 88 22 85 2 76 Z"/>
+      <path fill="none" stroke="#ffe3c0" stroke-width="1.4" d="M2 73 C22 82 42 85 60 85 C78 85 98 82 118 73"/>
+    </g>
     <path fill="none" stroke="#ffe3c0" stroke-width="1.7" d="M41 87 L57 99 M79 87 L63 99"/>
     <path fill="#ffe3c0" stroke="none" d="M60 89 L63 92 L60 95 L57 92 Z"/>
   </g>

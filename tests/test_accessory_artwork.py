@@ -14,6 +14,33 @@ ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
 class AccessoryArtworkTests(unittest.TestCase):
+    def test_wrapping_accessories_reach_both_sides_without_protruding(self):
+        items = ('bow-tie', 'red-bandana', 'beta-bandana', 'cozy-scarf',
+                 'sunrise-scarf', 'moon-pendant', 'aviator-goggles')
+        for item in items:
+            slot = 'glasses' if item == 'aviator-goggles' else 'neck'
+            top, bottom = (50, 66) if slot == 'glasses' else (68, 90)
+            for variant in CAT_VARIANTS:
+                for pose in art.POSE_NAMES:
+                    for size in (72, 120, 210):
+                        with self.subTest(item=item, variant=variant, pose=pose, size=size):
+                            with art.load_frame(ASSETS, variant, pose, size) as plain, art.load_frame(
+                                ASSETS, variant, pose, size, **{slot: item}
+                            ) as dressed:
+                                region = (0, round(top * size / 120), size, round(bottom * size / 120))
+                                original = plain.getchannel('A').crop(region).point(lambda a: 255 if a > 0 else 0)
+                                fitted = dressed.getchannel('A').crop(region).point(lambda a: 255 if a >= 128 else 0)
+                                self.assertIsNone(ImageChops.subtract(fitted, original).getbbox())
+                                reaches = [False, False]
+                                for y in range(region[1], region[3]):
+                                    opaque = [x for x in range(size) if plain.getpixel((x, y))[3] >= 128]
+                                    inset = max(1, round(3 * size / 120))
+                                    for side, x in enumerate((opaque[0] + inset, opaque[-1] - inset)):
+                                        difference = max(abs(a - b) for a, b in zip(
+                                            plain.getpixel((x, y))[:3], dressed.getpixel((x, y))[:3]))
+                                        reaches[side] |= difference > 20
+                                self.assertEqual(reaches, [True, True], 'wrap stops short of the body edges')
+
     def test_capes_follow_the_crop_line_and_show_a_front_neck_fastening(self):
         for cape in ('adventure-cape', 'royal-cape'):
             with self.subTest(cape=cape):
