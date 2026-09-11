@@ -16,7 +16,7 @@ from achievements_view import AchievementsView
 from cat_artwork import load_frame
 from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
-from cat_accessories import Accessory, normalize_accessory
+from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
 
 
@@ -304,9 +304,12 @@ class SettingsWindow:
         on_request_input_monitoring: Callable[[], bool] | None = None,
         on_open_input_monitoring_settings: Callable[[], bool] | None = None,
         unlocked_accessories: set[str] | None = None,
+        newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
         self._on_save = on_save
         self.unlocked_accessories = set(unlocked_accessories or ())
+        self._achievements_unread = bool(newly_unlocked)
+        self._new_achievement_ids = {item.id for item in newly_unlocked}
         self._assets_root = Path(icon_path).parent if icon_path else Path(__file__).resolve().parent / "assets"
         self._on_check_for_updates = on_check_for_updates
         self._on_open_release_page = on_open_release_page
@@ -736,6 +739,12 @@ class SettingsWindow:
             palette=reward_palette, fonts=self.fonts,
         )
         self._refresh_usage_metrics()
+        if self._new_achievement_ids:
+            self.update_achievements(
+                self.unlocked_accessories,
+                tuple(ACCESSORY_BY_ID[item_id] for item_id in self._new_achievement_ids
+                      if item_id in ACCESSORY_BY_ID),
+            )
 
     def _build_page_switcher(self, parent: tk.Frame) -> None:
         self.page_switcher = tk.Frame(parent, background=self.BACKGROUND)
@@ -744,9 +753,12 @@ class SettingsWindow:
         tabs.pack(anchor="w")
         self.page_buttons: dict[str, tk.Radiobutton] = {}
         for index, label in enumerate(("Settings", "Metrics", "Wardrobe", "Achievements")):
+            text = tk.StringVar(master=self.window, value=label)
+            if label == "Achievements":
+                self._achievements_tab_text = text
             button = tk.Radiobutton(
                 tabs,
-                text=label,
+                textvariable=text,
                 variable=self.active_page,
                 value=label,
                 command=self._switch_page,
@@ -771,6 +783,20 @@ class SettingsWindow:
             tabs.grid_columnconfigure(index, weight=1)
             self.page_buttons[label] = button
         self._refresh_page_buttons()
+        self._refresh_achievement_indicator()
+
+    def _refresh_achievement_indicator(self) -> None:
+        if not hasattr(self, "_achievements_tab_text"):
+            return
+        self._achievements_tab_text.set(
+            "Achievements · New" if self._achievements_unread else "Achievements"
+        )
+        button = self.page_buttons.get("Achievements")
+        if button is not None:
+            button.configure(
+                foreground=(self.ACCENT_DARK if self._achievements_unread
+                            else (self.ACCENT_DARK if self.active_page.get() == "Achievements" else self.INK))
+            )
 
     def _refresh_page_buttons(self) -> None:
         selected = self.active_page.get()
@@ -784,6 +810,10 @@ class SettingsWindow:
 
     def _switch_page(self) -> None:
         selected = self.active_page.get()
+        if selected == "Achievements":
+            self._achievements_unread = False
+            self._new_achievement_ids.clear()
+            self._refresh_achievement_indicator()
         self._refresh_page_buttons()
         self.columns.pack_forget()
         self.metrics_page.pack_forget()
@@ -2464,8 +2494,25 @@ class SettingsWindow:
         self, unlocked: set[str], newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
         self.unlocked_accessories = set(unlocked)
+        if newly_unlocked:
+            self._new_achievement_ids.update(item.id for item in newly_unlocked)
+            if self.active_page.get() != "Achievements":
+                self._achievements_unread = True
+                self._refresh_achievement_indicator()
         self.wardrobe.update_unlocks(unlocked, newly_unlocked)
         self.achievements.update_progress(self.usage_metrics, unlocked)
+        if newly_unlocked:
+            self.achievements.mark_new(newly_unlocked)
+
+    def set_new_achievements(self, newly_unlocked: tuple[Accessory, ...]) -> None:
+        if not newly_unlocked:
+            return
+        self._new_achievement_ids.update(item.id for item in newly_unlocked)
+        self._achievements_unread = self.active_page.get() != "Achievements"
+        self._refresh_achievement_indicator()
+        self.wardrobe.update_unlocks(self.unlocked_accessories, newly_unlocked)
+        self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
+        self.achievements.mark_new(newly_unlocked)
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)

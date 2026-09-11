@@ -31,6 +31,8 @@ class WardrobeView(tk.Frame):
         self.buttons: dict[str, tk.Radiobutton] = {}
         self.none_buttons: dict[str, tk.Radiobutton] = {}
         self.status_text: dict[str, tk.StringVar] = {}
+        self.new_badges: dict[str, tk.Label] = {}
+        self._new_ids: set[str] = set()
         self.achievement_links: dict[str, tk.Button] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
         self._preview_frame: ImageTk.PhotoImage | None = None
@@ -63,6 +65,7 @@ class WardrobeView(tk.Frame):
         self.buttons.clear()
         self.none_buttons.clear()
         self.status_text.clear()
+        self.new_badges.clear()
         self.achievement_links.clear()
         self._thumbnails.clear()
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
@@ -111,9 +114,15 @@ class WardrobeView(tk.Frame):
                 self.buttons[item.id] = button
                 value = tk.StringVar(master=self)
                 self.status_text[item.id] = value
-                tk.Label(tile, textvariable=value, font=fonts["small"],
+                status_row = tk.Frame(tile, background=palette["card"])
+                status_row.pack(fill="x", padx=5, pady=(4, 2))
+                tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=145).pack(padx=5, pady=(4, 2))
+                         wraplength=145).pack(side="left", expand=True)
+                badge = tk.Label(status_row, text="", font=fonts["small"],
+                                  bg=palette["peach"], fg=palette["accent_dark"], padx=4, pady=1)
+                badge.pack(side="right")
+                self.new_badges[item.id] = badge
                 link = tk.Button(
                     tile, text="View achievement →", font=fonts["small"],
                     command=lambda accessory_id=item.id: self.on_achievement(accessory_id),
@@ -128,6 +137,11 @@ class WardrobeView(tk.Frame):
 
     def _choose(self) -> None:
         self._refresh_selection()
+        for item_id, badge in self.new_badges.items():
+            item = ACCESSORY_BY_ID[item_id]
+            if self.slots[item.slot].get() == item_id:
+                self._new_ids.discard(item_id)
+                badge.configure(text="")
         self.on_change()
 
     def _refresh_selection(self) -> None:
@@ -159,5 +173,10 @@ class WardrobeView(tk.Frame):
             if self.status_text[item.id].get() != value:
                 self.status_text[item.id].set(value)
         if newly_unlocked:
+            self._new_ids.update(item.id for item in newly_unlocked)
+            for item in newly_unlocked:
+                badge = self.new_badges.get(item.id)
+                if badge is not None:
+                    badge.configure(text="NEW")
             self.notice.set("Unlocked: " + ", ".join(item.name for item in newly_unlocked))
         self._refresh_selection()

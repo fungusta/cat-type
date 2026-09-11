@@ -26,13 +26,13 @@ class ReleaseVersionCheckTests(unittest.TestCase):
         return root
 
     def test_current_version_matches_every_platform_marker(self) -> None:
-        self.assertEqual(APP_VERSION, "1.0.41")
-        self.assertEqual(metadata_mismatches("1.0.41", PROJECT_ROOT), [])
+        self.assertEqual(APP_VERSION, "1.0.42")
+        self.assertEqual(metadata_mismatches("1.0.42", PROJECT_ROOT), [])
         self.assertNotEqual(metadata_mismatches("1.0.30", PROJECT_ROOT), [])
 
     def test_runtime_version_drift_is_reported(self) -> None:
         root = self.copy_version_files()
-        self.assertEqual(metadata_mismatches("1.0.41", root), [])
+        self.assertEqual(metadata_mismatches("1.0.42", root), [])
 
         (root / "app_version.py").write_text('APP_VERSION = "1.0.4"\n')
 

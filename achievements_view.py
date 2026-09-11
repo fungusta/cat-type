@@ -24,6 +24,8 @@ class AchievementsView(tk.Frame):
         self.assets_root = assets_root
         self._visible_ids: tuple[str, ...] = ()
         self.cards: dict[str, tk.Frame] = {}
+        self.new_badges: dict[str, tk.Label] = {}
+        self._new_ids: set[str] = set()
         self.progress_text: dict[str, tk.StringVar] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
         self.summary = tk.StringVar(master=self)
@@ -38,6 +40,7 @@ class AchievementsView(tk.Frame):
         for card in self.cards.values():
             card.destroy()
         self.cards.clear()
+        self.new_badges.clear()
         self.progress_text.clear()
         self._thumbnails.clear()
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
@@ -53,8 +56,14 @@ class AchievementsView(tk.Frame):
             tk.Label(card, image=thumbnail, bg=palette["card"]).pack(side="left", padx=12, pady=10)
             copy = tk.Frame(card, background=palette["card"])
             copy.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=10)
-            tk.Label(copy, text=item.achievement, font=fonts["control"], anchor="w",
-                     bg=palette["card"], fg=palette["ink"]).pack(fill="x")
+            heading = tk.Frame(copy, background=palette["card"])
+            heading.pack(fill="x")
+            tk.Label(heading, text=item.achievement, font=fonts["control"], anchor="w",
+                     bg=palette["card"], fg=palette["ink"]).pack(side="left")
+            badge = tk.Label(heading, text="", font=fonts["small"], anchor="e",
+                             bg=palette["peach"], fg=palette["accent_dark"], padx=6, pady=1)
+            badge.pack(side="right", padx=(8, 0))
+            self.new_badges[item.id] = badge
             tk.Label(copy, text=f"Reward: {item.name}", font=fonts["small"], anchor="w",
                      bg=palette["card"], fg=palette["ink"]).pack(fill="x", pady=(2, 0))
             tk.Label(copy, text=requirement(item), font=fonts["small"], anchor="w",
@@ -76,6 +85,7 @@ class AchievementsView(tk.Frame):
         if self.summary.get() != summary:
             self.summary.set(summary)
         for item in visible:
+            self.new_badges[item.id].configure(text="NEW" if item.id in self._new_ids else "")
             if item.id in unlocked:
                 value = "Unlocked"
             else:
@@ -87,5 +97,14 @@ class AchievementsView(tk.Frame):
 
     def focus_reward(self, accessory_id: str) -> tk.Frame:
         card = self.cards[accessory_id]
+        self._new_ids.discard(accessory_id)
+        self.new_badges[accessory_id].configure(text="")
         card.focus_set()
         return card
+
+    def mark_new(self, newly_unlocked: tuple[Accessory, ...]) -> None:
+        self._new_ids.update(item.id for item in newly_unlocked)
+        for item in newly_unlocked:
+            badge = self.new_badges.get(item.id)
+            if badge is not None:
+                badge.configure(text="NEW")

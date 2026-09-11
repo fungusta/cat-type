@@ -23,7 +23,7 @@ from PIL import Image, ImageTk
 
 from cat_artwork import BASE_SIZE, frame_source_path, load_frame, vector_png
 from achievements import AchievementStore, AchievementTracker
-from cat_accessories import ACCESSORY_SLOTS, Accessory
+from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, Accessory
 from app_version import IS_BETA_BUILD
 
 from auto_update import (
@@ -1655,6 +1655,7 @@ class CatTypeApp:
         self._macos_overlay_surface: _MacOSNativeOverlaySurface | None = None
         self._tray_icon: pystray.Icon | None = None
         self._tray_thread: threading.Thread | None = None
+        self._unseen_achievements: set[str] = set()
         self._x_display = None
         self._shutting_down = False
         self._update_status = "Ready to check for updates."
@@ -2081,14 +2082,18 @@ class CatTypeApp:
         self._update_tray_monitoring_status()
 
     def _tray_title(self) -> str:
+        suffix = " · New achievement" if getattr(self, "_unseen_achievements", set()) else ""
         if not getattr(self, "_requires_input_monitoring", False):
-            return "Cat Type"
+            return f"Cat Type{suffix}"
         monitoring_active = (
             self.settings.enabled
             and getattr(self, "_activity_monitoring_started", False)
         )
         status = "active" if monitoring_active else "paused"
-        return f"Cat Type — Input monitoring {status}"
+        return f"Cat Type — Input monitoring {status}{suffix}"
+
+    def _settings_menu_label(self) -> str:
+        return "Settings… · New achievement" if getattr(self, "_unseen_achievements", set()) else "Settings…"
 
     def _update_tray_monitoring_status(self) -> None:
         tray_icon = getattr(self, "_tray_icon", None)
@@ -2392,6 +2397,11 @@ class CatTypeApp:
             if earned:
                 self._settings_window.update_achievements(achievement_tracker.unlocked, earned)
         if earned:
+            unseen = getattr(self, "_unseen_achievements", None)
+            if unseen is None:
+                unseen = self._unseen_achievements = set()
+            unseen.update(item.id for item in earned)
+            self._update_tray_monitoring_status()
             self._notify_accessories(earned)
 
     def _notify_accessories(self, earned: tuple[Accessory, ...]) -> None:
@@ -2624,7 +2634,7 @@ class CatTypeApp:
             tray_image = source.convert("RGBA").copy()
         menu = pystray.Menu(
             pystray.MenuItem(
-                "Settings…",
+                self._settings_menu_label,
                 lambda _icon, _item: self.events.put(
                     AppEvent("settings", time.monotonic())
                 ),
@@ -2671,6 +2681,11 @@ class CatTypeApp:
         self._tray_thread.start()
 
     def open_settings(self) -> None:
+        pending = tuple(
+            ACCESSORY_BY_ID[item_id]
+            for item_id in getattr(self, "_unseen_achievements", set())
+            if item_id in ACCESSORY_BY_ID
+        )
         if getattr(self, "_overlay_visible", False):
             self._hide(reset_anchor=False)
         self._restore_macos_activation_policy()
@@ -2681,6 +2696,10 @@ class CatTypeApp:
             self._settings_window is not None
             and self._settings_window.window.winfo_exists()
         ):
+            if pending:
+                self._settings_window.set_new_achievements(pending)
+            getattr(self, "_unseen_achievements", set()).clear()
+            self._update_tray_monitoring_status()
             self._settings_window.show()
             return
         requires_input_monitoring = getattr(
@@ -2719,6 +2738,7 @@ class CatTypeApp:
                 if getattr(self, "achievement_tracker", None) is not None
                 else set()
             ),
+            newly_unlocked=pending,
             on_check_for_updates=lambda: self.check_for_updates(manual=True),
             on_open_release_page=lambda: webbrowser.open(
                 _UnavailableUpdateInstaller.RELEASES_URL
@@ -2747,6 +2767,8 @@ class CatTypeApp:
                 else None
             ),
         )
+        getattr(self, "_unseen_achievements", set()).clear()
+        self._update_tray_monitoring_status()
         if getattr(self, "_update_worker_active", False):
             self._settings_window.set_update_status(
                 self._update_status,
