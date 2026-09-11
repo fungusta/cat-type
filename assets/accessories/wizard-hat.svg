@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Wizard hat</title>
+  <desc>Editable indigo pointed hat with a curled tip, gold band, moon, and star.</desc>
+  <g id="wizard-hat" stroke="#34314f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#7761b1" d="M38 33 Q48 16 55 6 Q64 3 76 12 L64 11 Q70 22 82 33 Z"/>
+    <path fill="#ab8fda" d="M38 28 Q59 32 77 27 L82 34 L36 35 Z"/>
+    <path fill="#edc976" stroke="#79613e" stroke-width="1.6" d="M41 27 Q60 31 75 26 L78 31 Q60 36 38 32 Z"/>
+    <path fill="#6a529e" d="M29 34 Q60 27 91 34 Q92 41 60 41 Q28 41 29 34 Z"/>
+    <path fill="#ffe9a4" stroke="none" d="M57 13 A5 5 0 1 0 62 21 A5 5 0 0 1 57 13 Z"/>
+    <path fill="#ffe9a4" stroke="none" d="M69 20 L70 23 L73 24 L70 25 L69 28 L68 25 L65 24 L68 23 Z"/>
+  </g>
+</svg>

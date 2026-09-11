@@ -77,16 +77,31 @@ you choose when to equip them. Existing typing history counts toward every rewar
 
 | Accessory | Achievement | Requirement |
 | --- | --- | --- |
+| Ribbon clip | A Little Flair | 250 total keystrokes |
 | Round glasses | First Steps | 1,000 total keystrokes |
+| Bell collar | Bells and Whiskers | 2,500 total keystrokes |
 | Bow tie | Helping Paw | 5,000 total keystrokes |
 | Beanie | Getting Comfortable | 10,000 total keystrokes |
+| Leaf sprout | Growing Together | 15,000 total keystrokes |
 | Star glasses | Star Typist | 25,000 total keystrokes |
 | Party hat | Cause for Celebration | 50,000 total keystrokes |
+| Travel satchel | Packed for Adventure | 75,000 total keystrokes |
 | Crown | Keyboard Royalty | 100,000 total keystrokes |
-| Sunglasses | Regular Companion | Type on 7 different days; they need not be consecutive |
-| Red bandana | Daily Purr | Type on 30 different days |
-| Adventure cape | Faithful Feline | Type on 100 different days |
+| Pixel glasses | Pixel Purrfect | 150,000 total keystrokes |
+| Wizard hat | Spellbound | 250,000 total keystrokes |
+| Dragon wings | Here Be Dragons | 500,000 total keystrokes |
 | Golden wings | Million Meows | 1,000,000 total keystrokes |
+| Royal cape | Legendary Companion | 2,000,000 total keystrokes |
+| Daisy clip | Budding Friendship | Type on 3 different days |
+| Sunglasses | Regular Companion | Type on 7 different days; they need not be consecutive |
+| Aviator goggles | Taking Flight | Type on 14 different days |
+| Red bandana | Daily Purr | Type on 30 different days |
+| Sailor hat | Steady Sailing | Type on 60 different days |
+| Adventure cape | Faithful Feline | Type on 100 different days |
+| Laurel wreath | A Year of Purrs | Type on 365 different days |
+
+All active-day achievements count different days, with no consecutive streak
+required. Progress spans your entire saved activity history.
 
 Some achievements are secret. Their names, requirements, items, and contribution
 to the displayed total appear only after you earn them. Every achievement unlocks
@@ -221,7 +236,7 @@ python -m pip install -r requirements.txt -r requirements-build.txt
 python -m PyInstaller --noconfirm --clean CatType.spec
 ```
 
-The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.39` to build the
+The Linux output is `dist/Cat Type`. Push a tag such as `v1.0.40` to build the
 Windows, macOS, and Linux architectures and publish those assets on a GitHub
 Release.
 

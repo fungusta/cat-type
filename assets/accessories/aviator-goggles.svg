@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Aviator goggles</title>
+  <desc>Editable brass aviator goggles with a leather strap and transparent sky-blue lenses.</desc>
+  <g id="aviator-goggles" stroke="#664b37" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#aa7851" d="M22 55 L30 57 L30 64 L22 62 Z M90 57 L98 55 L98 62 L90 64 Z"/>
+    <path fill="none" stroke-width="3" d="M53 60 Q60 56 67 60"/>
+    <path fill="#e1bb77" fill-rule="evenodd" d="M37 51 H46 Q54 51 54 59 V64 Q54 72 46 72 H37 Q29 72 29 64 V59 Q29 51 37 51 Z M38 55 H45 Q50 55 50 60 V63 Q50 68 45 68 H38 Q33 68 33 63 V60 Q33 55 38 55 Z"/>
+    <path fill="#e1bb77" fill-rule="evenodd" d="M74 51 H83 Q91 51 91 59 V64 Q91 72 83 72 H74 Q66 72 66 64 V59 Q66 51 74 51 Z M75 55 H82 Q87 55 87 60 V63 Q87 68 82 68 H75 Q70 68 70 63 V60 Q70 55 75 55 Z"/>
+    <rect x="33" y="55" width="17" height="13" rx="5" fill="#a1dbe6" fill-opacity="0.4" stroke-width="1.4"/>
+    <rect x="70" y="55" width="17" height="13" rx="5" fill="#a1dbe6" fill-opacity="0.4" stroke-width="1.4"/>
+    <path fill="none" stroke="#eafaff" stroke-width="1.8" d="M36 59 L40 57 M73 59 L77 57"/>
+  </g>
+</svg>

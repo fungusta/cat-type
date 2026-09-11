@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Bell collar</title>
+  <desc>Editable teal collar following each cat's neck outline, with softly shaded sides and a gold bell. The band is fitted to the body at render time; paws sit in front.</desc>
+  <defs>
+    <linearGradient id="bell-collar-shading" gradientUnits="userSpaceOnUse" x1="2" y1="0" x2="118" y2="0">
+      <stop offset="0" stop-color="#408b80"/>
+      <stop offset="0.2" stop-color="#61b8a7"/>
+      <stop offset="0.8" stop-color="#61b8a7"/>
+      <stop offset="1" stop-color="#408b80"/>
+    </linearGradient>
+  </defs>
+  <g id="bell-collar" stroke="#314c4b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="bell-collar-band" data-clip-to-body="true">
+      <path fill="url(#bell-collar-shading)" d="M2 68 C22 78 42 83 60 83 C78 83 98 78 118 68 L118 80 C98 88 80 92 60 92 C40 92 22 88 2 80 Z"/>
+      <path fill="none" stroke="#b5f0d9" stroke-width="1.6" d="M14 76 C30 83 46 86 60 86 C74 86 90 83 106 76"/>
+    </g>
+    <circle cx="60" cy="90" r="3.5" fill="#f6cd66" stroke="#76522e"/>
+    <circle cx="60" cy="98" r="7" fill="#f6cd66" stroke="#76522e"/>
+    <path fill="none" stroke="#fff1b5" stroke-width="2" d="M55 96 Q55 94 58 94"/>
+    <path fill="none" stroke="#76522e" stroke-width="1.8" d="M55 100 L65 100 M60 100 L60 104"/>
+  </g>
+</svg>

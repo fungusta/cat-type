@@ -3,6 +3,8 @@ import inspect
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from PIL import ImageChops
+
 from cat_settings import CAT_VARIANTS
 from cat_accessories import ACCESSORIES
 import cat_artwork as art
@@ -12,6 +14,55 @@ ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
 class AccessoryArtworkTests(unittest.TestCase):
+    def test_capes_follow_the_crop_line_and_show_a_front_neck_fastening(self):
+        for cape in ('adventure-cape', 'royal-cape'):
+            with self.subTest(cape=cape):
+                with art.load_frame(ASSETS, 'white', 'idle', 120) as plain, art.load_frame(
+                    ASSETS, 'white', 'idle', 120, back=cape
+                ) as dressed:
+                    # A short cape must not create a second lower silhouette
+                    # beneath the cat's existing cropped body.
+                    plain_alpha = plain.getchannel('A').crop((0, 104, 120, 120)).point(
+                        lambda alpha: 255 if alpha > 0 else 0
+                    )
+                    cape_alpha = dressed.getchannel('A').crop((0, 104, 120, 120)).point(
+                        lambda alpha: 255 if alpha >= 128 else 0
+                    )
+                    self.assertIsNone(ImageChops.subtract(cape_alpha, plain_alpha).getbbox())
+
+                    # The fastening is foreground neckwear, so it remains
+                    # visible over the body while staying below the mouth.
+                    self.assertNotEqual(
+                        plain.crop((36, 76, 84, 96)).tobytes(),
+                        dressed.crop((36, 76, 84, 96)).tobytes(),
+                    )
+
+    def test_collar_wraps_to_each_body_edge_without_widening_the_silhouette(self):
+        for variant in CAT_VARIANTS:
+            for pose in art.POSE_NAMES:
+                for size in (72, 120, 210):
+                    with self.subTest(variant=variant, pose=pose, size=size):
+                        with art.load_frame(ASSETS, variant, pose, size) as plain, art.load_frame(
+                            ASSETS, variant, pose, size, neck='bell-collar'
+                        ) as dressed:
+                            # The collar must stay inside the cat's existing outer
+                            # contour; only its bell may hang below the body.
+                            region = (0, round(68 * size / 120), size, round(94 * size / 120))
+                            # Compositing can strengthen existing antialiased
+                            # edge pixels; it must not create new opaque corners.
+                            plain_shape = plain.getchannel('A').crop(region).point(lambda alpha: 255 if alpha > 0 else 0)
+                            dressed_shape = dressed.getchannel('A').crop(region).point(lambda alpha: 255 if alpha >= 128 else 0)
+                            self.assertIsNone(ImageChops.subtract(dressed_shape, plain_shape).getbbox())
+
+                            # At neck height, the teal band reaches both sides,
+                            # rather than ending in the middle of the chest.
+                            y = round(77 * size / 120)
+                            opaque = [x for x in range(size) if plain.getpixel((x, y))[3] >= 128]
+                            inset = max(1, round(3 * size / 120))
+                            for x in (opaque[0] + inset, opaque[-1] - inset):
+                                red, green = dressed.getpixel((x, y))[:2]
+                                self.assertGreater(green, red + 20)
+
     def test_new_slots_change_pixels_and_cache_independently(self):
         self.assertIn('neck', inspect.signature(art.load_frame).parameters)
         source = art.frame_source_path(ASSETS, 'white', 'idle')

@@ -24,13 +24,32 @@ Type restarts and clears its in-memory render cache.
 
 ## Editing accessories
 
-The six unlockable accessories are standalone SVG masters in
-`assets/accessories`: `round-glasses.svg`, `sunglasses.svg`,
-`star-glasses.svg`, `beanie.svg`, `party-hat.svg`, and `crown.svg`. They share
-the cats' `0 0 120 120` view box, so their coordinates map directly onto every
-cat master. Glasses are centered on the eyes at `(42, 62)` and `(78, 62)`;
-hats sit between or across the ears. Keep all accessory artwork above y=74 so
-it cannot alter the animated paws, and leave the mouth readable.
+Unlockable accessories are standalone SVG masters in `assets/accessories`.
+The shared catalog in `cat_accessories.py` defines each item's slot, achievement,
+and unlock requirement. Every catalog ID must have a matching SVG filename.
+All accessories share the cats' `0 0 120 120` view box, so their coordinates
+map directly onto every cat master.
+
+- Glasses are centered on the eyes at `(42, 62)` and `(78, 62)`; keep them above
+  y=74 and leave the mouth readable.
+- Hats sit between or across the ears, above the face.
+- Ear accessories sit along the outer right ear, clear of central hats.
+- Neckwear stays below y=78 in the center, under the mouth. Wrapping bands can
+  rise at the outer sides to follow the neck. The renderer inserts neckwear
+  behind the animated paws, so their movement remains intact.
+  Mark a band's group with `data-clip-to-body="true"` to fit it to each cat's
+  `outline` path. Keep hanging bells and pendants outside that group so they
+  can extend below the body. The bell collar is an example of this fitting.
+- Back accessories render behind the whole cat. Give them visible details
+  outside the body silhouette, with transparent margins at every canvas edge.
+  A back accessory section marked `data-render-layer="front"` is moved in front
+  of the body and behind the animated paws, which is useful for shoulder
+  fastenings or clasps. Combine it with `data-clip-to-body="true"` when its
+  edges should follow each cat's outline. The adventure and royal capes use
+  both layers.
+
+Allow room for outlines and antialiasing at 60%, 100%, and 175% size. Keep the
+face region `(36, 50)` to `(84, 76)` untouched by hats, ears, neckwear, and backs.
 
 Each accessory is made from ordinary editable SVG shapes inside a group whose
 ID matches its catalog ID. Preserve that group ID and the shared view box when

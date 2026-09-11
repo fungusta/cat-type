@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Sailor hat</title>
+  <desc>Editable ivory sailor cap with a navy band and gold anchor between the cat's ears.</desc>
+  <g id="sailor-hat" stroke="#38475e" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#fff7e6" d="M37 31 L32 15 Q60 7 88 15 L83 31 Z"/>
+    <path fill="none" stroke="#cbd5db" stroke-width="1.7" d="M39 17 Q60 12 81 17 M41 20 L44 28 M79 20 L76 28"/>
+    <path fill="#58779b" d="M35 28 Q60 32 85 28 L85 39 Q60 42 35 39 Z"/>
+    <path fill="none" stroke="#c6e6ee" stroke-width="1.5" d="M39 36 L50 37 M70 37 L81 36"/>
+    <g id="sailor-anchor" fill="none" stroke="#ffe0a0" stroke-width="1.7">
+      <circle cx="60" cy="30" r="1.7"/>
+      <path d="M60 32 L60 39 M55 34 L65 34 M54 36 Q60 42 66 36 M54 36 L54 38 M66 36 L66 38"/>
+    </g>
+  </g>
+</svg>

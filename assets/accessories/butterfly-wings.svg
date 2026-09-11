@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Butterfly wings</title>
+  <desc>Editable lilac butterfly wings with blush lower lobes and ivory spots behind the cat.</desc>
+  <g id="butterfly-wings" stroke="#68507c" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="butterfly-wing-left">
+      <path fill="#c0a0d9" d="M39 70 C21 66 4 47 5 27 Q6 15 16 19 Q33 25 45 51 Z"/>
+      <path fill="#e7a8c4" d="M34 56 Q6 46 5 66 Q4 83 24 81 L40 73 Z"/>
+      <path fill="none" stroke="#8c6ba7" stroke-width="1.5" d="M12 27 Q22 36 37 60 M9 41 Q22 44 33 57"/>
+      <path fill="none" stroke="#b975a1" stroke-width="1.5" d="M10 64 Q19 59 31 63"/>
+      <g fill="#fff0d9" stroke="none">
+        <ellipse cx="12" cy="29" rx="2.5" ry="4" transform="rotate(-25 12 29)"/>
+        <circle cx="11" cy="41" r="2.2"/>
+        <circle cx="12" cy="70" r="2.8"/>
+      </g>
+    </g>
+    <g id="butterfly-wing-right" transform="translate(120 0) scale(-1 1)">
+      <path fill="#c0a0d9" d="M39 70 C21 66 4 47 5 27 Q6 15 16 19 Q33 25 45 51 Z"/>
+      <path fill="#e7a8c4" d="M34 56 Q6 46 5 66 Q4 83 24 81 L40 73 Z"/>
+      <path fill="none" stroke="#8c6ba7" stroke-width="1.5" d="M12 27 Q22 36 37 60 M9 41 Q22 44 33 57"/>
+      <path fill="none" stroke="#b975a1" stroke-width="1.5" d="M10 64 Q19 59 31 63"/>
+      <g fill="#fff0d9" stroke="none">
+        <ellipse cx="12" cy="29" rx="2.5" ry="4" transform="rotate(-25 12 29)"/>
+        <circle cx="11" cy="41" r="2.2"/>
+        <circle cx="12" cy="70" r="2.8"/>
+      </g>
+    </g>
+  </g>
+</svg>

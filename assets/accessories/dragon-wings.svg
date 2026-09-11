@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Dragon wings</title>
+  <desc>Editable teal dragon wings with plum membranes and gold tips, spread behind the cat.</desc>
+  <g id="dragon-wings" stroke="#355256" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+    <g id="dragon-wing-left">
+      <path fill="#7bbaae" d="M36 68 Q19 64 6 48 L5 8 Q16 14 23 23 L32 12 Q42 27 44 52 Z"/>
+      <path fill="#bb91c5" d="M9 16 Q18 23 22 28 L31 19 L34 57 Q24 43 17 49 Q17 38 8 42 Z"/>
+      <path fill="none" d="M7 12 L22 28 L34 57 M22 28 L17 48 M22 28 L8 41"/>
+      <path fill="#eed18a" stroke="#7a6744" stroke-width="1.5" d="M5 8 L9 22 L13 18 Z M32 12 L28 25 L33 22 Z"/>
+    </g>
+    <g id="dragon-wing-right" transform="translate(120 0) scale(-1 1)">
+      <path fill="#7bbaae" d="M36 68 Q19 64 6 48 L5 8 Q16 14 23 23 L32 12 Q42 27 44 52 Z"/>
+      <path fill="#bb91c5" d="M9 16 Q18 23 22 28 L31 19 L34 57 Q24 43 17 49 Q17 38 8 42 Z"/>
+      <path fill="none" d="M7 12 L22 28 L34 57 M22 28 L17 48 M22 28 L8 41"/>
+      <path fill="#eed18a" stroke="#7a6744" stroke-width="1.5" d="M5 8 L9 22 L13 18 Z M32 12 L28 25 L33 22 Z"/>
+    </g>
+  </g>
+</svg>

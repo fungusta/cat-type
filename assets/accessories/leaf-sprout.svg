@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Leaf sprout</title>
+  <desc>Editable two-leaf sprout fastened to the outer right ear.</desc>
+  <g id="leaf-sprout" stroke="#37644a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" d="M98 39 Q96 29 101 22"/>
+    <path fill="#8ec879" d="M98 30 Q86 31 86 17 Q99 17 98 30 Z"/>
+    <path fill="#b5df86" d="M99 26 Q98 12 110 12 Q113 25 99 26 Z"/>
+    <path fill="none" stroke="#568558" stroke-width="1.4" d="M90 22 L96 28 M106 17 L100 25"/>
+    <path fill="#d9bb79" stroke="#856844" d="M93 36 L102 33 L104 38 L95 41 Z"/>
+  </g>
+</svg>

@@ -26,11 +26,11 @@ class AchievementTests(unittest.TestCase):
 
     def test_unlocks_at_threshold_only_once_and_survives_restart_without_history(self):
         tracker = self.tracker(UsageMetrics(total_keystrokes=999))
-        self.assertEqual(tracker.unlocked, set())
+        self.assertEqual(tracker.unlocked, {'ribbon-clip'})
         earned = tracker.evaluate(UsageMetrics(total_keystrokes=1000))
         self.assertEqual([item.id for item in earned], ['round-glasses'])
         self.assertEqual(tracker.evaluate(UsageMetrics(total_keystrokes=1000)), ())
-        self.assertEqual(self.tracker().unlocked, {'round-glasses'})
+        self.assertEqual(self.tracker().unlocked, {'ribbon-clip', 'round-glasses'})
 
     def test_existing_history_grants_every_eligible_reward(self):
         metrics = UsageMetrics(total_keystrokes=100000, daily={
@@ -38,7 +38,7 @@ class AchievementTests(unittest.TestCase):
         })
         self.assertEqual(self.tracker(metrics).unlocked, {
             'round-glasses', 'sunglasses', 'star-glasses', 'beanie', 'party-hat', 'crown',
-            'bow-tie',
+            'bow-tie', 'ribbon-clip', 'bell-collar', 'leaf-sprout', 'travel-satchel', 'daisy-clip',
         })
 
     def test_days_need_not_be_consecutive_and_empty_days_do_not_count(self):
@@ -73,11 +73,11 @@ class AchievementTests(unittest.TestCase):
     def test_failed_save_keeps_unlock_and_retries_without_duplicate_rewards(self):
         tracker = self.tracker()
         with patch.object(tracker.store, 'save', side_effect=OSError('disk full')):
-            self.assertEqual([item.id for item in tracker.evaluate(UsageMetrics(total_keystrokes=1000))], ['round-glasses'])
+            self.assertEqual({item.id for item in tracker.evaluate(UsageMetrics(total_keystrokes=1000))}, {'ribbon-clip', 'round-glasses'})
             self.assertFalse(tracker.flush())
             self.assertEqual(tracker.evaluate(UsageMetrics(total_keystrokes=1001)), ())
         self.assertTrue(tracker.flush())
-        self.assertEqual(self.tracker().unlocked, {'round-glasses'})
+        self.assertEqual(self.tracker().unlocked, {'ribbon-clip', 'round-glasses'})
         self.assertFalse(self.path.with_suffix('.tmp').exists())
 
     def test_equip_requires_known_unlocked_item_in_correct_slot(self):
@@ -156,8 +156,9 @@ class AchievementTests(unittest.TestCase):
         self.assertIn('angel-wings', ACCESSORY_BY_ID)
         from cat_accessories import visible_accessories
         public = {item.id for item in visible_accessories(set())}
-        self.assertEqual(len(public), 10)
-        self.assertFalse({'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf', 'beta-bandana'} & public)
+        self.assertEqual(len(public), 22)
+        self.assertFalse({'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf',
+                          'beta-bandana', 'shooting-star-clip', 'sunrise-scarf', 'butterfly-wings'} & public)
         self.assertEqual({item.id for item in visible_accessories({'angel-wings'})}, public | {'angel-wings'})
 
     def test_unknown_rule_cannot_fall_back_to_keystrokes(self):

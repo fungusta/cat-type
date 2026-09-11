@@ -19,11 +19,13 @@ class WardrobeTests(unittest.TestCase):
     def test_secrets_and_their_items_are_absent_from_both_tabs_and_totals(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window()
-        hidden = {'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf', 'beta-bandana'}
+        hidden = {'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf',
+                  'beta-bandana', 'shooting-star-clip', 'sunrise-scarf', 'butterfly-wings'}
         self.assertFalse(hidden & window.wardrobe.buttons.keys())
         self.assertFalse(hidden & window.achievements.cards.keys())
-        self.assertIn('0 of 10', window.achievements.summary.get())
-        self.assertNotIn('ears', window.wardrobe.none_buttons)
+        self.assertIn('0 of 22', window.achievements.summary.get())
+        self.assertIn('ears', window.wardrobe.none_buttons)
+        self.assertEqual(window.wardrobe.buttons['ribbon-clip'].cget('state'), 'disabled')
         self.assertIn('bow-tie', window.wardrobe.buttons)
 
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
@@ -36,7 +38,7 @@ class WardrobeTests(unittest.TestCase):
                                    tuple(ACCESSORY_BY_ID[item] for item in sorted(new_ids)))
         window.window.update()
         self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
-        self.assertIn('5 of 13', window.achievements.summary.get())
+        self.assertIn('5 of 25', window.achievements.summary.get())
         for item_id in new_ids:
             self.assertIn(item_id, window.achievements.cards)
             window.wardrobe.buttons[item_id].invoke()

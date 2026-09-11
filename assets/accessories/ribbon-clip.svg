@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Ribbon clip</title>
+  <desc>Editable raspberry ribbon tied at the outer right ear, clear of central hats.</desc>
+  <g id="ribbon-clip" stroke="#65334f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#ed91bb" d="M96 31 L87 23 Q83 22 85 28 L88 36 Q89 39 96 34 L100 39 Q108 39 109 30 Q109 26 105 27 Z"/>
+    <path fill="#d76b9c" d="M96 34 L92 45 L98 42 L102 46 L102 34 Z"/>
+    <path fill="none" stroke="#ffd0e5" stroke-width="1.6" d="M88 27 L93 31 M103 30 L101 32"/>
+    <ellipse cx="98" cy="33" rx="4" ry="4.5" fill="#fbb8d3"/>
+  </g>
+</svg>

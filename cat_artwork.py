@@ -37,6 +37,35 @@ def _add_accessory(root: ET.Element, source: Path, accessory_id: str, slot: str)
     for child in accessory:
         if child.tag.rsplit("}", 1)[-1] not in {"title", "desc"}:
             layer.append(child)
+    fitted_parts = [part for part in layer.iter() if part.get("data-clip-to-body") == "true"]
+    front_layer = None
+    front_groups = [
+        (parent, child)
+        for parent in layer.iter()
+        for child in list(parent)
+        if child.get("data-render-layer") == "front"
+    ]
+    if front_groups:
+        front_layer = ET.Element("{http://www.w3.org/2000/svg}g", {"id": f"accessory-{slot}-front"})
+        for parent, child in front_groups:
+            parent.remove(child)
+            front_layer.append(child)
+    if fitted_parts:
+        outline = root.find(".//*[@id='outline']")
+        if outline is None or not outline.get("d"):
+            raise ValueError("Cat artwork has no body outline for fitted accessories")
+        # Clip only the marked band, so pendants can still hang below the body.
+        # The cat's outer stroke remains visible around the fitted material.
+        clip_id = f"accessory-{slot}-body-clip"
+        definitions = ET.SubElement(layer, "{http://www.w3.org/2000/svg}defs")
+        clip = ET.SubElement(definitions, "{http://www.w3.org/2000/svg}clipPath", {
+            "id": clip_id, "clipPathUnits": "userSpaceOnUse",
+        })
+        ET.SubElement(clip, "{http://www.w3.org/2000/svg}path", {
+            "d": outline.get("d"), "fill": "black", "stroke": "none",
+        })
+        for part in fitted_parts:
+            part.set("clip-path", f"url(#{clip_id})")
     if slot == "back":
         root.insert(0, layer)
     elif slot == "neck":
@@ -50,6 +79,13 @@ def _add_accessory(root: ET.Element, source: Path, accessory_id: str, slot: str)
         raise ValueError("Cat artwork has no paw layer for neckwear")
     else:
         root.append(layer)
+    if front_layer is not None:
+        for parent in root.iter():
+            for index, child in enumerate(parent):
+                if child.get("id") == "paw-left":
+                    parent.insert(index, front_layer)
+                    return
+        raise ValueError("Cat artwork has no paw layer for foreground accessories")
 
 
 def frame_source_path(assets_root: Path, variant: str, name: str) -> Path:

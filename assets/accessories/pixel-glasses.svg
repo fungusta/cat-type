@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Pixel glasses</title>
+  <desc>Editable stepped purple frames with translucent turquoise lenses aligned to both eyes.</desc>
+  <g id="pixel-glasses" stroke="#39314e" stroke-width="2.6" stroke-linejoin="miter">
+    <path fill="none" d="M23 55 L30 57 M90 57 L97 55 M53 59 L67 59"/>
+    <path fill="#b995e3" fill-rule="evenodd" d="M32 52 L50 52 L50 55 L54 55 L54 67 L50 67 L50 71 L33 71 L33 67 L29 67 L29 56 L32 56 Z M35 57 L48 57 L48 66 L35 66 Z M70 52 L88 52 L88 56 L91 56 L91 67 L87 67 L87 71 L70 71 L70 67 L66 67 L66 55 L70 55 Z M72 57 L85 57 L85 66 L72 66 Z"/>
+    <path fill="#9ee6e8" fill-opacity="0.48" stroke-width="1.6" d="M35 57 L48 57 L48 66 L35 66 Z M72 57 L85 57 L85 66 L72 66 Z"/>
+    <path fill="none" stroke="#e8ffff" stroke-width="1.8" d="M37 59 L40 59 M74 59 L77 59"/>
+  </g>
+</svg>

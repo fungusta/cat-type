@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Shooting star clip</title>
+  <desc>Editable gold star with lavender and blue comet ribbons at the outer right ear.</desc>
+  <g id="shooting-star-clip" stroke="#60517d" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#b49ad9" d="M96 29 Q102 34 111 34 Q108 42 100 44 Q104 36 94 34 Z"/>
+    <path fill="#8fcede" d="M93 32 Q101 37 98 46 Q90 40 89 34 Z"/>
+    <path fill="#ffda7f" stroke="#956e42" d="M96 17 L99 24 L107 25 L101 31 L102 39 L95 35 L88 38 L90 30 L85 24 L93 24 Z"/>
+    <path fill="none" stroke="#fff3c7" stroke-width="1.8" d="M95 23 L97 27 L101 27"/>
+  </g>
+</svg>

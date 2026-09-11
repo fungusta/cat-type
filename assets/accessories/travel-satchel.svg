@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Travel satchel</title>
+  <desc>Editable leather travel bag and rolled blanket peeking around the cat's right shoulder and side.</desc>
+  <g id="travel-satchel" stroke="#624333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" stroke-width="4" d="M84 54 L85 44 Q94 35 104 45 L108 56"/>
+    <path fill="#bd8356" d="M80 48 Q97 43 113 49 L115 99 Q115 106 108 107 L82 105 Z"/>
+    <path fill="#e1ac70" d="M81 49 Q99 45 113 50 L114 67 Q102 73 83 66 Z"/>
+    <path fill="#79aaa0" d="M78 37 Q78 33 83 33 L109 33 Q115 34 115 41 Q115 47 109 48 L83 47 Q78 46 78 37 Z"/>
+    <ellipse cx="110" cy="40.5" rx="4" ry="6.5" fill="#a5cbbb"/>
+    <path fill="none" stroke="#466f68" stroke-width="1.4" d="M111 38 Q106 36 108 42 Q112 45 112 40"/>
+    <path fill="#b78257" d="M90 33 L95 33 L95 48 L90 48 Z"/>
+    <path fill="#f3d282" d="M105 64 L112 64 L112 72 L105 72 Z"/>
+    <path fill="none" stroke="#f4c99a" stroke-width="1.5" d="M112 78 L112 97 Q112 102 108 103"/>
+  </g>
+</svg>

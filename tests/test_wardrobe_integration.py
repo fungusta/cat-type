@@ -37,16 +37,16 @@ class WardrobeIntegrationTests(unittest.TestCase):
     def test_accepted_key_unlocks_once_without_equipping(self):
         app = self.app()
         app._handle_key_activity(1.0, 'left')
-        self.assertEqual(app.achievement_tracker.unlocked, {'round-glasses'})
+        self.assertEqual(app.achievement_tracker.unlocked, {'ribbon-clip', 'round-glasses'})
         self.assertEqual(app.settings.glasses, 'none')
         app._handle_key_activity(1.1, 'right')
-        self.assertEqual(app.achievement_tracker.unlocked, {'round-glasses'})
+        self.assertEqual(app.achievement_tracker.unlocked, {'ribbon-clip', 'round-glasses'})
 
     def test_paused_activity_does_not_unlock(self):
         app = self.app()
         app.settings.enabled = False
         app._handle_key_activity(1.0, 'left')
-        self.assertEqual(app.achievement_tracker.unlocked, set())
+        self.assertEqual(app.achievement_tracker.unlocked, {'ribbon-clip'})
         self.assertEqual(app.keystroke_count, 999)
 
     def pending_permission_app(self):
@@ -137,7 +137,7 @@ class WardrobeIntegrationTests(unittest.TestCase):
         app._handle_key_activity(1.0, 'left')
         self.assertEqual(app._settings_window.update_achievements.call_count, 1)
         unlocked, earned = app._settings_window.update_achievements.call_args.args
-        self.assertEqual(unlocked, {'round-glasses'})
+        self.assertEqual(unlocked, {'ribbon-clip', 'round-glasses'})
         self.assertEqual([item.id for item in earned], ['round-glasses'])
 
     def test_apply_rejects_locked_outfit_and_rebuilds_for_unlocked_change(self):
@@ -164,7 +164,7 @@ class WardrobeIntegrationTests(unittest.TestCase):
             app.achievement_tracker.evaluate(type(app.usage_tracker.metrics)(total_keystrokes=1000))
         app._shutting_down = True
         app._flush_usage_periodically()
-        self.assertEqual(AchievementStore(self.directory / 'achievements.json').load(), {'round-glasses'})
+        self.assertEqual(AchievementStore(self.directory / 'achievements.json').load(), {'ribbon-clip', 'round-glasses'})
 
     def test_new_slot_validation_preserves_unlocked_and_rejects_locked_items(self):
         app = self.app()
