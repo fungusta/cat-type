@@ -1,5 +1,5 @@
 #define MyAppName "Cat Type"
-#define MyAppVersion "1.0.40"
+#define MyAppVersion "1.0.41"
 #define MyAppPublisher "fungusta"
 #define MyAppExeName "Cat Type.exe"
 #ifndef MyAppId
