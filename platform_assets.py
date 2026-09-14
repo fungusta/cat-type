@@ -14,6 +14,7 @@ def backend_modules(platform: str) -> tuple[str, ...]:
         return (
             "pynput.keyboard._win32",
             "pynput.mouse._win32",
+            "pystray._win32",
         )
     if platform == "darwin":
         return (

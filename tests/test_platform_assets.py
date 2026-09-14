@@ -93,6 +93,7 @@ class PlatformBackendTests(unittest.TestCase):
                 "PIL._tkinter_finder",
                 "pynput.keyboard._win32",
                 "pynput.mouse._win32",
+                "pystray._win32",
             ),
         )
 
