@@ -2092,7 +2092,7 @@ class CatTypeApp:
         status = "active" if monitoring_active else "paused"
         return f"Cat Type — Input monitoring {status}{suffix}"
 
-    def _settings_menu_label(self) -> str:
+    def _settings_menu_label(self, _item: object) -> str:
         return "Settings… · New achievement" if getattr(self, "_unseen_achievements", set()) else "Settings…"
 
     def _update_tray_monitoring_status(self) -> None:

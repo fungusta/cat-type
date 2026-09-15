@@ -438,6 +438,22 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             app._flush_usage_periodically,
         )
 
+    def test_tray_settings_label_supports_pystray_and_updates_live(self) -> None:
+        import pystray
+
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._unseen_achievements = set()
+        item = pystray.MenuItem(
+            app._settings_menu_label,
+            lambda _icon, _item: None,
+        )
+
+        self.assertEqual(item.text, "Settings…")
+        app._unseen_achievements.add("ribbon-clip")
+        self.assertEqual(item.text, "Settings… · New achievement")
+        app._unseen_achievements.clear()
+        self.assertEqual(item.text, "Settings…")
+
     def test_macos_tray_visibility_is_initialized_on_the_main_thread(
         self,
     ) -> None:
