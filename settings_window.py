@@ -350,6 +350,7 @@ class SettingsWindow:
         self._saving = False
         self._save_failed = False
         self._save_after_id: str | None = None
+        self._save_feedback_after_id: str | None = None
         self._after_id: str | None = None
         self._preview_step = 0
         self._preview_variant = "gray"
@@ -411,7 +412,7 @@ class SettingsWindow:
         self._metrics_plot_bounds = (0, 0, 0, 0)
         self.update_status_text = tk.StringVar(value=update_status)
         self.input_monitoring_status_text = tk.StringVar(value="")
-        self.save_status = tk.StringVar(value="Changes save automatically.")
+        self.save_status = tk.StringVar(value="")
 
         self._configure_styles()
         self._load_preview_frames(icon_path)
@@ -720,6 +721,25 @@ class SettingsWindow:
             self.page_host,
             background=self.BACKGROUND,
         )
+        self.page_heading = tk.Frame(self.page_host, background=self.BACKGROUND)
+        self.page_heading.pack(fill="x", pady=(0, 12))
+        self.page_heading_text = tk.StringVar(value=self.active_page.get())
+        tk.Label(
+            self.page_heading,
+            textvariable=self.page_heading_text,
+            background=self.BACKGROUND,
+            foreground=self.INK,
+            font=self.fonts["display_compact"],
+        ).pack(side="left", anchor="w")
+        self.save_status_label = tk.Label(
+            self.page_heading,
+            textvariable=self.save_status,
+            background=self.BACKGROUND,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            anchor="e",
+        )
+        self.save_status_label.pack(side="right", anchor="e", pady=(6, 0))
         self.columns.pack(fill="x")
         self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
         self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
@@ -872,6 +892,8 @@ class SettingsWindow:
 
     def _switch_page(self) -> None:
         selected = self.active_page.get()
+        if hasattr(self, "page_heading_text"):
+            self.page_heading_text.set(selected)
         if selected == "Achievements":
             self._achievements_unread = False
             self._new_achievement_ids.clear()
@@ -2126,14 +2148,6 @@ class SettingsWindow:
             takefocus=True,
         )
         self.close_button.pack(side="left")
-        tk.Label(
-            footer,
-            textvariable=self.save_status,
-            background=self.BACKGROUND,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-            anchor="w",
-        ).pack(side="left", fill="x", expand=True, padx=(0, 12))
         return footer
 
     def _retry_save(self) -> None:
@@ -2435,7 +2449,7 @@ class SettingsWindow:
             self._settings_from_controls() == self._last_saved_settings
             and not self._save_failed
         ):
-            self.save_status.set("Changes save automatically.")
+            self._clear_save_feedback()
             if hasattr(self, "retry_button"):
                 self._set_retry_visible(False)
             return
@@ -2457,6 +2471,9 @@ class SettingsWindow:
         try:
             self._on_save(settings)
         except OSError:
+            if self._save_feedback_after_id is not None:
+                self.window.after_cancel(self._save_feedback_after_id)
+                self._save_feedback_after_id = None
             self._save_failed = True
             self.save_status.set("Couldn't save this change. Try again.")
             if hasattr(self, "retry_button"):
@@ -2467,12 +2484,23 @@ class SettingsWindow:
             # Input Monitoring. Remember that result without saving it again.
             self._last_saved_settings = self._settings_from_controls()
             self._save_failed = False
-            self.save_status.set("Changes save automatically.")
+            if self._save_feedback_after_id is not None:
+                self.window.after_cancel(self._save_feedback_after_id)
+            self.save_status.set("Saved!")
+            self._save_feedback_after_id = self.window.after(
+                1600, self._clear_save_feedback
+            )
             if hasattr(self, "retry_button"):
                 self._set_retry_visible(False)
             return True
         finally:
             self._saving = False
+
+    def _clear_save_feedback(self) -> None:
+        if self._save_feedback_after_id is not None:
+            self.window.after_cancel(self._save_feedback_after_id)
+            self._save_feedback_after_id = None
+        self.save_status.set("")
 
     def _save_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
         self._save()

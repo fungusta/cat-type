@@ -488,7 +488,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Black & white",
             "Brown tabby",
             "Close",
-            "Changes save automatically.",
             "Charcoal",
             "Check for updates",
             "Columns",
@@ -1851,9 +1850,33 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.retry_button.invoke()
             self.assertEqual(
                 self.settings_window.save_status.get(),
-                "Changes save automatically.",
+                "Saved!",
             )
             self.assertEqual(str(self.settings_window.retry_button.cget("state")), "disabled")
+
+    def test_save_feedback_is_empty_until_a_change_saves(self) -> None:
+        self.assertEqual(self.settings_window.save_status.get(), "")
+        self.settings_window.enabled.set(not self.settings_window.enabled.get())
+        self.settings_window.window.update()
+        self.assertEqual(self.settings_window.save_status.get(), "Saved!")
+
+    def test_save_feedback_clears_after_success_timeout(self) -> None:
+        self.settings_window.save_status.set("Saved!")
+        self.settings_window._clear_save_feedback()
+        self.assertEqual(self.settings_window.save_status.get(), "")
+
+    def test_save_failure_keeps_actionable_status_and_retry(self) -> None:
+        self.on_save.side_effect = OSError("disk full")
+        self.settings_window._save_feedback_after_id = "stale-success"
+        with patch.object(self.settings_window.window, "after_cancel") as cancel:
+            self.settings_window.enabled.set(not self.settings_window.enabled.get())
+            self.settings_window._save()
+        cancel.assert_called_with("stale-success")
+        self.assertEqual(
+            self.settings_window.save_status.get(),
+            "Couldn't save this change. Try again.",
+        )
+        self.assertEqual(str(self.settings_window.retry_button.cget("state")), "normal")
 
     def test_footer_closes_without_reverting_changes(self) -> None:
         self.assertEqual(
