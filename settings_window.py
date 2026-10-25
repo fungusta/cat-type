@@ -18,6 +18,7 @@ from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
+from ui_surfaces import RoundedPanel, RoundedChoice, RoundedAction
 
 
 CAT_STYLE_LABELS = {
@@ -62,6 +63,7 @@ class Toggle(tk.Frame):
         )
         self.variable = variable
         self.accent = accent
+        self.focus_ring = ink
 
         copy = tk.Frame(self, background=background, cursor="hand2")
         copy.pack(side="left", fill="x", expand=True)
@@ -88,8 +90,17 @@ class Toggle(tk.Frame):
             widget.bind("<Button-1>", self._toggle)
         for sequence in ("<space>", "<Return>", "<KP_Enter>"):
             self.bind(sequence, self._toggle)
+        self.bind("<FocusIn>", lambda _event: self._set_focus(True))
+        self.bind("<FocusOut>", lambda _event: self._set_focus(False))
         self.variable.trace_add("write", lambda *_args: self._draw())
         self._draw()
+
+    def _set_focus(self, focused: bool) -> None:
+        self.configure(
+            highlightthickness=2,
+            highlightbackground=self.focus_ring if focused else self["background"],
+            highlightcolor=self.accent,
+        )
 
     def _toggle(self, _event: tk.Event[tk.Misc]) -> None:
         self.variable.set(not self.variable.get())
@@ -227,6 +238,15 @@ class CatScale(tk.Canvas):
             if self.focus_get() is self
             else self.accent
         )
+        if self.focus_get() is self:
+            self.create_oval(
+                knob_x - 11,
+                y - 11,
+                knob_x + 11,
+                y + 11,
+                outline=self.accent,
+                width=2,
+            )
         self.create_oval(
             knob_x - 8,
             y - 8,
@@ -265,16 +285,19 @@ class CatScale(tk.Canvas):
         self.command(str(self.variable.get()))
 
 
+
+
 class SettingsWindow:
-    BACKGROUND = "#FFF8F2"
+    BACKGROUND = "#FFF9F3"
     CARD = "#FFFFFF"
-    INK = "#342B2A"
-    MUTED = "#85716C"
-    ACCENT = "#E86F51"
-    ACCENT_DARK = "#C95238"
-    PEACH = "#FFE4D8"
-    BLUSH = "#FFF0E9"
-    BORDER = "#F0DCD2"
+    INK = "#302A33"
+    MUTED = "#655C66"
+    ACCENT = "#F2D66B"
+    ACCENT_DARK = "#5C4A1F"
+    PEACH = "#FFF1B8"
+    BLUSH = "#FAF7F2"
+    BORDER = "#E3DDD7"
+    FOCUS = "#302A33"
     PREFERRED_WIDTH = 920
     PREFERRED_HEIGHT = 800
     MIN_WIDTH = 700
@@ -425,16 +448,10 @@ class SettingsWindow:
                 "TkDefaultFont",
             )
 
-        display = pick(
-            "Cooper Black",
-            "Arial Rounded MT Bold",
-            "Comic Sans MS",
-            "TkDefaultFont",
-        )
         heading = pick(
-            "Kristen ITC",
-            "Comic Sans MS",
-            "Segoe Print",
+            "Arial Rounded MT Bold",
+            "Avenir Next",
+            "Segoe UI",
             "TkDefaultFont",
         )
         body = pick(
@@ -448,8 +465,9 @@ class SettingsWindow:
         self.fonts = {
             "display_compact": tkfont.Font(
                 self.window,
-                family=display,
-                size=24,
+                family=body,
+                size=22,
+                weight="bold",
             ),
             "section": tkfont.Font(
                 self.window,
@@ -572,39 +590,47 @@ class SettingsWindow:
         )
         style.configure(
             "Cat.TButton",
-            background="#F1E5DF",
+            background=self.CARD,
             foreground=self.INK,
-            bordercolor=self.BORDER,
-            lightcolor="#F1E5DF",
-            darkcolor=self.BORDER,
+            bordercolor=self.INK,
+            lightcolor=self.CARD,
+            darkcolor=self.INK,
             font=self.fonts["button"],
-            padding=(14, 7),
+            padding=(14, 8),
+            relief="raised",
+            borderwidth=2,
         )
         style.map(
             "Cat.TButton",
             background=[
-                ("active", self.BLUSH),
-                ("pressed", self.BORDER),
+                ("active", self.PEACH),
+                ("pressed", self.BLUSH),
                 ("disabled", self.BLUSH),
             ],
             foreground=[("disabled", self.MUTED)],
+            relief=[("pressed", "sunken"), ("!pressed", "raised")],
         )
         style.configure(
             "Cat.Accent.TButton",
             background=self.ACCENT,
-            foreground="#FFFFFF",
-            bordercolor=self.ACCENT_DARK,
+            foreground=self.INK,
+            bordercolor=self.INK,
+            lightcolor=self.ACCENT,
+            darkcolor=self.INK,
             font=self.fonts["button"],
-            padding=(14, 7),
+            padding=(14, 8),
+            relief="raised",
+            borderwidth=2,
         )
         style.map(
             "Cat.Accent.TButton",
             background=[
-                ("active", self.ACCENT_DARK),
-                ("pressed", self.ACCENT_DARK),
-                ("disabled", "#D9D1C8"),
+                ("active", self.PEACH),
+                ("pressed", self.PEACH),
+                ("disabled", "#E9E3DC"),
             ],
-            foreground=[("disabled", "#FFFFFF")],
+            foreground=[("disabled", self.MUTED)],
+            relief=[("pressed", "sunken"), ("!pressed", "raised")],
         )
 
     def _load_preview_frames(self, icon_path: str | None) -> None:
@@ -686,12 +712,15 @@ class SettingsWindow:
         )
 
         self._build_page_switcher(self.scroll_content)
+        self.scroll_content.grid_columnconfigure(0, weight=0)
+        self.scroll_content.grid_columnconfigure(1, weight=1)
+        self.scroll_content.grid_rowconfigure(0, weight=1)
 
         self.columns = tk.Frame(
-            self.scroll_content,
+            self.page_host,
             background=self.BACKGROUND,
         )
-        self.columns.pack(fill="x", padx=26)
+        self.columns.pack(fill="x")
         self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
         self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
 
@@ -721,20 +750,20 @@ class SettingsWindow:
         self._build_size_card(self.right_column)
         self._build_timing_card(self.right_column)
         self._build_updates_card(self.right_column)
-        self._build_metrics_page(self.scroll_content)
+        self._build_metrics_page(self.page_host)
         reward_palette = {
             "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
             "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
             "accent_dark": self.ACCENT_DARK, "border": self.BORDER,
         }
         self.wardrobe = WardrobeView(
-            self.scroll_content, assets_root=self._assets_root,
+            self.page_host, assets_root=self._assets_root,
             slots=self.outfit_vars, unlocked=self.unlocked_accessories,
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
             palette=reward_palette, fonts=self.fonts,
         )
         self.achievements = AchievementsView(
-            self.scroll_content, assets_root=self._assets_root,
+            self.page_host, assets_root=self._assets_root,
             metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
             palette=reward_palette, fonts=self.fonts,
         )
@@ -747,17 +776,50 @@ class SettingsWindow:
             )
 
     def _build_page_switcher(self, parent: tk.Frame) -> None:
-        self.page_switcher = tk.Frame(parent, background=self.BACKGROUND)
-        self.page_switcher.pack(fill="x", padx=26, pady=(24, 14))
-        tabs = tk.Frame(self.page_switcher, background=self.BLUSH)
-        tabs.pack(anchor="w")
+        self.page_switcher = RoundedPanel(
+            parent,
+            background=self.BACKGROUND,
+            fill=self.CARD,
+            border=self.BORDER,
+            radius=20,
+            padding=10,
+        )
+        self.page_switcher.configure(width=154)
+        self.page_switcher.content.configure(width=134)
+        self.page_switcher.grid(row=0, column=0, sticky="nw", padx=(26, 18), pady=(24, 18))
+        tabs = self.page_switcher.content
+        tabs.configure(padx=8, pady=8)
+        self.rail_brand_title = tk.Label(
+            tabs,
+            text="Cat Type",
+            background=self.CARD,
+            foreground=self.INK,
+            font=self.fonts["section"],
+        )
+        self.rail_brand_title.pack(anchor="w", padx=4, pady=(2, 8))
+        self.rail_preview = tk.Canvas(
+            tabs,
+            width=118,
+            height=112,
+            background=self.PEACH,
+            highlightthickness=0,
+        )
+        self.rail_preview.pack(fill="x", pady=(0, 12))
+        self.rail_preview.create_oval(10, 88, 108, 106, fill="#E7D78B", outline="")
+        self.rail_preview.create_text(100, 16, text="✦", fill=self.ACCENT_DARK, font=self.fonts["symbol"])
+        self.rail_preview.create_text(16, 30, text="✦", fill="#D9BE4E", font=self.fonts["symbol"])
+        self._rail_preview_image = self.rail_preview.create_image(59, 57)
+        nav = tk.Frame(tabs, background=self.CARD)
+        nav.pack(fill="x")
+        self.page_host = tk.Frame(parent, background=self.BACKGROUND)
+        self.page_host.grid(row=0, column=1, sticky="nsew", padx=(0, 26), pady=(24, 18))
         self.page_buttons: dict[str, tk.Radiobutton] = {}
         for index, label in enumerate(("Settings", "Metrics", "Wardrobe", "Achievements")):
             text = tk.StringVar(master=self.window, value=label)
             if label == "Achievements":
                 self._achievements_tab_text = text
-            button = tk.Radiobutton(
-                tabs,
+            button = RoundedChoice(
+                nav,
                 textvariable=text,
                 variable=self.active_page,
                 value=label,
@@ -767,20 +829,19 @@ class SettingsWindow:
                 borderwidth=0,
                 highlightthickness=2,
                 highlightbackground=self.BORDER,
-                highlightcolor=self.ACCENT,
-                background=self.BLUSH,
-                selectcolor=self.PEACH,
+                highlightcolor=self.FOCUS,
+                background=self.CARD,
+                selectcolor=self.ACCENT,
                 activebackground=self.PEACH,
                 activeforeground=self.INK,
                 foreground=self.INK,
                 font=self.fonts["control"],
-                padx=16,
-                pady=8,
+                padx=14,
+                pady=10,
                 cursor="hand2",
                 takefocus=True,
             )
-            button.grid(row=0, column=index, sticky="ew")
-            tabs.grid_columnconfigure(index, weight=1)
+            button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button
         self._refresh_page_buttons()
         self._refresh_achievement_indicator()
@@ -803,9 +864,10 @@ class SettingsWindow:
         for label, button in self.page_buttons.items():
             is_selected = label == selected
             button.configure(
-                background=self.PEACH if is_selected else self.BLUSH,
-                foreground=self.ACCENT_DARK if is_selected else self.INK,
-                highlightbackground=self.ACCENT if is_selected else self.BORDER,
+                background=self.ACCENT if is_selected else self.CARD,
+                selectcolor=self.ACCENT if is_selected else self.CARD,
+                foreground=self.INK,
+                highlightbackground=self.FOCUS if is_selected else self.BORDER,
             )
 
     def _switch_page(self) -> None:
@@ -820,16 +882,16 @@ class SettingsWindow:
         self.wardrobe.pack_forget()
         self.achievements.pack_forget()
         if selected == "Metrics":
-            self.metrics_page.pack(fill="x", padx=26)
+            self.metrics_page.pack(fill="x")
             self._refresh_usage_metrics()
         elif selected == "Wardrobe":
-            self.wardrobe.pack(fill="x", padx=26)
+            self.wardrobe.pack(fill="x")
             self.wardrobe.update_unlocks(self.unlocked_accessories)
         elif selected == "Achievements":
-            self.achievements.pack(fill="x", padx=26)
+            self.achievements.pack(fill="x")
             self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
         else:
-            self.columns.pack(fill="x", padx=26)
+            self.columns.pack(fill="x")
         self.scroll_canvas.yview_moveto(0)
         self.window.after_idle(self._sync_scrollbar_visibility)
 
@@ -888,7 +950,7 @@ class SettingsWindow:
         if self._requires_input_monitoring:
             privacy = tk.Frame(content, background=self.CARD)
             privacy.pack(fill="x")
-            self.privacy_details_button = ttk.Button(
+            self.privacy_details_button = RoundedAction(
                 privacy,
                 text="Privacy details",
                 command=self._toggle_privacy_details,
@@ -922,7 +984,7 @@ class SettingsWindow:
                 justify="left",
                 wraplength=330,
             ).pack(fill="x", padx=12, pady=(10, 4))
-            self.input_monitoring_button = ttk.Button(
+            self.input_monitoring_button = RoundedAction(
                 permission,
                 command=self._handle_input_monitoring_action,
                 style=self.primary_button_style,
@@ -1052,7 +1114,9 @@ class SettingsWindow:
             activity_content,
             height=250,
             background=self.CARD,
-            highlightthickness=0,
+            highlightthickness=2,
+            highlightbackground=self.CARD,
+            highlightcolor=self.FOCUS,
             takefocus=True,
         )
         metrics_navigation = tk.Frame(
@@ -1061,7 +1125,7 @@ class SettingsWindow:
         )
         metrics_navigation.pack(fill="x", pady=(0, 8))
         metrics_navigation.grid_columnconfigure(1, weight=1)
-        self.metrics_previous_button = ttk.Button(
+        self.metrics_previous_button = RoundedAction(
             metrics_navigation,
             text="← Previous",
             command=lambda: self._navigate_metrics_period(-1),
@@ -1077,7 +1141,7 @@ class SettingsWindow:
             font=self.fonts["small"],
         )
         self.metrics_interval_label.grid(row=0, column=1, padx=12)
-        self.metrics_next_button = ttk.Button(
+        self.metrics_next_button = RoundedAction(
             metrics_navigation,
             text="Next →",
             command=lambda: self._navigate_metrics_period(1),
@@ -1133,7 +1197,7 @@ class SettingsWindow:
         for index, (label, days) in enumerate(
             (("1d", 1), ("7d", 7), ("30d", 30))
         ):
-            button = tk.Radiobutton(
+            button = RoundedChoice(
                 ranges,
                 text=label,
                 variable=self.metrics_range_days,
@@ -1144,8 +1208,8 @@ class SettingsWindow:
                 borderwidth=0,
                 highlightthickness=1,
                 highlightbackground=self.BORDER,
-                background=self.BLUSH,
-                selectcolor=self.PEACH,
+                background=self.CARD,
+                selectcolor=self.ACCENT,
                 activebackground=self.PEACH,
                 foreground=self.INK,
                 font=self.fonts["small"],
@@ -1173,7 +1237,7 @@ class SettingsWindow:
         for index, (label, view) in enumerate(
             (("Line", "line"), ("Columns", "columns"))
         ):
-            button = tk.Radiobutton(
+            button = RoundedChoice(
                 views,
                 text=label,
                 variable=self.metrics_view,
@@ -1184,8 +1248,8 @@ class SettingsWindow:
                 borderwidth=0,
                 highlightthickness=1,
                 highlightbackground=self.BORDER,
-                background=self.BLUSH,
-                selectcolor=self.PEACH,
+                background=self.CARD,
+                selectcolor=self.ACCENT,
                 activebackground=self.PEACH,
                 foreground=self.INK,
                 font=self.fonts["small"],
@@ -1210,34 +1274,37 @@ class SettingsWindow:
         detail: str,
         padx: int | tuple[int, int],
     ) -> None:
-        card = tk.Frame(
+        card = RoundedPanel(
             parent,
-            background=self.CARD,
-            highlightbackground=self.BORDER,
-            highlightthickness=1,
+            background=self.BACKGROUND,
+            fill=self.CARD,
+            border=self.BORDER,
+            radius=16,
+            padding=10,
         )
         card.grid(row=0, column=column, sticky="nsew", padx=padx)
+        content = card.content
         tk.Label(
-            card,
+            content,
             text=label,
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["small"],
-        ).pack(anchor="w", padx=16, pady=(14, 4))
+        ).pack(anchor="w", padx=8, pady=(8, 4))
         tk.Label(
-            card,
+            content,
             textvariable=value,
             background=self.CARD,
-            foreground=self.ACCENT_DARK,
+            foreground=self.INK,
             font=self.fonts["display_compact"],
-        ).pack(anchor="w", padx=16)
+        ).pack(anchor="w", padx=8)
         tk.Label(
-            card,
+            content,
             text=detail,
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["tiny"],
-        ).pack(anchor="w", padx=16, pady=(2, 14))
+        ).pack(anchor="w", padx=8, pady=(2, 8))
 
     def _change_metrics_range(self) -> None:
         self.metrics_period_offset = 0
@@ -1264,10 +1331,11 @@ class SettingsWindow:
         for days, button in self.metrics_range_buttons.items():
             is_selected = days == selected
             button.configure(
-                background=self.PEACH if is_selected else self.BLUSH,
+                background=self.ACCENT if is_selected else self.CARD,
+                selectcolor=self.ACCENT if is_selected else self.CARD,
                 foreground=self.INK,
                 highlightbackground=(
-                    self.ACCENT_DARK if is_selected else self.BORDER
+                    self.FOCUS if is_selected else self.BORDER
                 ),
             )
 
@@ -1281,10 +1349,11 @@ class SettingsWindow:
         for view, button in self.metrics_view_buttons.items():
             is_selected = view == selected
             button.configure(
-                background=self.PEACH if is_selected else self.BLUSH,
+                background=self.ACCENT if is_selected else self.CARD,
+                selectcolor=self.ACCENT if is_selected else self.CARD,
                 foreground=self.INK,
                 highlightbackground=(
-                    self.ACCENT_DARK if is_selected else self.BORDER
+                    self.FOCUS if is_selected else self.BORDER
                 ),
             )
 
@@ -1656,12 +1725,33 @@ class SettingsWindow:
                     font=self.fonts["tiny"],
                 )
         if not maximum:
+            empty_x = width / 2
+            empty_y = height / 2 - 26
+            canvas.create_oval(
+                empty_x - 22,
+                empty_y - 22,
+                empty_x + 22,
+                empty_y + 22,
+                fill=self.PEACH,
+                outline=self.ACCENT_DARK,
+                width=1,
+                tags=("metric-empty-shelf",),
+            )
+            canvas.create_text(
+                empty_x,
+                empty_y,
+                text="✦",
+                fill=self.ACCENT_DARK,
+                font=self.fonts["section"],
+                tags=("metric-empty-shelf",),
+            )
             canvas.create_text(
                 width / 2,
-                height / 2 - 8,
+                height / 2 + 16,
                 text=empty_message,
                 fill=self.MUTED,
                 font=self.fonts["body"],
+                tags=("metric-empty-shelf",),
             )
 
         self._metrics_positions = plot_positions[:visible_count] if maximum else []
@@ -1846,21 +1936,21 @@ class SettingsWindow:
             132,
             228,
             160,
-            fill="#F4C7B5",
+            fill="#E7D78B",
             outline="",
         )
         self.preview_canvas.create_text(
             218,
             24,
             text="✦",
-            fill=self.ACCENT,
+            fill=self.ACCENT_DARK,
             font=self.fonts["symbol"],
         )
         self.preview_canvas.create_text(
             31,
             45,
             text="✦",
-            fill="#F3A486",
+            fill="#D9BE4E",
             font=self.fonts["symbol"],
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
@@ -1869,7 +1959,7 @@ class SettingsWindow:
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
         columns = 2
         for index, label in enumerate(CAT_STYLE_LABELS):
-            button = tk.Radiobutton(
+            button = RoundedChoice(
                 choices,
                 text=label,
                 variable=self.cat_style,
@@ -1920,9 +2010,10 @@ class SettingsWindow:
         for label, button in self.cat_style_buttons.items():
             is_selected = label == selected
             button.configure(
-                background=self.PEACH if is_selected else self.BLUSH,
-                foreground=self.ACCENT_DARK if is_selected else self.INK,
-                highlightbackground=self.ACCENT if is_selected else self.BORDER,
+                background=self.ACCENT if is_selected else self.CARD,
+                selectcolor=self.ACCENT if is_selected else self.CARD,
+                foreground=self.INK,
+                highlightbackground=self.FOCUS if is_selected else self.BORDER,
             )
 
     def _build_size_card(self, parent: tk.Frame) -> None:
@@ -1982,7 +2073,7 @@ class SettingsWindow:
         content.bind("<Configure>", self._on_update_card_configure, add="+")
         update_actions = tk.Frame(content, background=self.CARD)
         update_actions.pack(fill="x")
-        self.check_for_updates_button = ttk.Button(
+        self.check_for_updates_button = RoundedAction(
             update_actions,
             text="Check for updates",
             command=self._on_check_for_updates,
@@ -1992,7 +2083,7 @@ class SettingsWindow:
             takefocus=True,
         )
         self.check_for_updates_button.pack(side="left")
-        self.open_release_page_button = ttk.Button(
+        self.open_release_page_button = RoundedAction(
             update_actions,
             text="Open release page",
             command=self._on_open_release_page,
@@ -2017,7 +2108,16 @@ class SettingsWindow:
             background=self.BACKGROUND,
         )
         self.footer_buttons.pack(side="right")
-        self.close_button = ttk.Button(
+        self.retry_button = RoundedAction(
+            self.footer_buttons,
+            text="Retry",
+            command=self._retry_save,
+            state="disabled",
+            style=self.secondary_button_style,
+            cursor="arrow",
+            takefocus=True,
+        )
+        self.close_button = RoundedAction(
             self.footer_buttons,
             text="Close",
             command=self.close,
@@ -2036,20 +2136,34 @@ class SettingsWindow:
         ).pack(side="left", fill="x", expand=True, padx=(0, 12))
         return footer
 
+    def _retry_save(self) -> None:
+        self._save()
+
+    def _set_retry_visible(self, visible: bool) -> None:
+        if visible:
+            if not self.retry_button.winfo_manager():
+                self.retry_button.pack(side="left", padx=(0, 8))
+            self.retry_button.configure(state="normal")
+        else:
+            self.retry_button.pack_forget()
+            self.retry_button.configure(state="disabled")
+
     def _card(
         self,
         parent: tk.Misc,
         title: str,
         heading_actions: Callable[[tk.Frame], None] | None = None,
     ) -> tuple[tk.Frame, tk.Frame]:
-        outer = tk.Frame(
+        outer = RoundedPanel(
             parent,
-            background=self.CARD,
-            highlightbackground=self.BORDER,
-            highlightthickness=1,
+            background=self.BACKGROUND,
+            fill=self.CARD,
+            border=self.BORDER,
+            radius=18,
+            padding=10,
         )
-        heading = tk.Frame(outer, background=self.CARD)
-        heading.pack(fill="x", padx=18, pady=(15, 11))
+        heading = tk.Frame(outer.content, background=self.CARD)
+        heading.pack(fill="x", padx=20, pady=(17, 12))
         if heading_actions is not None:
             heading_actions(heading)
         tk.Label(
@@ -2059,12 +2173,12 @@ class SettingsWindow:
             foreground=self.INK,
             font=self.fonts["section"],
         ).pack(anchor="w")
-        content = tk.Frame(outer, background=self.CARD)
-        content.pack(fill="x", padx=18, pady=(0, 16))
+        content = tk.Frame(outer.content, background=self.CARD)
+        content.pack(fill="x", padx=20, pady=(0, 19))
         return outer, content
 
     def _divider(self, parent: tk.Misc) -> tk.Frame:
-        return tk.Frame(parent, background="#F3E8E2", height=1)
+        return tk.Frame(parent, background=self.BORDER, height=1)
 
     def _field_label(self, parent: tk.Misc, text: str) -> tk.Label:
         return tk.Label(
@@ -2280,6 +2394,7 @@ class SettingsWindow:
             frame = frames.get(sequence[self._preview_step % len(sequence)])
             if frame is not None:
                 self.preview_canvas.itemconfigure(self._preview_image, image=frame)
+                self.rail_preview.itemconfigure(self._rail_preview_image, image=frame)
                 self.wardrobe.set_preview(frame)
 
     def _animate_preview(self) -> None:
@@ -2321,6 +2436,8 @@ class SettingsWindow:
             and not self._save_failed
         ):
             self.save_status.set("Changes save automatically.")
+            if hasattr(self, "retry_button"):
+                self._set_retry_visible(False)
             return
         self.save_status.set("Saving changes…")
         self._save_after_id = self.window.after(200, self._save)
@@ -2333,13 +2450,17 @@ class SettingsWindow:
             self._save_after_id = None
         settings = self._settings_from_controls()
         if settings == self._last_saved_settings and not self._save_failed:
+            if hasattr(self, "retry_button"):
+                self._set_retry_visible(False)
             return True
         self._saving = True
         try:
             self._on_save(settings)
         except OSError:
             self._save_failed = True
-            self.save_status.set("Couldn't save changes. Close to retry.")
+            self.save_status.set("Couldn't save this change. Try again.")
+            if hasattr(self, "retry_button"):
+                self._set_retry_visible(True)
             return False
         else:
             # Applying settings can update controls, e.g. when macOS denies
@@ -2347,6 +2468,8 @@ class SettingsWindow:
             self._last_saved_settings = self._settings_from_controls()
             self._save_failed = False
             self.save_status.set("Changes save automatically.")
+            if hasattr(self, "retry_button"):
+                self._set_retry_visible(False)
             return True
         finally:
             self._saving = False

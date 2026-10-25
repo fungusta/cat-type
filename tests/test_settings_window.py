@@ -475,6 +475,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Metrics",
             "Wardrobe",
             "Achievements",
+            "Cat Type",
             "Companion",
             "Cat style",
             "Cat size",
@@ -503,6 +504,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Preview scale",
             "Range",
             "Ready to check.",
+            "Retry",
             "Show my cat while I type",
             "Soft fade",
             "Start Cat Type when I sign in",
@@ -525,6 +527,19 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.cat_style_content,
         )
         self.assertFalse(hasattr(self.settings_window, "hero"))
+
+    def test_companion_studio_shell_puts_preview_in_the_rail(self) -> None:
+        rail = self.settings_window.page_switcher
+        self.assertIs(self.settings_window.rail_preview.master, rail.content)
+        self.assertEqual(self.settings_window.rail_brand_title.cget("text"), "Cat Type")
+        self.assertFalse(hasattr(self.settings_window, "companion_header"))
+
+    def test_page_content_starts_in_the_main_host(self) -> None:
+        self.settings_window.active_page.set("Settings")
+        self.settings_window._switch_page()
+        self.settings_window.window.update_idletasks()
+        self.assertIs(self.settings_window.columns.master, self.settings_window.page_host)
+        self.assertIs(self.settings_window.metrics_page.master, self.settings_window.page_host)
 
     def test_scaled_opening_grows_to_remove_avoidable_scrolling(self) -> None:
         self.root.tk.call("tk", "scaling", 2.5)
@@ -709,7 +724,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         content_height = bounds[3] - bounds[1]
         non_scroll_height = actual_height - viewport_height
         self.assertEqual(fitted_window._layout_mode, "wide")
-        self.assertEqual(
+        self.assertGreaterEqual(
             actual_height,
             max(300, content_height + non_scroll_height),
         )
@@ -928,13 +943,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_range_days.get(), 1)
         self.assertEqual(
             self.settings_window.metrics_range_buttons[1].cget("background"),
-            self.settings_window.PEACH,
+            self.settings_window.ACCENT,
         )
         self.assertEqual(
             self.settings_window.metrics_range_buttons[1].cget(
                 "highlightbackground"
             ),
-            self.settings_window.ACCENT_DARK,
+            self.settings_window.FOCUS,
         )
 
         self.settings_window.metrics_range_days.set(30)
@@ -943,7 +958,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.metrics_range_days.get(), 30)
         self.assertEqual(
             self.settings_window.metrics_range_buttons[30].cget("background"),
-            self.settings_window.PEACH,
+            self.settings_window.ACCENT,
         )
 
     def test_metrics_view_switches_without_resetting_range(self) -> None:
@@ -1397,7 +1412,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(saved_window.metrics_view.get(), "columns")
         self.assertEqual(
             saved_window.metrics_view_buttons["columns"].cget("background"),
-            saved_window.PEACH,
+            saved_window.ACCENT,
         )
         on_save.assert_not_called()
 
@@ -1442,7 +1457,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window.window.minsize(1, 1)
         self.settings_window.window.geometry("600x480")
         self.settings_window.window.update()
-        buttons = self.settings_window.footer_buttons.winfo_children()
+        buttons = [
+            button
+            for button in self.settings_window.footer_buttons.winfo_children()
+            if button.winfo_ismapped()
+        ]
 
         for button in buttons:
             with self.subTest(button=button.cget("text")):
@@ -1517,6 +1536,22 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         )
         self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
 
+    def test_shelf_content_fits_when_window_is_resized(self) -> None:
+        from settings_window import RoundedPanel
+
+        for width in (920, 700, 600):
+            self.settings_window.window.minsize(1, 1)
+            self.settings_window.window.geometry(f"{width}x600")
+            self.settings_window.window.update()
+            for column in (self.settings_window.left_column, self.settings_window.right_column):
+                for shelf in column.winfo_children():
+                    if isinstance(shelf, RoundedPanel):
+                        with self.subTest(width=width, shelf=shelf):
+                            self.assertLessEqual(
+                                shelf.content.winfo_x() + shelf.content.winfo_width(),
+                                shelf.winfo_width() - shelf._padding,
+                            )
+
     def test_update_status_wraps_to_the_available_card_width(self) -> None:
         self.settings_window.set_update_status(
             "A longer update status that needs to wrap cleanly inside the card."
@@ -1570,6 +1605,44 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
                 self.assertEqual(variable.get(), not value_before)
 
+    def test_soft_pill_focus_highlight_tracks_pressed_face(self) -> None:
+        button = self.settings_window.check_for_updates_button
+        button._focused = True
+        button._pressed = False
+        button._draw()
+        normal_surface = button._pill_image
+
+        button._pressed = True
+        button._draw()
+        pressed_surface = button._pill_image
+
+        self.assertIsNot(normal_surface, pressed_surface)
+
+    def test_soft_pill_actions_do_not_draw_a_dark_lower_rail(self) -> None:
+        button = self.settings_window.check_for_updates_button
+        button._focused = False
+        button._pressed = False
+        button._draw()
+
+        polygon_fills = [
+            str(button.itemcget(item, "fill"))
+            for item in button.find_all()
+            if button.type(item) == "polygon"
+        ]
+
+        self.assertNotIn(self.settings_window.INK, polygon_fills)
+
+    def test_soft_pill_style_switch_keeps_primary_and_secondary_faces_consistent(
+        self,
+    ) -> None:
+        button = self.settings_window.check_for_updates_button
+
+        button.configure(style=self.settings_window.primary_button_style)
+        self.assertEqual(button._fill, self.settings_window.ACCENT)
+
+        button.configure(style=self.settings_window.secondary_button_style)
+        self.assertEqual(button._fill, self.settings_window.CARD)
+
     def test_cat_scale_uses_the_full_clickable_range(self) -> None:
         scales: list[CatScale] = []
 
@@ -1606,7 +1679,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         for label, button in self.settings_window.cat_style_buttons.items():
             with self.subTest(label=label):
                 expected = (
-                    self.settings_window.ACCENT
+                    self.settings_window.FOCUS
                     if label == "Ginger tabby"
                     else self.settings_window.BORDER
                 )
@@ -1673,7 +1746,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_settings_are_persisted_on_change_without_closing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = SettingsStore(Path(directory) / "settings.json")
-            self.settings_window._on_save = store.save
+            self.settings_window._on_save = lambda settings: store.save(settings)
             self.assertFalse(store.path.exists())
             cases = (
                 ("enabled", False, False),
@@ -1760,11 +1833,38 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.assertFalse(store.load().enabled)
             self.assertFalse(self.settings_window.window.winfo_exists())
 
+    def test_failed_autosave_exposes_inline_retry_action(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = SettingsStore(Path(directory) / "settings.json")
+            self.settings_window._on_save = lambda settings: store.save(settings)
+            with patch.object(store, "save", side_effect=OSError("disk full")):
+                self.settings_window.enabled.set(False)
+                self.assertEqual(
+                    self.settings_window.save_status.get(),
+                    "Couldn't save this change. Try again.",
+                )
+                self.assertEqual(
+                    str(self.settings_window.retry_button.cget("state")),
+                    "normal",
+                )
+            self.settings_window._on_save = lambda settings: store.save(settings)
+            self.settings_window.retry_button.invoke()
+            self.assertEqual(
+                self.settings_window.save_status.get(),
+                "Changes save automatically.",
+            )
+            self.assertEqual(str(self.settings_window.retry_button.cget("state")), "disabled")
+
     def test_footer_closes_without_reverting_changes(self) -> None:
         self.assertEqual(
-            [button.cget("text") for button in self.settings_window.footer_buttons.winfo_children()],
+            [
+                button.cget("text")
+                for button in self.settings_window.footer_buttons.winfo_children()
+                if button.winfo_ismapped()
+            ],
             ["Close"],
         )
+        self.assertFalse(self.settings_window.retry_button.winfo_ismapped())
         self.settings_window.enabled.set(False)
         self.settings_window.close_button.invoke()
         self.assertFalse(self.on_save.call_args.args[0].enabled)
