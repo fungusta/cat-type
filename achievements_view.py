@@ -11,6 +11,7 @@ from achievements import progress, requirement
 from cat_accessories import Accessory, visible_accessories
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
+from ui_surfaces import RoundedPanel
 
 
 class AchievementsView(tk.Frame):
@@ -23,7 +24,7 @@ class AchievementsView(tk.Frame):
         self.fonts = fonts
         self.assets_root = assets_root
         self._visible_ids: tuple[str, ...] = ()
-        self.cards: dict[str, tk.Frame] = {}
+        self.cards: dict[str, RoundedPanel] = {}
         self.new_badges: dict[str, tk.Label] = {}
         self._new_ids: set[str] = set()
         self.progress_text: dict[str, tk.StringVar] = {}
@@ -43,16 +44,23 @@ class AchievementsView(tk.Frame):
         self._thumbnails.clear()
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
         for item in visible:
-            card = tk.Frame(self, background=palette["card"], takefocus=True,
-                            highlightthickness=2, highlightbackground=palette["border"],
-                            highlightcolor=palette["accent"])
+            card = RoundedPanel(
+                self,
+                background=palette["background"],
+                fill=palette["card"],
+                border=palette["border"],
+                radius=16,
+                padding=10,
+                takefocus=True,
+            )
             card.pack(fill="x", pady=(0, 10))
             self.cards[item.id] = card
+            content = card.content
             with load_frame(assets_root, "white", "idle", 64, **{item.slot: item.id}) as frame:
                 thumbnail = ImageTk.PhotoImage(frame, master=self)
             self._thumbnails.append(thumbnail)
-            tk.Label(card, image=thumbnail, bg=palette["card"]).pack(side="left", padx=12, pady=10)
-            copy = tk.Frame(card, background=palette["card"])
+            tk.Label(content, image=thumbnail, bg=palette["card"]).pack(side="left", padx=2, pady=2)
+            copy = tk.Frame(content, background=palette["card"])
             copy.pack(side="left", fill="x", expand=True, padx=(0, 12), pady=10)
             heading = tk.Frame(copy, background=palette["card"])
             heading.pack(fill="x")

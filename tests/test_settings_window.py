@@ -439,6 +439,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertNotIn("Keep the cat close, calm, and easy to personalize.", texts)
         self.assertNotIn("Make it feel like yours.", texts)
 
+    def test_metrics_keeps_summary_above_one_activity_shelf(self) -> None:
+        self.settings_window.active_page.set("Metrics")
+        self.settings_window._switch_page()
+        self.settings_window.window.update_idletasks()
+        self.assertEqual(len(self.settings_window.metric_stat_cards), 3)
+        self.assertTrue(self.settings_window.metrics_chart.winfo_ismapped())
+
     def test_settings_rows_keep_controls_on_the_right(self) -> None:
         self.settings_window.active_page.set("Settings")
         self.settings_window._switch_page()

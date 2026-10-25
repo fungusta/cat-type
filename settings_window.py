@@ -1100,6 +1100,7 @@ class SettingsWindow:
         summary.pack(fill="x", pady=(0, 14))
         for column in range(3):
             summary.grid_columnconfigure(column, weight=1, uniform="metrics")
+        self.metric_stat_cards: list[RoundedPanel] = []
         self._metric_stat(
             summary,
             column=0,
@@ -1303,6 +1304,7 @@ class SettingsWindow:
             padding=10,
         )
         card.grid(row=0, column=column, sticky="nsew", padx=padx)
+        self.metric_stat_cards.append(card)
         content = card.content
         tk.Label(
             content,

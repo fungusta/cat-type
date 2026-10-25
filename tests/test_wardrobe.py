@@ -9,6 +9,7 @@ from settings_window import SettingsWindow
 from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID
 from wardrobe_view import WardrobeView
+from ui_surfaces import RoundedPanel, RoundedChoice
 import inspect
 
 
@@ -46,6 +47,55 @@ class WardrobeTests(unittest.TestCase):
         self.assertIn('ears', window.wardrobe.none_buttons)
         self.assertEqual(window.wardrobe.buttons['ribbon-clip'].cget('state'), 'disabled')
         self.assertIn('bow-tie', window.wardrobe.buttons)
+
+    def test_wardrobe_and_achievement_surfaces_use_shared_soft_shelves(self):
+        window = self.window()
+
+        self.assertIsInstance(window.wardrobe.preview_card, RoundedPanel)
+        self.assertEqual(window.wardrobe.preview_card._radius, 18)
+        self.assertTrue(window.wardrobe.choice_tiles)
+        self.assertTrue(
+            all(tile._radius == 16 for tile in window.wardrobe.choice_tiles.values())
+        )
+        self.assertTrue(
+            all(
+                isinstance(button, RoundedChoice)
+                for button in window.wardrobe.none_buttons.values()
+            )
+        )
+        self.assertTrue(window.achievements.cards)
+        self.assertTrue(
+            all(
+                isinstance(card, RoundedPanel)
+                and card._radius == 16
+                and bool(int(card.cget("takefocus")))
+                for card in window.achievements.cards.values()
+            )
+        )
+
+    def test_wardrobe_does_not_contain_general_settings(self) -> None:
+        window = self.window()
+
+        def texts(widget: tk.Misc) -> set[str]:
+            values: set[str] = set()
+            for child in widget.winfo_children():
+                try:
+                    value = child.cget("text")
+                except tk.TclError:
+                    value = ""
+                if value:
+                    values.add(str(value))
+                values.update(texts(child))
+            return values
+
+        self.assertNotIn("Favorite spot", texts(window.wardrobe))
+        self.assertTrue(window.wardrobe.choice_tiles)
+
+    def test_achievements_cards_are_focusable_rounded_shelves(self) -> None:
+        window = self.window()
+        for card in window.achievements.cards.values():
+            self.assertTrue(bool(int(card.cget("takefocus"))))
+            self.assertEqual(card._radius, 16)
 
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)

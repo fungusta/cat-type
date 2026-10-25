@@ -10,6 +10,7 @@ from PIL import ImageTk
 
 from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, SLOT_LABELS, Accessory, visible_accessories
 from cat_artwork import load_frame
+from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel
 
 
 class WardrobeView(tk.Frame):
@@ -30,6 +31,7 @@ class WardrobeView(tk.Frame):
         self.on_change = on_change
         self.buttons: dict[str, tk.Radiobutton] = {}
         self.none_buttons: dict[str, tk.Radiobutton] = {}
+        self.choice_tiles: dict[str, RoundedPanel] = {}
         self.status_text: dict[str, tk.StringVar] = {}
         self.new_badges: dict[str, tk.Label] = {}
         self._new_ids: set[str] = set()
@@ -38,18 +40,27 @@ class WardrobeView(tk.Frame):
         self._preview_frame: ImageTk.PhotoImage | None = None
         self.notice = tk.StringVar(master=self, value="")
 
-        preview_card = tk.Frame(self, background=palette["peach"])
+        preview_card = RoundedPanel(
+            self,
+            background=palette["background"],
+            fill=palette["card"],
+            border=palette["border"],
+            radius=18,
+            padding=10,
+        )
+        self.preview_card = preview_card
         preview_card.pack(fill="x", pady=(0, 12))
-        self.preview = tk.Label(preview_card, background=palette["peach"], width=1, height=1)
+        preview_content = preview_card.content
+        self.preview = tk.Label(preview_content, background=palette["peach"], width=1, height=1)
         # Pixel width/height apply once an image is assigned; the settings animation
         # supplies it before the window's content is measured.
         self.preview.pack(side="left", padx=(12, 14), pady=4)
-        preview_copy = tk.Frame(preview_card, background=palette["peach"])
+        preview_copy = tk.Frame(preview_content, background=palette["card"])
         preview_copy.pack(side="left", fill="both", expand=True, pady=20)
         tk.Label(preview_copy, text="Your outfit", font=fonts["section"],
-                 bg=palette["peach"], fg=palette["ink"]).pack(anchor="w")
+                 bg=palette["card"], fg=palette["ink"]).pack(anchor="w")
         tk.Label(preview_copy, textvariable=self.notice, justify="left", wraplength=300,
-                 font=fonts["small"], bg=palette["peach"],
+                 font=fonts["small"], bg=palette["card"],
                  fg=palette["accent_dark"]).pack(anchor="w", pady=(8, 0))
 
         self.choices_area = tk.Frame(self, background=palette["background"])
@@ -61,6 +72,7 @@ class WardrobeView(tk.Frame):
             child.destroy()
         self.buttons.clear()
         self.none_buttons.clear()
+        self.choice_tiles.clear()
         self.status_text.clear()
         self.new_badges.clear()
         self.achievement_links.clear()
@@ -74,13 +86,13 @@ class WardrobeView(tk.Frame):
             header.pack(fill="x", pady=(6, 8))
             tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
                      bg=palette["background"], fg=palette["ink"]).pack(side="left")
-            none_button = tk.Radiobutton(
+            none_button = RoundedChoice(
                 header, text="None", variable=self.slots[slot], value="none",
                 command=self._choose, indicatoron=False, font=fonts["small"],
-                background=palette["card"], selectcolor=palette["peach"],
+                background=palette["card"], selectcolor=palette["accent"],
                 activebackground=palette["peach"], foreground=palette["ink"],
                 relief="flat", borderwidth=0, padx=12, pady=5,
-                highlightthickness=1, highlightcolor=palette["accent"],
+                highlightthickness=1, highlightcolor=palette["accent_dark"],
                 highlightbackground=palette["border"], takefocus=True,
             )
             none_button.pack(side="right")
@@ -91,27 +103,35 @@ class WardrobeView(tk.Frame):
                 choices.grid_columnconfigure(column, weight=1, uniform=slot)
             for index, item in enumerate(items):
                 row, column = divmod(index, 3)
-                tile = tk.Frame(choices, background=palette["card"],
-                                highlightthickness=1, highlightbackground=palette["border"])
+                tile = RoundedPanel(
+                    choices,
+                    background=palette["background"],
+                    fill=palette["card"],
+                    border=palette["border"],
+                    radius=16,
+                    padding=6,
+                )
                 tile.grid(row=row, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0), pady=(0, 8))
+                self.choice_tiles[item.id] = tile
+                tile_content = tile.content
                 with load_frame(assets_root, "white", "idle", 76, **{slot: item.id}) as frame:
                     thumbnail = ImageTk.PhotoImage(frame, master=self)
                 self._thumbnails.append(thumbnail)
                 button = tk.Radiobutton(
-                    tile, text=item.name, image=thumbnail, compound="top",
+                    tile_content, text=item.name, image=thumbnail, compound="top",
                     variable=self.slots[slot], value=item.id, command=self._choose,
                     indicatoron=False, font=fonts["control"], foreground=palette["ink"],
-                    background=palette["card"], selectcolor=palette["peach"],
+                    background=palette["card"], selectcolor=palette["accent"],
                     activebackground=palette["peach"], disabledforeground=palette["muted"],
                     highlightthickness=2, highlightbackground=palette["card"],
-                    highlightcolor=palette["accent"], relief="flat", borderwidth=0,
+                    highlightcolor=palette["accent_dark"], relief="flat", borderwidth=0,
                     wraplength=140, padx=6, pady=4, takefocus=True,
                 )
                 button.pack(fill="x")
                 self.buttons[item.id] = button
                 value = tk.StringVar(master=self)
                 self.status_text[item.id] = value
-                status_row = tk.Frame(tile, background=palette["card"])
+                status_row = tk.Frame(tile_content, background=palette["card"])
                 status_row.pack(fill="x", padx=5, pady=(4, 2))
                 tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
@@ -120,16 +140,12 @@ class WardrobeView(tk.Frame):
                                   bg=palette["peach"], fg=palette["accent_dark"], padx=4, pady=1)
                 badge.pack(side="right")
                 self.new_badges[item.id] = badge
-                link = tk.Button(
-                    tile, text="View achievement →", font=fonts["small"],
+                link = RoundedAction(
+                    tile_content, text="View achievement →", font=fonts["small"],
                     command=lambda accessory_id=item.id: self.on_achievement(accessory_id),
-                    bg=palette["card"], fg=palette["accent_dark"],
-                    activebackground=palette["peach"], activeforeground=palette["ink"],
-                    relief="flat", borderwidth=0, highlightthickness=1,
-                    highlightbackground=palette["card"], highlightcolor=palette["accent"],
-                    cursor="hand2", takefocus=True, wraplength=140,
+                    cursor="hand2", takefocus=True,
                 )
-                link.pack(padx=5, pady=(0, 6))
+                link.pack(anchor="w", padx=5, pady=(0, 6))
                 self.achievement_links[item.id] = link
 
     def _choose(self) -> None:
@@ -146,7 +162,7 @@ class WardrobeView(tk.Frame):
             item = ACCESSORY_BY_ID[item_id]
             selected = self.slots[item.slot].get() == item.id
             self.buttons[item.id].configure(
-                highlightbackground=self.palette["accent"] if selected else self.palette["card"],
+                highlightbackground=self.palette["accent_dark"] if selected else self.palette["card"],
             )
 
     def set_preview(self, frame: ImageTk.PhotoImage) -> None:
