@@ -97,6 +97,36 @@ class WardrobeTests(unittest.TestCase):
             self.assertTrue(bool(int(card.cget("takefocus"))))
             self.assertEqual(card._radius, 16)
 
+    def test_achievements_reward_album_reflows_between_grid_columns(self) -> None:
+        window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.window.geometry("920x800")
+        window.window.update()
+        wide_columns = {
+            int(card.grid_info()["column"])
+            for card in window.achievements.cards.values()
+        }
+        self.assertIn(1, wide_columns)
+
+        window.window.geometry("620x500")
+        window.window.update()
+        narrow_columns = {
+            int(card.grid_info()["column"])
+            for card in window.achievements.cards.values()
+        }
+        self.assertEqual(narrow_columns, {0})
+
+    def test_achievement_card_focus_draws_a_visible_focus_ring(self) -> None:
+        window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.window.update()
+        card = next(iter(window.achievements.cards.values()))
+        before = card._shelf_image
+        card.focus_set()
+        window.window.update()
+        self.assertTrue(card._focused)
+        self.assertIsNot(before, card._shelf_image)
+
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'crown', 'round-glasses'})

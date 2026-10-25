@@ -346,6 +346,7 @@ class RoundedPanel(tk.Canvas):
         self._border = border
         self._radius = radius
         self._padding = padding
+        self._focused = False
         self.content = tk.Frame(self, background=fill)
         self._content_id = self.create_window(
             padding,
@@ -355,7 +356,13 @@ class RoundedPanel(tk.Canvas):
         )
         self.content.bind("<Configure>", self._sync_size, add="+")
         self.bind("<Configure>", self._draw, add="+")
+        self.bind("<FocusIn>", lambda _event: self._set_focus(True), add="+")
+        self.bind("<FocusOut>", lambda _event: self._set_focus(False), add="+")
         self.after_idle(self._sync_size)
+
+    def _set_focus(self, focused: bool) -> None:
+        self._focused = focused
+        self._draw()
 
     def _sync_size(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         if not self.winfo_exists():
@@ -387,9 +394,18 @@ class RoundedPanel(tk.Canvas):
              max(scale + 1, (height - 1) * scale)),
             radius=min(self._radius, max(1, min(width, height) // 2)) * scale,
             fill=self._fill,
-            outline=self._border,
+            outline=BUTTON_ACCENT if self._focused else self._border,
             width=2 * scale,
         )
+        if self._focused:
+            draw.rounded_rectangle(
+                (3 * scale, 3 * scale,
+                 max(4 * scale, (width - 3) * scale),
+                 max(4 * scale, (height - 3) * scale)),
+                radius=max(1, min(self._radius - 2, max(1, min(width, height) // 2 - 2))) * scale,
+                outline=BUTTON_INK,
+                width=scale,
+            )
         self._shelf_image = ImageTk.PhotoImage(
             surface.resize((width, height), Image.Resampling.LANCZOS),
             master=self,

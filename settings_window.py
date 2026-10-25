@@ -920,7 +920,7 @@ class SettingsWindow:
         self._switch_page()
         self.window.update_idletasks()
         card = self.achievements.focus_reward(accessory_id)
-        offset = self.achievements.winfo_y() + card.winfo_y() - 12
+        offset = card.winfo_rooty() - self.scroll_content.winfo_rooty() - 12
         self.scroll_canvas.yview_moveto(max(0, offset) / max(1, self.scroll_content.winfo_height()))
 
     def _build_companion_card(self, parent: tk.Frame) -> None:

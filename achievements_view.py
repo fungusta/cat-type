@@ -32,6 +32,9 @@ class AchievementsView(tk.Frame):
         self.summary = tk.StringVar(master=self)
         tk.Label(self, textvariable=self.summary, font=fonts["section"],
                  bg=palette["background"], fg=palette["ink"]).pack(anchor="w")
+        self.cards_area = tk.Frame(self, background=palette["background"])
+        self.cards_area.pack(fill="x", pady=(10, 0))
+        self.cards_area.bind("<Configure>", self._layout_cards, add="+")
 
         self.update_progress(metrics, unlocked)
 
@@ -45,7 +48,7 @@ class AchievementsView(tk.Frame):
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
         for item in visible:
             card = RoundedPanel(
-                self,
+                self.cards_area,
                 background=palette["background"],
                 fill=palette["card"],
                 border=palette["border"],
@@ -53,7 +56,6 @@ class AchievementsView(tk.Frame):
                 padding=10,
                 takefocus=True,
             )
-            card.pack(fill="x", pady=(0, 10))
             self.cards[item.id] = card
             content = card.content
             with load_frame(assets_root, "white", "idle", 64, **{item.slot: item.id}) as frame:
@@ -79,6 +81,28 @@ class AchievementsView(tk.Frame):
             self.progress_text[item.id] = value
             tk.Label(copy, textvariable=value, font=fonts["small"], anchor="w",
                      bg=palette["card"], fg=palette["accent_dark"]).pack(fill="x", pady=(2, 0))
+        self._layout_cards()
+
+    def _layout_cards(self, _event: tk.Event[tk.Misc] | None = None) -> None:
+        width = self.cards_area.winfo_width()
+        if width <= 1:
+            return
+        columns = 2 if width >= 600 else 1
+        for column in range(2):
+            self.cards_area.grid_columnconfigure(
+                column,
+                weight=1 if column < columns else 0,
+                uniform="achievement-cards" if column < columns else "",
+            )
+        for index, card in enumerate(self.cards.values()):
+            row, column = divmod(index, columns)
+            card.grid(
+                row=row,
+                column=column,
+                sticky="nsew",
+                padx=(0 if column == 0 else 8, 0),
+                pady=(0, 10),
+            )
 
     def update_progress(self, metrics: UsageMetrics, unlocked: set[str]) -> None:
         visible = visible_accessories(unlocked)
