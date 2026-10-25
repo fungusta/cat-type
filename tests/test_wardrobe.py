@@ -16,6 +16,25 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_wardrobe_and_achievements_omit_repeated_purpose_copy(self):
+        window = self.window()
+
+        def label_texts(widget):
+            texts = []
+            for child in widget.winfo_children():
+                if isinstance(child, tk.Label):
+                    texts.append(str(child.cget("text")))
+                texts.extend(label_texts(child))
+            return texts
+
+        wardrobe_texts = label_texts(window.wardrobe)
+        window.page_buttons["Achievements"].invoke()
+        window.window.update_idletasks()
+        achievement_texts = label_texts(window.achievements)
+
+        self.assertNotIn("One outfit for all cats.\nChanges save automatically.", wardrobe_texts)
+        self.assertNotIn("Equip unlocked rewards in Wardrobe.", achievement_texts)
+
     def test_secrets_and_their_items_are_absent_from_both_tabs_and_totals(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window()

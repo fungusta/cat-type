@@ -31,8 +31,6 @@ class AchievementsView(tk.Frame):
         self.summary = tk.StringVar(master=self)
         tk.Label(self, textvariable=self.summary, font=fonts["section"],
                  bg=palette["background"], fg=palette["ink"]).pack(anchor="w")
-        tk.Label(self, text="Equip unlocked rewards in Wardrobe.", font=fonts["body"],
-                 bg=palette["background"], fg=palette["muted"]).pack(anchor="w", pady=(4, 14))
 
         self.update_progress(metrics, unlocked)
 
