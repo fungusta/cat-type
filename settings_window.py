@@ -765,10 +765,8 @@ class SettingsWindow:
             padx=(8, 0),
         )
 
-        self._build_companion_card(self.left_column)
         self._build_appearance_card(self.left_column)
-        self._build_size_card(self.right_column)
-        self._build_timing_card(self.right_column)
+        self._build_behavior_card(self.right_column)
         self._build_updates_card(self.right_column)
         self._build_metrics_page(self.page_host)
         reward_palette = {
@@ -1942,7 +1940,7 @@ class SettingsWindow:
     def _build_appearance_card(self, parent: tk.Frame) -> None:
         self.cat_style_card, self.cat_style_content = self._card(
             parent,
-            "Cat style",
+            "Companion",
         )
         content = self.cat_style_content
         self.preview_canvas = tk.Canvas(
@@ -1976,8 +1974,12 @@ class SettingsWindow:
             font=self.fonts["symbol"],
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
-        choices = tk.Frame(content, background=self.CARD)
-        choices.pack(fill="x", pady=(0, 16))
+        style_row = tk.Frame(content, background=self.CARD)
+        style_row.pack(fill="x", pady=(0, 10))
+        self._field_label(style_row, "Cat style").pack(side="left")
+        choices = tk.Frame(style_row, background=self.CARD)
+        choices.pack(side="right")
+        self.cat_style_control = choices
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
         columns = 2
         for index, label in enumerate(CAT_STYLE_LABELS):
@@ -2017,15 +2019,136 @@ class SettingsWindow:
         )
         self._refresh_cat_style_buttons()
 
-        self._field_label(content, "Favorite spot").pack(anchor="w")
-        ttk.Combobox(
-            content,
+        placement_row = tk.Frame(content, background=self.CARD)
+        placement_row.pack(fill="x", pady=(0, 10))
+        self._field_label(placement_row, "Favorite spot").pack(side="left")
+        placement_control = ttk.Combobox(
+            placement_row,
             textvariable=self.placement,
             values=list(PLACEMENT_LABELS),
             state="readonly",
             style=self.combobox_style,
-        ).pack(fill="x", pady=(6, 0))
+        )
+        placement_control.pack(side="right")
+        self.placement_control = placement_control
+        self._slider(
+            content,
+            "Preview scale",
+            self.size_percent,
+            60,
+            175,
+            lambda value: f"{round(float(value))}%",
+            top_padding=2,
+        )
+        self._slider(
+            content,
+            "Hang around",
+            self.hold_seconds,
+            0.5,
+            5.0,
+            lambda value: f"{float(value):.1f}s",
+            top_padding=14,
+        )
+        self._slider(
+            content,
+            "Soft fade",
+            self.fade_seconds,
+            0.0,
+            1.5,
+            lambda value: f"{float(value):.1f}s",
+            top_padding=14,
+        )
         self.cat_style_card.pack(fill="x")
+        # Keep the aggregate activity count available without adding copy to
+        # the settings rows themselves.
+        counter_card, counter_content = self._card(parent, "Activity")
+        self.keystroke_count_title = tk.Label(
+            counter_content,
+            text="All-time keystrokes",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        )
+        self.keystroke_count_title.pack(side="left")
+        tk.Label(
+            counter_content,
+            textvariable=self.keystroke_count_text,
+            background=self.CARD,
+            foreground=self.ACCENT_DARK,
+            font=self.fonts["section"],
+        ).pack(side="right")
+        counter_card.pack(fill="x", pady=(0, 14))
+
+    def _build_behavior_card(self, parent: tk.Frame) -> None:
+        card, content = self._card(parent, "Behavior")
+        self.enabled_toggle = Toggle(
+            content,
+            variable=self.enabled,
+            title="Show my cat while I type",
+            background=self.CARD,
+            accent=self.ACCENT,
+            ink=self.INK,
+            title_font=self.fonts["control"],
+        )
+        self.enabled_toggle.pack(fill="x", pady=(0, 12))
+        self.launch_at_startup_toggle = Toggle(
+            content,
+            variable=self.launch_at_startup,
+            title="Start Cat Type when I sign in",
+            background=self.CARD,
+            accent=self.ACCENT,
+            ink=self.INK,
+            title_font=self.fonts["control"],
+        )
+        self.launch_at_startup_toggle.pack(fill="x")
+        if self._requires_input_monitoring:
+            privacy = tk.Frame(content, background=self.CARD)
+            privacy.pack(fill="x", pady=(10, 0))
+            self.privacy_details_button = RoundedAction(
+                privacy,
+                text="Privacy details",
+                command=self._toggle_privacy_details,
+                style=self.secondary_button_style,
+            )
+            self.privacy_details_button.pack(anchor="w")
+            self.privacy_explanation = tk.Label(
+                privacy,
+                text=(
+                    "Privacy: Cat Type observes key-press events and primary "
+                    "mouse clicks only to animate and position the cat and count "
+                    "aggregate activity. It keeps only the latest click position "
+                    "for up to eight seconds. It never stores key names, typed "
+                    "text, app names, or window titles, and it never sends usage "
+                    "data."
+                ),
+                background=self.CARD,
+                foreground=self.MUTED,
+                font=self.fonts["small"],
+                justify="left",
+                wraplength=330,
+            )
+            permission = tk.Frame(content, background=self.BLUSH)
+            permission.pack(fill="x", pady=(12, 0))
+            tk.Label(
+                permission,
+                textvariable=self.input_monitoring_status_text,
+                background=self.BLUSH,
+                foreground=self.INK,
+                font=self.fonts["small"],
+                justify="left",
+                wraplength=330,
+            ).pack(fill="x", padx=12, pady=(10, 4))
+            self.input_monitoring_button = RoundedAction(
+                permission,
+                command=self._handle_input_monitoring_action,
+                style=self.primary_button_style,
+            )
+            self.input_monitoring_button.pack(anchor="e", padx=12, pady=(4, 10))
+            self.set_input_monitoring_status(
+                self._input_monitoring_granted,
+                request_attempted=self._input_monitoring_request_attempted,
+            )
+        card.pack(fill="x", pady=(0, 14))
 
     def _refresh_cat_style_buttons(self) -> None:
         selected = self.cat_style.get()

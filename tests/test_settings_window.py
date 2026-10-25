@@ -432,6 +432,22 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             texts.update(SettingsWindowTkLayoutTests._widget_texts(child))
         return texts
 
+    def test_settings_uses_companion_and_behavior_shelves(self) -> None:
+        texts = self._widget_texts(self.settings_window.columns)
+        self.assertIn("Companion", texts)
+        self.assertIn("Behavior", texts)
+        self.assertNotIn("Keep the cat close, calm, and easy to personalize.", texts)
+        self.assertNotIn("Make it feel like yours.", texts)
+
+    def test_settings_rows_keep_controls_on_the_right(self) -> None:
+        self.settings_window.active_page.set("Settings")
+        self.settings_window._switch_page()
+        self.settings_window.window.update_idletasks()
+        self.assertLess(
+            self.settings_window.cat_style_control.winfo_rootx(),
+            self.settings_window.columns.winfo_rootx() + self.settings_window.columns.winfo_width(),
+        )
+
     def test_settings_uses_only_functional_copy_and_starts_with_switcher(
         self,
     ) -> None:
@@ -477,9 +493,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Achievements",
             "Cat Type",
             "Companion",
+            "Behavior",
             "Cat style",
-            "Cat size",
-            "Timing",
             "Updates",
             "Activity",
             "Above · right",
