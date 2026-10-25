@@ -47,10 +47,12 @@ class Toggle(tk.Frame):
         *,
         variable: tk.BooleanVar,
         title: str,
+        description: str = "",
         background: str,
         accent: str,
         ink: str,
         title_font: tkfont.Font,
+        description_font: tkfont.Font | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -75,6 +77,17 @@ class Toggle(tk.Frame):
             font=title_font,
             cursor="hand2",
         ).pack(anchor="w")
+        if description:
+            tk.Label(
+                copy,
+                text=description,
+                background=background,
+                foreground="#655C66",
+                font=description_font or title_font,
+                justify="left",
+                anchor="w",
+                wraplength=220,
+            ).pack(anchor="w", pady=(2, 0))
 
         self.switch = tk.Canvas(
             self,
@@ -731,15 +744,25 @@ class SettingsWindow:
             foreground=self.INK,
             font=self.fonts["display_compact"],
         ).pack(side="left", anchor="w")
-        self.save_status_label = tk.Label(
+        self.save_status_surface = RoundedPanel(
             self.page_heading,
-            textvariable=self.save_status,
             background=self.BACKGROUND,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
+            fill=self.ACCENT,
+            border=self.ACCENT_DARK,
+            radius=16,
+            padding=6,
+        )
+        self.save_status_label = tk.Label(
+            self.save_status_surface.content,
+            textvariable=self.save_status,
+            background=self.ACCENT,
+            foreground=self.INK,
+            font=self.fonts["control"],
             anchor="e",
         )
-        self.save_status_label.pack(side="right", anchor="e", pady=(6, 0))
+        self.save_status_label.pack(anchor="e", pady=2)
+        self.save_status.trace_add("write", self._refresh_save_status_surface)
+        self._refresh_save_status_surface()
         self.columns.pack(fill="x")
         self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
         self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
@@ -802,8 +825,6 @@ class SettingsWindow:
             radius=20,
             padding=10,
         )
-        self.page_switcher.configure(width=154)
-        self.page_switcher.content.configure(width=134)
         self.page_switcher.grid(row=0, column=0, sticky="nw", padx=(26, 18), pady=(24, 18))
         tabs = self.page_switcher.content
         tabs.configure(padx=8, pady=8)
@@ -829,10 +850,20 @@ class SettingsWindow:
         self._rail_preview_image = self.rail_preview.create_image(59, 57)
         nav = tk.Frame(tabs, background=self.CARD)
         nav.pack(fill="x")
+        page_labels = ("Settings", "Metrics", "Wardrobe", "Achievements")
+        choice_widths = {
+            label: self.fonts["control"].measure(
+                "Achievements · New" if label == "Achievements" else label
+            ) + (14 * 2) + 8
+            for label in page_labels
+        }
+        rail_content_width = max(134, max(choice_widths.values()) + 10)
+        self.page_switcher.configure(width=rail_content_width + 20)
+        self.page_switcher.content.configure(width=rail_content_width)
         self.page_host = tk.Frame(parent, background=self.BACKGROUND)
         self.page_host.grid(row=0, column=1, sticky="nsew", padx=(0, 26), pady=(24, 18))
         self.page_buttons: dict[str, tk.Radiobutton] = {}
-        for index, label in enumerate(("Settings", "Metrics", "Wardrobe", "Achievements")):
+        for index, label in enumerate(page_labels):
             text = tk.StringVar(master=self.window, value=label)
             if label == "Achievements":
                 self._achievements_tab_text = text
@@ -858,6 +889,7 @@ class SettingsWindow:
                 pady=10,
                 cursor="hand2",
                 takefocus=True,
+                min_width=choice_widths[label],
             )
             button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button
@@ -1978,7 +2010,11 @@ class SettingsWindow:
         self._preview_image = self.preview_canvas.create_image(126, 84)
         style_row = tk.Frame(content, background=self.CARD)
         style_row.pack(fill="x", pady=(0, 10))
-        self._field_label(style_row, "Cat style").pack(side="left")
+        self._setting_copy(
+            style_row,
+            "Cat style",
+            "Pick the cat you want to see.",
+        ).pack(side="left", fill="x", expand=True)
         choices = tk.Frame(style_row, background=self.CARD)
         choices.pack(side="right")
         self.cat_style_control = choices
@@ -2023,7 +2059,11 @@ class SettingsWindow:
 
         placement_row = tk.Frame(content, background=self.CARD)
         placement_row.pack(fill="x", pady=(0, 10))
-        self._field_label(placement_row, "Favorite spot").pack(side="left")
+        self._setting_copy(
+            placement_row,
+            "Favorite spot",
+            "Choose where your cat appears.",
+        ).pack(side="left", fill="x", expand=True)
         placement_control = ttk.Combobox(
             placement_row,
             textvariable=self.placement,
@@ -2041,6 +2081,7 @@ class SettingsWindow:
             175,
             lambda value: f"{round(float(value))}%",
             top_padding=2,
+            helper="Set how large your cat looks.",
         )
         self._slider(
             content,
@@ -2050,6 +2091,7 @@ class SettingsWindow:
             5.0,
             lambda value: f"{float(value):.1f}s",
             top_padding=14,
+            helper="Keep your cat visible for longer.",
         )
         self._slider(
             content,
@@ -2059,6 +2101,7 @@ class SettingsWindow:
             1.5,
             lambda value: f"{float(value):.1f}s",
             top_padding=14,
+            helper="Let the cat fade away gently.",
         )
         self.cat_style_card.pack(fill="x")
         # Keep the aggregate activity count available without adding copy to
@@ -2087,20 +2130,24 @@ class SettingsWindow:
             content,
             variable=self.enabled,
             title="Show my cat while I type",
+            description="Turn the typing companion on or off.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
             title_font=self.fonts["control"],
+            description_font=self.fonts["small"],
         )
         self.enabled_toggle.pack(fill="x", pady=(0, 12))
         self.launch_at_startup_toggle = Toggle(
             content,
             variable=self.launch_at_startup,
             title="Start Cat Type when I sign in",
+            description="Launch Cat Type when you log in.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
             title_font=self.fonts["control"],
+            description_font=self.fonts["small"],
         )
         self.launch_at_startup_toggle.pack(fill="x")
         if self._requires_input_monitoring:
@@ -2328,6 +2375,26 @@ class SettingsWindow:
             font=self.fonts["control"],
         )
 
+    def _setting_copy(
+        self,
+        parent: tk.Misc,
+        label: str,
+        helper: str,
+    ) -> tk.Frame:
+        copy = tk.Frame(parent, background=self.CARD)
+        self._field_label(copy, label).pack(anchor="w")
+        tk.Label(
+            copy,
+            text=helper,
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+            justify="left",
+            anchor="w",
+            wraplength=220,
+        ).pack(anchor="w", pady=(2, 0))
+        return copy
+
     def _slider(
         self,
         parent: tk.Misc,
@@ -2337,10 +2404,18 @@ class SettingsWindow:
         maximum: float,
         formatter: Callable[[str], str],
         top_padding: int = 0,
+        helper: str | None = None,
     ) -> None:
         row = tk.Frame(parent, background=self.CARD)
         row.pack(fill="x", pady=(top_padding, 0))
-        self._field_label(row, label).pack(side="left")
+        if helper:
+            self._setting_copy(row, label, helper).pack(
+                side="left",
+                fill="x",
+                expand=True,
+            )
+        else:
+            self._field_label(row, label).pack(side="left")
         value_label = tk.Label(
             row,
             background=self.PEACH,
@@ -2626,6 +2701,34 @@ class SettingsWindow:
             self.window.after_cancel(self._save_feedback_after_id)
             self._save_feedback_after_id = None
         self.save_status.set("")
+
+    def _refresh_save_status_surface(self, *_args: object) -> None:
+        text = self.save_status.get()
+        if not text:
+            self.save_status_surface.pack_forget()
+            return
+        is_success = text == "Saved!"
+        fill = self.ACCENT if is_success else self.BLUSH
+        border = self.ACCENT_DARK if is_success else self.BORDER
+        self.save_status_surface._fill = fill
+        self.save_status_surface._border = border
+        self.save_status_surface.content.configure(background=fill)
+        self.save_status_label.configure(
+            background=fill,
+            foreground=self.INK,
+        )
+        self.save_status_label.update_idletasks()
+        self.save_status_surface.configure(
+            width=(
+                self.save_status_label.winfo_reqwidth()
+                + (self.save_status_surface._padding * 2)
+                + 14
+            )
+        )
+        self.save_status_surface._sync_size()
+        if not self.save_status_surface.winfo_manager():
+            self.save_status_surface.pack(side="right", anchor="e", pady=(2, 0))
+        self.save_status_surface._draw()
 
     def _save_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:
         self._save()

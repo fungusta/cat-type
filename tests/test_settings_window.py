@@ -6,6 +6,7 @@ import unittest
 from contextlib import ExitStack
 from datetime import datetime, timedelta
 from pathlib import Path
+from tkinter import font as tkfont
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
@@ -436,6 +437,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         texts = self._widget_texts(self.settings_window.columns)
         self.assertIn("Companion", texts)
         self.assertIn("Behavior", texts)
+        self.assertIn("Pick the cat you want to see.", texts)
+        self.assertIn("Choose where your cat appears.", texts)
+        self.assertIn("Set how large your cat looks.", texts)
+        self.assertIn("Turn the typing companion on or off.", texts)
+        self.assertIn("Launch Cat Type when you log in.", texts)
         self.assertNotIn("Keep the cat close, calm, and easy to personalize.", texts)
         self.assertNotIn("Make it feel like yours.", texts)
 
@@ -502,6 +508,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Companion",
             "Behavior",
             "Cat style",
+            "Pick the cat you want to see.",
             "Updates",
             "Activity",
             "Above · right",
@@ -514,21 +521,27 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Check for updates",
             "Columns",
             "Favorite spot",
+            "Choose where your cat appears.",
             "Ginger tabby",
             "Gray tabby",
             "Hang around",
+            "Keep your cat visible for longer.",
+            "Let the cat fade away gently.",
             "Last 7 days",
             "Line",
             "Mix it up",
             "Next →",
             "Open release page",
             "Preview scale",
+            "Set how large your cat looks.",
             "Range",
             "Ready to check.",
             "Retry",
             "Show my cat while I type",
+            "Turn the typing companion on or off.",
             "Soft fade",
             "Start Cat Type when I sign in",
+            "Launch Cat Type when you log in.",
             "Today",
             "White",
             f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
@@ -1613,9 +1626,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 labels = copy.winfo_children()
                 self.assertEqual(
                     [label.cget("text") for label in labels],
-                    [title],
+                    [
+                        title,
+                        (
+                            "Turn the typing companion on or off."
+                            if title == "Show my cat while I type"
+                            else "Launch Cat Type when you log in."
+                        ),
+                    ],
                 )
-                self.assertEqual(copy.winfo_reqheight(), labels[0].winfo_reqheight())
+                self.assertGreater(copy.winfo_reqheight(), labels[0].winfo_reqheight())
                 self.assertTrue(bool(int(toggle.cget("takefocus"))))
 
                 value_before = variable.get()
@@ -1878,9 +1898,87 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
     def test_save_feedback_is_empty_until_a_change_saves(self) -> None:
         self.assertEqual(self.settings_window.save_status.get(), "")
+        self.assertFalse(self.settings_window.save_status_surface.winfo_ismapped())
         self.settings_window.enabled.set(not self.settings_window.enabled.get())
         self.settings_window.window.update()
         self.assertEqual(self.settings_window.save_status.get(), "Saved!")
+        self.assertTrue(self.settings_window.save_status_surface.winfo_ismapped())
+        self.assertEqual(self.settings_window.save_status_surface._fill, self.settings_window.ACCENT)
+        self.assertEqual(self.settings_window.save_status_label.cget("foreground"), self.settings_window.INK)
+        self.assertGreaterEqual(
+            self.settings_window.save_status_surface.winfo_width(),
+            self.settings_window.save_status_label.winfo_reqwidth()
+            + (self.settings_window.save_status_surface._padding * 2),
+        )
+
+    def test_successful_save_schedules_status_clear(self) -> None:
+        with patch.object(self.settings_window.window, "after", wraps=self.settings_window.window.after) as after:
+            self.settings_window.enabled.set(not self.settings_window.enabled.get())
+            self.settings_window._save()
+        self.assertIn(call(1600, self.settings_window._clear_save_feedback), after.call_args_list)
+        self.settings_window._clear_save_feedback()
+
+    def test_failure_status_surface_has_room_for_retry_copy(self) -> None:
+        self.settings_window.save_status.set("Couldn't save this change. Try again.")
+        self.settings_window.window.update_idletasks()
+        self.assertGreaterEqual(
+            self.settings_window.save_status_surface.winfo_width(),
+            self.settings_window.save_status_label.winfo_reqwidth()
+            + (self.settings_window.save_status_surface._padding * 2),
+        )
+
+    def test_achievements_new_indicator_has_room_for_long_label(self) -> None:
+        button = self.settings_window.page_buttons["Achievements"]
+        short_width = button.winfo_reqwidth()
+        self.settings_window._achievements_unread = True
+        self.settings_window._refresh_achievement_indicator()
+        self.settings_window.window.update_idletasks()
+        self.assertGreaterEqual(button.winfo_reqwidth(), short_width)
+        expected_width = tkfont.Font(
+            button,
+            font=button.cget("font"),
+        ).measure("Achievements · New") + (14 * 2) + 8
+        self.assertGreaterEqual(button.winfo_reqwidth(), expected_width)
+        self.assertLessEqual(
+            button.winfo_reqwidth(),
+            self.settings_window.page_switcher.content.winfo_width(),
+        )
+
+    def test_achievements_new_indicator_scales_with_tk_font(self) -> None:
+        root_scaling = float(self.root.tk.call("tk", "scaling"))
+        scaled_root = tk.Tk()
+        scaled_root.withdraw()
+        previous_scaling = float(scaled_root.tk.call("tk", "scaling"))
+        scaled_root.tk.call("tk", "scaling", 2.5)
+        try:
+            scaled = SettingsWindow(scaled_root, AppSettings(), Mock())
+            scaled._achievements_unread = True
+            scaled._refresh_achievement_indicator()
+            scaled.window.update_idletasks()
+            button = scaled.page_buttons["Achievements"]
+            expected_width = tkfont.Font(
+                button,
+                font=button.cget("font"),
+            ).measure("Achievements · New") + (14 * 2) + 8
+            self.assertGreaterEqual(button.winfo_reqwidth(), expected_width)
+            self.assertLessEqual(
+                button.winfo_reqwidth(),
+                scaled.page_switcher.content.winfo_width(),
+            )
+        finally:
+            if "scaled" in locals():
+                scaled.close()
+            self.root.tk.call("tk", "scaling", root_scaling)
+            scaled_root.tk.call("tk", "scaling", previous_scaling)
+            scaled_root.destroy()
+
+    def test_custom_actions_expose_button_accessibility_metadata(self) -> None:
+        button = self.settings_window.check_for_updates_button
+        self.assertEqual(button.cget("accessible_role"), "button")
+        self.assertEqual(button.cget("accessible_name"), "Check for updates")
+        self.assertEqual(button.cget("accessible_state"), "normal")
+        button.configure(state="disabled")
+        self.assertEqual(button.cget("accessible_state"), "disabled")
 
     def test_save_feedback_clears_after_success_timeout(self) -> None:
         self.settings_window.save_status.set("Saved!")

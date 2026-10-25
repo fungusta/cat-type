@@ -84,10 +84,11 @@ class RoundedChoice(tk.Radiobutton):
         if variable is not None:
             text = str(variable.get())
         face = tkfont.Font(parent, font=kwargs.get("font"))
+        min_width = int(kwargs.pop("min_width", 0))
         padx = int(kwargs.pop("padx", 10))
         pady = int(kwargs.pop("pady", 8))
         self._size = (
-            max(60, face.measure(text) + (padx * 2) + 8),
+            max(min_width, 60, face.measure(text) + (padx * 2) + 8),
             face.metrics("linespace") + (pady * 2) + 6,
         )
         super().__init__(
@@ -178,7 +179,12 @@ class RoundedChoice(tk.Radiobutton):
 
 
 class RoundedAction(tk.Canvas):
-    """A keyboard-usable soft pill with a subtle, shared lift."""
+    """A keyboard-usable soft pill with a subtle, shared lift.
+
+    Tk canvases do not expose native accessibility roles, so the custom
+    ``accessible_*`` options provide a stable role, name, and state for
+    accessibility adapters while preserving the drawn surface.
+    """
 
     def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
         self._text = str(kwargs.pop("text", ""))
@@ -318,6 +324,12 @@ class RoundedAction(tk.Canvas):
             return self._text
         if key == "state":
             return self._state
+        if key == "accessible_role":
+            return "button"
+        if key == "accessible_name":
+            return self._text
+        if key == "accessible_state":
+            return self._state
         return super().cget(key)
 
 class RoundedPanel(tk.Canvas):
@@ -412,4 +424,3 @@ class RoundedPanel(tk.Canvas):
         )
         self.create_image(0, 0, anchor="nw", image=self._shelf_image, tags="shelf")
         self.tag_lower("shelf")
-

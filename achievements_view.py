@@ -87,7 +87,9 @@ class AchievementsView(tk.Frame):
         width = self.cards_area.winfo_width()
         if width <= 1:
             return
-        columns = 2 if width >= 600 else 1
+        # Keep two cards at high Tk scaling when the rail grows for its
+        # longer unread label; the narrow 620 px layout remains one column.
+        columns = 2 if width >= 520 else 1
         for column in range(2):
             self.cards_area.grid_columnconfigure(
                 column,
