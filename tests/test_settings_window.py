@@ -437,20 +437,30 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         texts = self._widget_texts(self.settings_window.columns)
         self.assertIn("Companion", texts)
         self.assertIn("Behavior", texts)
-        self.assertIn("Pick the cat you want to see.", texts)
-        self.assertIn("Choose where your cat appears.", texts)
+        self.assertIn("Choose the look that follows your outfit.", texts)
+        self.assertIn("Where your typing companion settles in.", texts)
         self.assertIn("Set how large your cat looks.", texts)
-        self.assertIn("Turn the typing companion on or off.", texts)
-        self.assertIn("Launch Cat Type when you log in.", texts)
+        self.assertIn("Keep the companion visible as you work.", texts)
+        self.assertIn("Have the companion ready when your day starts.", texts)
         self.assertNotIn("Keep the cat close, calm, and easy to personalize.", texts)
         self.assertNotIn("Make it feel like yours.", texts)
 
     def test_metrics_keeps_summary_above_one_activity_shelf(self) -> None:
         self.settings_window.active_page.set("Metrics")
         self.settings_window._switch_page()
-        self.settings_window.window.update_idletasks()
+        self.settings_window.window.update()
         self.assertEqual(len(self.settings_window.metric_stat_cards), 3)
         self.assertTrue(self.settings_window.metrics_chart.winfo_ismapped())
+
+    def test_wardrobe_heading_owns_the_mix_action(self) -> None:
+        self.assertFalse(self.settings_window.mix_it_up_button.winfo_ismapped())
+        self.settings_window.page_buttons["Wardrobe"].invoke()
+        self.settings_window.window.update()
+        self.assertTrue(self.settings_window.mix_it_up_button.winfo_ismapped())
+        self.assertEqual(
+            self.settings_window.mix_it_up_button.cget("text"),
+            "Mix it up",
+        )
 
     def test_settings_rows_keep_controls_on_the_right(self) -> None:
         self.settings_window.active_page.set("Settings")
@@ -460,6 +470,32 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.cat_style_control.winfo_rootx(),
             self.settings_window.columns.winfo_rootx() + self.settings_window.columns.winfo_width(),
         )
+
+    def test_settings_page_matches_companion_studio_shelf_layout(self) -> None:
+        self.settings_window.active_page.set("Settings")
+        self.settings_window._switch_page()
+        self.settings_window.window.update_idletasks()
+
+        self.assertEqual(
+            tuple(self.settings_window.settings_shelf_titles),
+            ("Companion", "Behavior", "Updates"),
+        )
+        self.assertTrue(
+            all(
+                shelf.master is self.settings_window.columns
+                for shelf in self.settings_window.settings_shelves
+            )
+        )
+        self.assertFalse(self.settings_window.preview_canvas.winfo_ismapped())
+        self.assertNotIn(
+            "All-time keystrokes",
+            self._widget_texts(self.settings_window.columns),
+        )
+
+        texts = self._widget_texts(self.settings_window.columns)
+        self.assertIn("Choose the look that follows your outfit.", texts)
+        self.assertIn("Where your typing companion settles in.", texts)
+        self.assertIn("How long the cat stays after typing.", texts)
 
     def test_settings_uses_only_functional_copy_and_starts_with_switcher(
         self,
@@ -505,10 +541,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Wardrobe",
             "Achievements",
             "Cat Type",
+            "companion studio",
             "Companion",
             "Behavior",
             "Cat style",
-            "Pick the cat you want to see.",
+            "Choose the look that follows your outfit.",
             "Updates",
             "Activity",
             "Above · right",
@@ -521,11 +558,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Check for updates",
             "Columns",
             "Favorite spot",
-            "Choose where your cat appears.",
+            "Where your typing companion settles in.",
             "Ginger tabby",
             "Gray tabby",
             "Hang around",
-            "Keep your cat visible for longer.",
+            "How long the cat stays after typing.",
             "Let the cat fade away gently.",
             "Last 7 days",
             "Line",
@@ -538,10 +575,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Ready to check.",
             "Retry",
             "Show my cat while I type",
-            "Turn the typing companion on or off.",
+            "Keep the companion visible as you work.",
             "Soft fade",
             "Start Cat Type when I sign in",
-            "Launch Cat Type when you log in.",
+            "Have the companion ready when your day starts.",
             "Today",
             "White",
             f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
@@ -567,6 +604,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIs(self.settings_window.rail_preview.master, rail.content)
         self.assertEqual(self.settings_window.rail_brand_title.cget("text"), "Cat Type")
         self.assertFalse(hasattr(self.settings_window, "companion_header"))
+
+    def test_rail_preview_matches_the_compact_prototype_brand(self) -> None:
+        self.settings_window.window.update_idletasks()
+        self.assertLessEqual(int(self.settings_window.rail_preview.cget("width")), 64)
+        self.assertLessEqual(int(self.settings_window.rail_preview.cget("height")), 64)
+        self.assertEqual(self.settings_window.rail_brand_title.grid_info()["column"], 1)
 
     def test_page_content_starts_in_the_main_host(self) -> None:
         self.settings_window.active_page.set("Settings")
@@ -730,8 +773,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 Mock(),
             )
             self.addCleanup(fitted_window.close)
-            fitted_window.left_column.winfo_children()[1].pack_forget()
-            for card in fitted_window.right_column.winfo_children()[1:]:
+            fitted_window.settings_shelves[0].pack_forget()
+            for card in fitted_window.settings_shelves[1:]:
                 card.pack_forget()
             scrollbar_width = fitted_window.scrollbar.winfo_reqwidth()
             opening_width = (
@@ -1516,24 +1559,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertFalse(hasattr(self.settings_window, "footer_message"))
         self.assertFalse(hasattr(self.settings_window, "_on_footer_configure"))
 
-    def test_narrow_layout_stacks_cards_and_keeps_preview_visible(self) -> None:
+    def test_narrow_layout_keeps_the_studio_shelves_in_one_column(self) -> None:
         self.settings_window.window.geometry("700x480")
         self.settings_window.window.update()
 
         self.assertEqual(self.settings_window._layout_mode, "narrow")
-        self.assertEqual(
-            int(self.settings_window.left_column.grid_info()["row"]),
-            0,
+        self.assertTrue(
+            all(shelf.master is self.settings_window.columns
+                for shelf in self.settings_window.settings_shelves)
         )
-        self.assertEqual(
-            int(self.settings_window.right_column.grid_info()["row"]),
-            1,
-        )
-        self.assertEqual(
-            int(self.settings_window.right_column.grid_info()["column"]),
-            0,
-        )
-        self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
+        self.assertFalse(self.settings_window.preview_canvas.winfo_ismapped())
         self.assertFalse(hasattr(self.settings_window, "hero_headline"))
 
     def test_narrow_layout_can_scroll_to_every_cat_style_choice(self) -> None:
@@ -1555,20 +1590,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                 break
         self.assertTrue(fully_visible)
 
-    def test_wide_layout_keeps_the_preview_and_two_columns(self) -> None:
+    def test_wide_layout_keeps_the_studio_shelves_in_one_column(self) -> None:
         self.settings_window.window.geometry("920x800")
         self.settings_window.window.update()
 
         self.assertEqual(self.settings_window._layout_mode, "wide")
-        self.assertEqual(
-            int(self.settings_window.right_column.grid_info()["row"]),
-            0,
+        self.assertTrue(
+            all(shelf.master is self.settings_window.columns
+                for shelf in self.settings_window.settings_shelves)
         )
-        self.assertEqual(
-            int(self.settings_window.right_column.grid_info()["column"]),
-            1,
-        )
-        self.assertTrue(self.settings_window.preview_canvas.winfo_ismapped())
+        self.assertFalse(self.settings_window.preview_canvas.winfo_ismapped())
 
     def test_shelf_content_fits_when_window_is_resized(self) -> None:
         from settings_window import RoundedPanel
@@ -1577,14 +1608,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.window.minsize(1, 1)
             self.settings_window.window.geometry(f"{width}x600")
             self.settings_window.window.update()
-            for column in (self.settings_window.left_column, self.settings_window.right_column):
-                for shelf in column.winfo_children():
-                    if isinstance(shelf, RoundedPanel):
-                        with self.subTest(width=width, shelf=shelf):
-                            self.assertLessEqual(
-                                shelf.content.winfo_x() + shelf.content.winfo_width(),
-                                shelf.winfo_width() - shelf._padding,
-                            )
+            for shelf in self.settings_window.settings_shelves:
+                if isinstance(shelf, RoundedPanel):
+                    with self.subTest(width=width, shelf=shelf):
+                        self.assertLessEqual(
+                            shelf.content.winfo_x() + shelf.content.winfo_width(),
+                            shelf.winfo_width() - shelf._padding,
+                        )
 
     def test_update_status_wraps_to_the_available_card_width(self) -> None:
         self.settings_window.set_update_status(
@@ -1629,9 +1659,9 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                     [
                         title,
                         (
-                            "Turn the typing companion on or off."
+                            "Keep the companion visible as you work."
                             if title == "Show my cat while I type"
-                            else "Launch Cat Type when you log in."
+                            else "Have the companion ready when your day starts."
                         ),
                     ],
                 )
@@ -1999,6 +2029,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(str(self.settings_window.retry_button.cget("state")), "normal")
 
     def test_footer_closes_without_reverting_changes(self) -> None:
+        self.settings_window.window.update()
         self.assertEqual(
             [
                 button.cget("text")

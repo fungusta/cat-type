@@ -18,10 +18,13 @@ Each destination owns its own content structure. Page names provide enough orien
 
 ### Settings
 
-Use two shelves:
+Use prototype-style shelves:
 
-- **Companion:** cat style, favorite spot, and hang-around timing.
+- **Companion:** cat style, favorite spot, preview scale, hang-around timing,
+  and soft fade timing.
 - **Behavior:** visibility while typing and launch-at-sign-in behavior.
+- **Updates:** version status and the existing update/release actions remain
+  available without changing the page's visual hierarchy.
 
 Each setting is a readable row with a label, short consequence-oriented helper text, and a right-aligned control.
 

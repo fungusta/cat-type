@@ -73,6 +73,26 @@ class WardrobeTests(unittest.TestCase):
             )
         )
 
+    def test_wardrobe_matches_the_prototype_accessory_tray(self):
+        window = self.window()
+
+        self.assertFalse(window.wardrobe.preview_card.winfo_ismapped())
+        self.assertTrue(window.wardrobe.choice_tiles)
+        self.assertTrue(
+            all(
+                int(tile.grid_info()["column"]) == 0
+                for tile in window.wardrobe.choice_tiles.values()
+            )
+        )
+
+    def test_mix_it_up_chooses_only_unlocked_accessories(self):
+        window = self.window({'crown', 'round-glasses'})
+        window.wardrobe.mix_it_up()
+
+        self.assertIn(window.hat.get(), {'none', 'crown'})
+        self.assertIn(window.glasses.get(), {'none', 'round-glasses'})
+        self.assertEqual(window.neck.get(), 'none')
+
     def test_wardrobe_does_not_contain_general_settings(self) -> None:
         window = self.window()
 

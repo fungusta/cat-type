@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import tkinter as tk
 from pathlib import Path
 from typing import Callable
@@ -49,7 +50,6 @@ class WardrobeView(tk.Frame):
             padding=10,
         )
         self.preview_card = preview_card
-        preview_card.pack(fill="x", pady=(0, 12))
         preview_content = preview_card.content
         self.preview = tk.Label(preview_content, background=palette["peach"], width=1, height=1)
         # Pixel width/height apply once an image is assigned; the settings animation
@@ -63,8 +63,35 @@ class WardrobeView(tk.Frame):
                  font=fonts["small"], bg=palette["card"],
                  fg=palette["accent_dark"]).pack(anchor="w", pady=(8, 0))
 
-        self.choices_area = tk.Frame(self, background=palette["background"])
-        self.choices_area.pack(fill="x")
+        self.tray_shelf = RoundedPanel(
+            self,
+            background=palette["background"],
+            fill=palette["card"],
+            border=palette["border"],
+            radius=18,
+            padding=10,
+        )
+        self.tray_shelf.pack(fill="x")
+        tray_content = self.tray_shelf.content
+        tray_heading = tk.Frame(tray_content, background=palette["card"])
+        tray_heading.pack(fill="x", padx=20, pady=(17, 12))
+        tk.Label(
+            tray_heading,
+            text="Accessory tray",
+            font=fonts["section"],
+            bg=palette["card"],
+            fg=palette["ink"],
+        ).pack(side="left")
+        self.tray_count = tk.StringVar(master=self, value="")
+        tk.Label(
+            tray_heading,
+            textvariable=self.tray_count,
+            font=fonts["small"],
+            bg=palette["card"],
+            fg=palette["muted"],
+        ).pack(side="right")
+        self.choices_area = tk.Frame(tray_content, background=palette["card"])
+        self.choices_area.pack(fill="x", padx=20, pady=(0, 19))
         self.update_unlocks(unlocked)
 
     def _build_choices(self, visible: tuple[Accessory, ...]) -> None:
@@ -82,7 +109,7 @@ class WardrobeView(tk.Frame):
             items = [item for item in visible if item.slot == slot]
             if not items:
                 continue
-            header = tk.Frame(self.choices_area, background=palette["background"])
+            header = tk.Frame(self.choices_area, background=palette["card"])
             header.pack(fill="x", pady=(6, 8))
             tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
                      bg=palette["background"], fg=palette["ink"]).pack(side="left")
@@ -97,12 +124,11 @@ class WardrobeView(tk.Frame):
             )
             none_button.pack(side="right")
             self.none_buttons[slot] = none_button
-            choices = tk.Frame(self.choices_area, background=palette["background"])
+            choices = tk.Frame(self.choices_area, background=palette["card"])
             choices.pack(fill="x", pady=(0, 10))
-            for column in range(3):
-                choices.grid_columnconfigure(column, weight=1, uniform=slot)
+            choices.grid_columnconfigure(0, weight=1)
             for index, item in enumerate(items):
-                row, column = divmod(index, 3)
+                row, column = index, 0
                 tile = RoundedPanel(
                     choices,
                     background=palette["background"],
@@ -111,21 +137,22 @@ class WardrobeView(tk.Frame):
                     radius=16,
                     padding=6,
                 )
-                tile.grid(row=row, column=column, sticky="nsew", padx=(0 if column == 0 else 8, 0), pady=(0, 8))
+                tile.grid(row=row, column=column, sticky="ew", pady=(0, 8))
                 self.choice_tiles[item.id] = tile
                 tile_content = tile.content
-                with load_frame(assets_root, "white", "idle", 76, **{slot: item.id}) as frame:
+                with load_frame(assets_root, "white", "idle", 58, **{slot: item.id}) as frame:
                     thumbnail = ImageTk.PhotoImage(frame, master=self)
                 self._thumbnails.append(thumbnail)
                 button = tk.Radiobutton(
-                    tile_content, text=item.name, image=thumbnail, compound="top",
+                    tile_content, text=item.name, image=thumbnail, compound="left",
                     variable=self.slots[slot], value=item.id, command=self._choose,
                     indicatoron=False, font=fonts["control"], foreground=palette["ink"],
                     background=palette["card"], selectcolor=palette["accent"],
                     activebackground=palette["peach"], disabledforeground=palette["muted"],
                     highlightthickness=2, highlightbackground=palette["card"],
                     highlightcolor=palette["accent_dark"], relief="flat", borderwidth=0,
-                    wraplength=140, padx=6, pady=4, takefocus=True,
+                    wraplength=240, anchor="w", justify="left",
+                    padx=6, pady=4, takefocus=True,
                 )
                 button.pack(fill="x")
                 self.buttons[item.id] = button
@@ -135,7 +162,7 @@ class WardrobeView(tk.Frame):
                 status_row.pack(fill="x", padx=5, pady=(4, 2))
                 tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=145).pack(side="left", expand=True)
+                         wraplength=145).pack(side="left")
                 badge = tk.Label(status_row, text="", font=fonts["small"],
                                   bg=palette["peach"], fg=palette["accent_dark"], padx=4, pady=1)
                 badge.pack(side="right")
@@ -157,6 +184,24 @@ class WardrobeView(tk.Frame):
                 badge.configure(text="")
         self.on_change()
 
+    def mix_it_up(self) -> None:
+        """Choose one unlocked accessory for each slot, then persist it."""
+        visible = visible_accessories(self.unlocked)
+        changed = False
+        for slot, variable in self.slots.items():
+            choices = [
+                item.id
+                for item in visible
+                if item.slot == slot and item.id in self.unlocked
+            ]
+            if choices:
+                choice = random.choice(choices)
+                if variable.get() != choice:
+                    variable.set(choice)
+                    changed = True
+        if changed:
+            self._choose()
+
     def _refresh_selection(self) -> None:
         for item_id in self.buttons:
             item = ACCESSORY_BY_ID[item_id]
@@ -175,6 +220,8 @@ class WardrobeView(tk.Frame):
     ) -> None:
         self.unlocked = set(unlocked)
         visible = visible_accessories(self.unlocked)
+        unlocked_count = sum(item.id in self.unlocked for item in visible)
+        self.tray_count.set(f"{unlocked_count} of {len(visible)} unlocked")
         visible_ids = tuple(item.id for item in visible)
         if visible_ids != self._visible_ids:
             self._build_choices(visible)

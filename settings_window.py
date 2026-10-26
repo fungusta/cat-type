@@ -368,6 +368,7 @@ class SettingsWindow:
         self._preview_step = 0
         self._preview_variant = "gray"
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
+        self._rail_preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
         self._layout_mode: str | None = None
         self.usage_metrics = (usage_metrics or UsageMetrics()).normalized()
         if keystroke_count > self.usage_metrics.total_keystrokes:
@@ -653,6 +654,7 @@ class SettingsWindow:
         assets_root = Path(icon_path).parent
         for variant in CAT_VARIANTS:
             vector_frames: dict[str, ImageTk.PhotoImage] = {}
+            rail_frames: dict[str, ImageTk.PhotoImage] = {}
             for name in ("idle", "tap-left", "tap-right", "excited"):
                 image = load_frame(
                     assets_root, variant, name, 148,
@@ -662,7 +664,12 @@ class SettingsWindow:
                     image,
                     master=self.window,
                 )
+                rail_frames[name] = ImageTk.PhotoImage(
+                    image.resize((52, 52), getattr(Image, "Resampling", Image).LANCZOS),
+                    master=self.window,
+                )
             self._preview_frames[variant] = vector_frames
+            self._rail_preview_frames[variant] = rail_frames
 
     def _build(self) -> None:
         self.body = tk.Frame(self.window, background=self.BACKGROUND)
@@ -730,10 +737,7 @@ class SettingsWindow:
         self.scroll_content.grid_columnconfigure(1, weight=1)
         self.scroll_content.grid_rowconfigure(0, weight=1)
 
-        self.columns = tk.Frame(
-            self.page_host,
-            background=self.BACKGROUND,
-        )
+        self.columns = tk.Frame(self.page_host, background=self.BACKGROUND)
         self.page_heading = tk.Frame(self.page_host, background=self.BACKGROUND)
         self.page_heading.pack(fill="x", pady=(0, 12))
         self.page_heading_text = tk.StringVar(value=self.active_page.get())
@@ -764,33 +768,13 @@ class SettingsWindow:
         self.save_status.trace_add("write", self._refresh_save_status_surface)
         self._refresh_save_status_surface()
         self.columns.pack(fill="x")
-        self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
-        self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
+        self.columns.grid_columnconfigure(0, weight=1)
+        self.settings_shelves: list[tk.Misc] = []
+        self.settings_shelf_titles: list[str] = []
 
-        self.left_column = tk.Frame(
-            self.columns,
-            background=self.BACKGROUND,
-        )
-        self.left_column.grid(
-            row=0,
-            column=0,
-            sticky="nsew",
-            padx=(0, 8),
-        )
-        self.right_column = tk.Frame(
-            self.columns,
-            background=self.BACKGROUND,
-        )
-        self.right_column.grid(
-            row=0,
-            column=1,
-            sticky="nsew",
-            padx=(8, 0),
-        )
-
-        self._build_appearance_card(self.left_column)
-        self._build_behavior_card(self.right_column)
-        self._build_updates_card(self.right_column)
+        self._build_appearance_card(self.columns)
+        self._build_behavior_card(self.columns)
+        self._build_updates_card(self.columns)
         self._build_metrics_page(self.page_host)
         reward_palette = {
             "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
@@ -803,6 +787,15 @@ class SettingsWindow:
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
             palette=reward_palette, fonts=self.fonts,
         )
+        self.mix_it_up_button = RoundedAction(
+            self.page_heading,
+            text="Mix it up",
+            command=self._mix_wardrobe,
+            style=self.primary_button_style,
+            cursor="hand2",
+            takefocus=True,
+        )
+        self._refresh_page_heading_actions()
         self.achievements = AchievementsView(
             self.page_host, assets_root=self._assets_root,
             metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
@@ -828,6 +821,23 @@ class SettingsWindow:
         self.page_switcher.grid(row=0, column=0, sticky="nw", padx=(26, 18), pady=(24, 18))
         tabs = self.page_switcher.content
         tabs.configure(padx=8, pady=8)
+        tabs.grid_columnconfigure(1, weight=1)
+        self.rail_preview = tk.Canvas(
+            tabs,
+            width=56,
+            height=56,
+            background=self.CARD,
+            highlightthickness=0,
+        )
+        self.rail_preview.grid(
+            row=0,
+            column=0,
+            rowspan=2,
+            padx=(4, 8),
+            pady=(2, 10),
+            sticky="nw",
+        )
+        self._rail_preview_image = self.rail_preview.create_image(28, 27)
         self.rail_brand_title = tk.Label(
             tabs,
             text="Cat Type",
@@ -835,21 +845,29 @@ class SettingsWindow:
             foreground=self.INK,
             font=self.fonts["section"],
         )
-        self.rail_brand_title.pack(anchor="w", padx=4, pady=(2, 8))
-        self.rail_preview = tk.Canvas(
-            tabs,
-            width=118,
-            height=112,
-            background=self.PEACH,
-            highlightthickness=0,
+        self.rail_brand_title.grid(
+            row=0,
+            column=1,
+            sticky="sw",
+            padx=(0, 4),
+            pady=(4, 0),
         )
-        self.rail_preview.pack(fill="x", pady=(0, 12))
-        self.rail_preview.create_oval(10, 88, 108, 106, fill="#E7D78B", outline="")
-        self.rail_preview.create_text(100, 16, text="✦", fill=self.ACCENT_DARK, font=self.fonts["symbol"])
-        self.rail_preview.create_text(16, 30, text="✦", fill="#D9BE4E", font=self.fonts["symbol"])
-        self._rail_preview_image = self.rail_preview.create_image(59, 57)
+        self.rail_brand_subtitle = tk.Label(
+            tabs,
+            text="companion studio",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["tiny"],
+        )
+        self.rail_brand_subtitle.grid(
+            row=1,
+            column=1,
+            sticky="nw",
+            padx=(0, 4),
+            pady=(0, 10),
+        )
         nav = tk.Frame(tabs, background=self.CARD)
-        nav.pack(fill="x")
+        nav.grid(row=2, column=0, columnspan=2, sticky="ew")
         page_labels = ("Settings", "Metrics", "Wardrobe", "Achievements")
         choice_widths = {
             label: self.fonts["control"].measure(
@@ -924,6 +942,7 @@ class SettingsWindow:
         selected = self.active_page.get()
         if hasattr(self, "page_heading_text"):
             self.page_heading_text.set(selected)
+        self._refresh_page_heading_actions()
         if selected == "Achievements":
             self._achievements_unread = False
             self._new_achievement_ids.clear()
@@ -946,6 +965,18 @@ class SettingsWindow:
             self.columns.pack(fill="x")
         self.scroll_canvas.yview_moveto(0)
         self.window.after_idle(self._sync_scrollbar_visibility)
+
+    def _mix_wardrobe(self) -> None:
+        self.wardrobe.mix_it_up()
+
+    def _refresh_page_heading_actions(self) -> None:
+        if not hasattr(self, "mix_it_up_button"):
+            return
+        if self.active_page.get() == "Wardrobe":
+            if not self.mix_it_up_button.winfo_manager():
+                self.mix_it_up_button.pack(side="right", padx=(0, 8), pady=(2, 0))
+        else:
+            self.mix_it_up_button.pack_forget()
 
     def _show_achievement(self, accessory_id: str) -> None:
         self.active_page.set("Achievements")
@@ -1127,6 +1158,16 @@ class SettingsWindow:
 
     def _build_metrics_page(self, parent: tk.Frame) -> None:
         self.metrics_page = tk.Frame(parent, background=self.BACKGROUND)
+        # Keep the aggregate label available to integrations that update the
+        # legacy counter live; the visible summary uses the prototype's
+        # compact "All time" card instead.
+        self.keystroke_count_title = tk.Label(
+            self.metrics_page,
+            text="All-time keystrokes",
+            background=self.BACKGROUND,
+            foreground=self.MUTED,
+            font=self.fonts["small"],
+        )
 
         summary = tk.Frame(self.metrics_page, background=self.BACKGROUND)
         summary.pack(fill="x", pady=(0, 14))
@@ -1976,7 +2017,12 @@ class SettingsWindow:
             parent,
             "Companion",
         )
+        self.settings_shelves.append(self.cat_style_card)
+        self.settings_shelf_titles.append("Companion")
         content = self.cat_style_content
+        # Keep the preview canvas as the rendering target for the animated cat,
+        # but let the persistent rail own the visible preview in the studio
+        # layout.
         self.preview_canvas = tk.Canvas(
             content,
             width=250,
@@ -1984,7 +2030,6 @@ class SettingsWindow:
             background=self.PEACH,
             highlightthickness=0,
         )
-        self.preview_canvas.pack(anchor="center", pady=(0, 16))
         self.preview_canvas.create_oval(
             24,
             132,
@@ -2008,12 +2053,12 @@ class SettingsWindow:
             font=self.fonts["symbol"],
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
-        style_row = tk.Frame(content, background=self.CARD)
-        style_row.pack(fill="x", pady=(0, 10))
+        style_panel = self._setting_panel(content, pady=(0, 8))
+        style_row = style_panel.content
         self._setting_copy(
             style_row,
             "Cat style",
-            "Pick the cat you want to see.",
+            "Choose the look that follows your outfit.",
         ).pack(side="left", fill="x", expand=True)
         choices = tk.Frame(style_row, background=self.CARD)
         choices.pack(side="right")
@@ -2057,12 +2102,12 @@ class SettingsWindow:
         )
         self._refresh_cat_style_buttons()
 
-        placement_row = tk.Frame(content, background=self.CARD)
-        placement_row.pack(fill="x", pady=(0, 10))
+        placement_panel = self._setting_panel(content, pady=(0, 8))
+        placement_row = placement_panel.content
         self._setting_copy(
             placement_row,
             "Favorite spot",
-            "Choose where your cat appears.",
+            "Where your typing companion settles in.",
         ).pack(side="left", fill="x", expand=True)
         placement_control = ttk.Combobox(
             placement_row,
@@ -2082,6 +2127,7 @@ class SettingsWindow:
             lambda value: f"{round(float(value))}%",
             top_padding=2,
             helper="Set how large your cat looks.",
+            shelf_row=True,
         )
         self._slider(
             content,
@@ -2091,7 +2137,8 @@ class SettingsWindow:
             5.0,
             lambda value: f"{float(value):.1f}s",
             top_padding=14,
-            helper="Keep your cat visible for longer.",
+            helper="How long the cat stays after typing.",
+            shelf_row=True,
         )
         self._slider(
             content,
@@ -2102,47 +2149,31 @@ class SettingsWindow:
             lambda value: f"{float(value):.1f}s",
             top_padding=14,
             helper="Let the cat fade away gently.",
+            shelf_row=True,
         )
         self.cat_style_card.pack(fill="x")
-        # Keep the aggregate activity count available without adding copy to
-        # the settings rows themselves.
-        counter_card, counter_content = self._card(parent, "Activity")
-        self.keystroke_count_title = tk.Label(
-            counter_content,
-            text="All-time keystrokes",
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-        )
-        self.keystroke_count_title.pack(side="left")
-        tk.Label(
-            counter_content,
-            textvariable=self.keystroke_count_text,
-            background=self.CARD,
-            foreground=self.ACCENT_DARK,
-            font=self.fonts["section"],
-        ).pack(side="right")
-        counter_card.pack(fill="x", pady=(0, 14))
 
     def _build_behavior_card(self, parent: tk.Frame) -> None:
         card, content = self._card(parent, "Behavior")
+        enabled_row = self._setting_panel(content, pady=(0, 8))
         self.enabled_toggle = Toggle(
-            content,
+            enabled_row.content,
             variable=self.enabled,
             title="Show my cat while I type",
-            description="Turn the typing companion on or off.",
+            description="Keep the companion visible as you work.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
             title_font=self.fonts["control"],
             description_font=self.fonts["small"],
         )
-        self.enabled_toggle.pack(fill="x", pady=(0, 12))
+        self.enabled_toggle.pack(fill="x")
+        launch_row = self._setting_panel(content, pady=(0, 8))
         self.launch_at_startup_toggle = Toggle(
-            content,
+            launch_row.content,
             variable=self.launch_at_startup,
             title="Start Cat Type when I sign in",
-            description="Launch Cat Type when you log in.",
+            description="Have the companion ready when your day starts.",
             background=self.CARD,
             accent=self.ACCENT,
             ink=self.INK,
@@ -2198,6 +2229,8 @@ class SettingsWindow:
                 request_attempted=self._input_monitoring_request_attempted,
             )
         card.pack(fill="x", pady=(0, 14))
+        self.settings_shelves.append(card)
+        self.settings_shelf_titles.append("Behavior")
 
     def _refresh_cat_style_buttons(self) -> None:
         selected = self.cat_style.get()
@@ -2288,6 +2321,8 @@ class SettingsWindow:
         )
         self.open_release_page_button.pack(side="left", padx=(8, 0))
         card.pack(fill="x", pady=(0, 14))
+        self.settings_shelves.append(card)
+        self.settings_shelf_titles.append("Updates")
 
     def _build_footer(self, body: tk.Frame) -> tk.Frame:
         footer = tk.Frame(body, background=self.BACKGROUND)
@@ -2395,6 +2430,23 @@ class SettingsWindow:
         ).pack(anchor="w", pady=(2, 0))
         return copy
 
+    def _setting_panel(
+        self,
+        parent: tk.Misc,
+        *,
+        pady: tuple[int, int] = (0, 8),
+    ) -> RoundedPanel:
+        panel = RoundedPanel(
+            parent,
+            background=self.CARD,
+            fill=self.CARD,
+            border=self.BORDER,
+            radius=14,
+            padding=6,
+        )
+        panel.pack(fill="x", pady=pady)
+        return panel
+
     def _slider(
         self,
         parent: tk.Misc,
@@ -2405,8 +2457,16 @@ class SettingsWindow:
         formatter: Callable[[str], str],
         top_padding: int = 0,
         helper: str | None = None,
+        shelf_row: bool = False,
     ) -> None:
-        row = tk.Frame(parent, background=self.CARD)
+        row_parent: tk.Misc = parent
+        if shelf_row:
+            row_parent = self._setting_panel(
+                parent,
+                pady=(top_padding, 8),
+            ).content
+            top_padding = 0
+        row = tk.Frame(row_parent, background=self.CARD)
         row.pack(fill="x", pady=(top_padding, 0))
         if helper:
             self._setting_copy(row, label, helper).pack(
@@ -2430,7 +2490,7 @@ class SettingsWindow:
             value_label.configure(text=formatter(value))
 
         scale = CatScale(
-            parent,
+            row_parent,
             variable=variable,
             minimum=minimum,
             maximum=maximum,
@@ -2469,40 +2529,11 @@ class SettingsWindow:
 
     def _apply_responsive_layout(self, width: int) -> None:
         mode = "narrow" if self._is_narrow_layout(width) else "wide"
-        if mode == self._layout_mode:
-            return
         self._layout_mode = mode
-        if mode == "narrow":
-            self.columns.grid_columnconfigure(0, weight=1, uniform="")
-            self.columns.grid_columnconfigure(1, weight=0, uniform="")
-            self.left_column.grid_configure(
-                row=0,
-                column=0,
-                padx=0,
-                pady=0,
-            )
-            self.right_column.grid_configure(
-                row=1,
-                column=0,
-                padx=0,
-                pady=(14, 0),
-            )
-            return
-
-        self.columns.grid_columnconfigure(0, weight=1, uniform="settings")
-        self.columns.grid_columnconfigure(1, weight=1, uniform="settings")
-        self.left_column.grid_configure(
-            row=0,
-            column=0,
-            padx=(0, 8),
-            pady=0,
-        )
-        self.right_column.grid_configure(
-            row=0,
-            column=1,
-            padx=(8, 0),
-            pady=0,
-        )
+        # Companion Studio keeps one readable shelf column at every width.
+        # The rail and page host provide the responsive split; the page itself
+        # should not turn into a second dashboard at wide sizes.
+        self.columns.grid_columnconfigure(0, weight=1)
 
     def _sync_scrollbar_visibility(
         self,
@@ -2608,7 +2639,14 @@ class SettingsWindow:
             frame = frames.get(sequence[self._preview_step % len(sequence)])
             if frame is not None:
                 self.preview_canvas.itemconfigure(self._preview_image, image=frame)
-                self.rail_preview.itemconfigure(self._rail_preview_image, image=frame)
+                rail_frame = self._rail_preview_frames.get(self._preview_variant, {}).get(
+                    sequence[self._preview_step % len(sequence)]
+                )
+                if rail_frame is not None:
+                    self.rail_preview.itemconfigure(
+                        self._rail_preview_image,
+                        image=rail_frame,
+                    )
                 self.wardrobe.set_preview(frame)
 
     def _animate_preview(self) -> None:
