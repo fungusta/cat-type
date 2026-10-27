@@ -117,6 +117,15 @@ class WardrobeTests(unittest.TestCase):
             self.assertTrue(bool(int(card.cget("takefocus"))))
             self.assertEqual(card._radius, 16)
 
+    def test_empty_new_badges_are_hidden_until_a_reward_is_new(self) -> None:
+        window = self.window()
+        self.assertTrue(
+            all(not badge.winfo_ismapped() for badge in window.wardrobe.new_badges.values())
+        )
+        self.assertTrue(
+            all(not badge.winfo_ismapped() for badge in window.achievements.new_badges.values())
+        )
+
     def test_achievements_reward_album_reflows_between_grid_columns(self) -> None:
         window = self.window()
         window.page_buttons["Achievements"].invoke()

@@ -11,7 +11,7 @@ from achievements import progress, requirement
 from cat_accessories import Accessory, visible_accessories
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
-from ui_surfaces import RoundedPanel
+from ui_surfaces import RoundedBadge, RoundedPanel
 
 
 class AchievementsView(tk.Frame):
@@ -25,7 +25,7 @@ class AchievementsView(tk.Frame):
         self.assets_root = assets_root
         self._visible_ids: tuple[str, ...] = ()
         self.cards: dict[str, RoundedPanel] = {}
-        self.new_badges: dict[str, tk.Label] = {}
+        self.new_badges: dict[str, RoundedBadge] = {}
         self._new_ids: set[str] = set()
         self.progress_text: dict[str, tk.StringVar] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
@@ -68,9 +68,11 @@ class AchievementsView(tk.Frame):
             heading.pack(fill="x")
             tk.Label(heading, text=item.achievement, font=fonts["control"], anchor="w",
                      bg=palette["card"], fg=palette["ink"]).pack(side="left")
-            badge = tk.Label(heading, text="", font=fonts["small"], anchor="e",
-                             bg=palette["peach"], fg=palette["accent_dark"], padx=6, pady=1)
-            badge.pack(side="right", padx=(8, 0))
+            badge = RoundedBadge(
+                heading,
+                text="NEW",
+                font=fonts["small"],
+            )
             self.new_badges[item.id] = badge
             tk.Label(copy, text=f"Reward: {item.name}", font=fonts["small"], anchor="w",
                      bg=palette["card"], fg=palette["ink"]).pack(fill="x", pady=(2, 0))
@@ -117,7 +119,11 @@ class AchievementsView(tk.Frame):
         if self.summary.get() != summary:
             self.summary.set(summary)
         for item in visible:
-            self.new_badges[item.id].configure(text="NEW" if item.id in self._new_ids else "")
+            badge = self.new_badges[item.id]
+            if item.id in self._new_ids:
+                badge.pack(side="right", padx=(8, 0))
+            else:
+                badge.pack_forget()
             if item.id in unlocked:
                 value = "Unlocked"
             else:
@@ -130,7 +136,7 @@ class AchievementsView(tk.Frame):
     def focus_reward(self, accessory_id: str) -> tk.Frame:
         card = self.cards[accessory_id]
         self._new_ids.discard(accessory_id)
-        self.new_badges[accessory_id].configure(text="")
+        self.new_badges[accessory_id].pack_forget()
         card.focus_set()
         return card
 
@@ -139,4 +145,4 @@ class AchievementsView(tk.Frame):
         for item in newly_unlocked:
             badge = self.new_badges.get(item.id)
             if badge is not None:
-                badge.configure(text="NEW")
+                badge.pack(side="right", padx=(8, 0))

@@ -11,7 +11,7 @@ from PIL import ImageTk
 
 from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, SLOT_LABELS, Accessory, visible_accessories
 from cat_artwork import load_frame
-from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel
+from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel, RoundedBadge
 
 
 class WardrobeView(tk.Frame):
@@ -34,7 +34,7 @@ class WardrobeView(tk.Frame):
         self.none_buttons: dict[str, tk.Radiobutton] = {}
         self.choice_tiles: dict[str, RoundedPanel] = {}
         self.status_text: dict[str, tk.StringVar] = {}
-        self.new_badges: dict[str, tk.Label] = {}
+        self.new_badges: dict[str, RoundedBadge] = {}
         self._new_ids: set[str] = set()
         self.achievement_links: dict[str, tk.Button] = {}
         self._thumbnails: list[ImageTk.PhotoImage] = []
@@ -163,9 +163,11 @@ class WardrobeView(tk.Frame):
                 tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
                          wraplength=145).pack(side="left")
-                badge = tk.Label(status_row, text="", font=fonts["small"],
-                                  bg=palette["peach"], fg=palette["accent_dark"], padx=4, pady=1)
-                badge.pack(side="right")
+                badge = RoundedBadge(
+                    status_row,
+                    text="NEW",
+                    font=fonts["small"],
+                )
                 self.new_badges[item.id] = badge
                 link = RoundedAction(
                     tile_content, text="View achievement →", font=fonts["small"],
@@ -181,7 +183,7 @@ class WardrobeView(tk.Frame):
             item = ACCESSORY_BY_ID[item_id]
             if self.slots[item.slot].get() == item_id:
                 self._new_ids.discard(item_id)
-                badge.configure(text="")
+                badge.pack_forget()
         self.on_change()
 
     def mix_it_up(self) -> None:
@@ -237,6 +239,6 @@ class WardrobeView(tk.Frame):
             for item in newly_unlocked:
                 badge = self.new_badges.get(item.id)
                 if badge is not None:
-                    badge.configure(text="NEW")
+                    badge.pack(side="right")
             self.notice.set("Unlocked: " + ", ".join(item.name for item in newly_unlocked))
         self._refresh_selection()
