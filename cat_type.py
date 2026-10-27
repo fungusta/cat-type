@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import gc
 import os
 import platform as runtime_platform
 import queue
@@ -1532,6 +1533,25 @@ def _default_shutdown_signal(
     return _UnavailableShutdownSignal()
 
 
+def _create_tk_root() -> tk.Tk:
+    """Create a Tk root, recovering from transient Tcl/Tk library races."""
+    for attempt in range(2):
+        try:
+            return tk.Tk()
+        except tk.TclError as error:
+            message = str(error).lower()
+            recoverable = (
+                "tcl_findlibrary" in message
+                or "usable tk.tcl" in message
+                or "couldn't read file" in message
+            )
+            if not recoverable or attempt == 1:
+                raise
+            gc.collect()
+            time.sleep(0.02)
+    raise RuntimeError("unreachable")
+
+
 def _default_update_installer(
     platform_name: str,
     frozen: bool,
@@ -1697,7 +1717,7 @@ class CatTypeApp:
             now=now or (lambda: datetime.now(timezone.utc)),
         )
 
-        self.root = tk.Tk()
+        self.root = _create_tk_root()
         activation_policy = _macos_activation_policy_accessors_for_app()
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
@@ -2911,7 +2931,7 @@ def main() -> None:
         else:
             from tkinter import messagebox
 
-            duplicate_root = tk.Tk()
+            duplicate_root = _create_tk_root()
             duplicate_root.withdraw()
             messagebox.showinfo("Cat Type", message, parent=duplicate_root)
             duplicate_root.destroy()

@@ -23,7 +23,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
         # Ear silhouettes vary; sample their rendered edges instead of a fixed point.
         pixels = [
             (index % preview.width, index // preview.width)
-            for index, alpha in enumerate(preview.getchannel("A").get_flattened_data())
+            for index, alpha in enumerate(preview.getchannel("A").getdata())
             if 0 < alpha < 128
         ]
         self.assertTrue(pixels, "The vector preview must contain soft edge pixels")
@@ -189,7 +189,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                 with self.subTest(variant=variant):
                     displayed = ImageTk.getimage(frames[variant]["idle"]).convert("RGBA")
                     self.assertLessEqual(
-                        set(displayed.getchannel("A").get_flattened_data()),
+                        set(displayed.getchannel("A").getdata()),
                         {0, 255},
                     )
                     self.assertTrue(all(displayed.getpixel(point)[3] == 0

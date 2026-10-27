@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import tkinter as tk
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -97,7 +98,6 @@ def export_preview(export_dir: Path) -> None:
 
 class PreviewWindow:
     def __init__(self) -> None:
-        import tkinter as tk
         from tkinter import ttk
 
         self.root = tk.Tk()
@@ -109,6 +109,7 @@ class PreviewWindow:
         self.pose_text = tk.StringVar(value="idle")
         self.image: ImageTk.PhotoImage
         self._idle_after: str | None = None
+        self._cat_trace: str | None = None
 
         ttk.Label(
             self.root, text="SVG cat preview", font=("TkDefaultFont", 15, "bold")
@@ -127,7 +128,7 @@ class PreviewWindow:
             state="readonly",
             width=18,
         ).pack(side="left")
-        self.cat.trace_add(
+        self._cat_trace = self.cat.trace_add(
             "write", lambda *_args: self.render(self.pose_text.get())
         )
 
@@ -206,6 +207,25 @@ class PreviewWindow:
     def _show_idle(self) -> None:
         self._idle_after = None
         self.render("idle")
+
+    def close(self) -> None:
+        """Release scheduled callbacks, variable traces, images, and Tk."""
+        if self._idle_after is not None:
+            try:
+                self.root.after_cancel(self._idle_after)
+            except tk.TclError:
+                pass
+            self._idle_after = None
+        if self._cat_trace is not None:
+            try:
+                self.cat.trace_remove("write", self._cat_trace)
+            except tk.TclError:
+                pass
+            self._cat_trace = None
+        self.image_label.configure(image="")
+        self.image = None  # type: ignore[assignment]
+        self.root.quit()
+        self.root.destroy()
 
     def run(self) -> None:
         self.root.mainloop()

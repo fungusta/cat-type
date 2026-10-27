@@ -397,6 +397,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         except tk.TclError as error:
             self.skipTest(f"Tk display is unavailable: {error}")
         self.root.withdraw()
+        self._tk_scaling = float(self.root.tk.call("tk", "scaling"))
         self.addCleanup(self.root.destroy)
         self.on_save = Mock()
         self.on_check_for_updates = Mock()
@@ -411,6 +412,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             update_status="Ready to check.",
         )
         self.addCleanup(self.settings_window.close)
+
+    def tearDown(self) -> None:
+        try:
+            self.root.tk.call("tk", "scaling", self._tk_scaling)
+        except tk.TclError:
+            pass
 
     @staticmethod
     def _widget_texts(widget: tk.Misc) -> set[str]:

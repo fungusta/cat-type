@@ -1,11 +1,12 @@
 import ctypes
+import gc
 import sys
 import time
 import tkinter as tk
 import unittest
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image, ImageTk
 from cat_settings import AppSettings
@@ -18,6 +19,8 @@ if sys.platform == "win32":
 else:
     win32gui = None
     win32ui = None
+
+import cat_type
 
 from cat_type import (
     CAT_VARIANTS,
@@ -43,6 +46,17 @@ class OverlayRenderingTests(unittest.TestCase):
         settings_patch.start()
         self.addCleanup(settings_patch.stop)
 
+    def tearDown(self) -> None:
+        # Tk creates a separate Tcl interpreter for each root. Collect the
+        # destroyed root before the next test asks Tk to create another one.
+        tk._default_root = None
+        gc.collect()
+
+    @staticmethod
+    def _close_app(app: CatTypeApp) -> None:
+        """Exercise the app lifecycle so Tk and monitor resources are released."""
+        app.shutdown()
+
     def test_saved_outfit_renders_on_windows_at_all_supported_preview_sizes(self) -> None:
         AchievementStore(self.settings_path.with_name("achievements.json")).save({"crown", "round-glasses"})
         for percent in (60, 100, 175):
@@ -67,13 +81,13 @@ class OverlayRenderingTests(unittest.TestCase):
                     # Compare interior opaque crown pixels in the actual native window.
                     gold_pixels = [
                         (index % size, index // size)
-                        for index, (red, green, blue, alpha) in enumerate(expected.get_flattened_data())
+                        for index, (red, green, blue, alpha) in enumerate(expected.getdata())
                         if alpha == 255 and red > 200 and 100 < green < 230 and blue < 100
                     ]
                     self.assertGreater(len(gold_pixels), 10)
                     self.assertTrue(all(capture.getpixel(point) == expected.getpixel(point)[:3] for point in gold_pixels))
                 finally:
-                    app.root.destroy()
+                    self._close_app(app)
 
     def test_vector_cat_renders_all_input_poses_and_returns_to_idle(self) -> None:
         for variant in CAT_VARIANTS:
@@ -93,7 +107,7 @@ class OverlayRenderingTests(unittest.TestCase):
                         self.assertEqual(app._last_rendered_frame, (variant, expected))
                         capture = self._capture_window(app.root.winfo_id(), 120, 120)
                         coat = load_frame(ASSETS_ROOT, variant, expected, 120).getpixel((60, 50))[:3]
-                        self.assertGreater(sum(pixel == coat for pixel in capture.get_flattened_data()), 1000)
+                        self.assertGreater(sum(pixel == coat for pixel in capture.getdata()), 1000)
                         self._assert_no_green_fringe(capture)
                         captures[expected] = capture.tobytes()
                     self.assertEqual(len(set(captures.values())), 3)
@@ -102,7 +116,7 @@ class OverlayRenderingTests(unittest.TestCase):
                     app._show(snapshot, at + 1.325)
                     self.assertAlmostEqual(float(app.root.wm_attributes("-alpha")), 0.5, places=1)
                 finally:
-                    app.root.destroy()
+                    self._close_app(app)
 
     def test_vector_cat_renders_at_every_supported_size_and_is_clickthrough(self) -> None:
         for percent in (60, 100, 175):
@@ -121,7 +135,7 @@ class OverlayRenderingTests(unittest.TestCase):
                     self.assertTrue(style & 0x20, "SVG overlay must let mouse input pass through")
                     self._assert_no_green_fringe(self._capture_window(app.root.winfo_id(), size, size))
                 finally:
-                    app.root.destroy()
+                    self._close_app(app)
 
     def test_keystroke_counter_is_not_rendered_in_the_cat_overlay(self) -> None:
         app = CatTypeApp(hold_seconds=10.0)
@@ -132,7 +146,7 @@ class OverlayRenderingTests(unittest.TestCase):
             self.assertEqual(app.label.winfo_reqwidth(), app.frame_width)
             self.assertEqual(app.label.winfo_reqheight(), app.frame_height)
         finally:
-            app.root.destroy()
+            self._close_app(app)
 
     def test_new_appearances_alternate_tabby_variants(self) -> None:
         app = CatTypeApp(hold_seconds=1.5)
@@ -167,13 +181,13 @@ class OverlayRenderingTests(unittest.TestCase):
             )
             ginger_pixels = sum(
                 1
-                for red, green, blue in captured.get_flattened_data()
+                for red, green, blue in captured.getdata()
                 if red > 220 and 80 < green < 210 and blue < 100
             )
             self.assertGreater(ginger_pixels, 1_000)
             self._assert_no_green_fringe(captured)
         finally:
-            app.root.destroy()
+            self._close_app(app)
 
     def test_overlay_stays_at_spawn_position_when_caret_moves(self) -> None:
         app = CatTypeApp(hold_seconds=10.0)
@@ -206,7 +220,7 @@ class OverlayRenderingTests(unittest.TestCase):
                 spawned_at,
             )
         finally:
-            app.root.destroy()
+            self._close_app(app)
 
     def test_show_path_applies_fade_opacity_to_the_window(self) -> None:
         app = CatTypeApp(hold_seconds=1.5, fade_seconds=0.3)
@@ -232,7 +246,7 @@ class OverlayRenderingTests(unittest.TestCase):
             )
             self._assert_no_green_fringe(captured)
         finally:
-            app.root.destroy()
+            self._close_app(app)
 
     def test_real_app_show_path_renders_cat_pixels(self) -> None:
         app = CatTypeApp(hold_seconds=10.0)
@@ -254,10 +268,11 @@ class OverlayRenderingTests(unittest.TestCase):
             self._assert_cat_pixels(captured)
             self._assert_no_green_fringe(captured)
         finally:
-            app.root.destroy()
+            self._close_app(app)
 
     def test_clickthrough_overlay_keeps_rendered_cat_pixels(self) -> None:
-        root = tk.Tk()
+        app = CatTypeApp(settings=AppSettings(cat_style="gray"))
+        root = app.root
         try:
             transparent = "#00ff01"
             root.title("Cat Type Rendering Test")
@@ -271,14 +286,12 @@ class OverlayRenderingTests(unittest.TestCase):
                 load_frame(ASSETS_ROOT, "gray", "idle", 120, color_key_safe=True),
                 master=root,
             )
-            label = tk.Label(
-                root,
+            app.label.configure(
                 image=image,
                 background=transparent,
                 borderwidth=0,
                 highlightthickness=0,
             )
-            label.pack()
             root.update_idletasks()
 
             # Match the real lifecycle: configure while withdrawn, then map
@@ -297,12 +310,25 @@ class OverlayRenderingTests(unittest.TestCase):
             self._assert_cat_pixels(captured)
             self._assert_no_green_fringe(captured)
         finally:
-            root.destroy()
+            self._close_app(app)
+
+    def test_tk_root_creation_retries_transient_library_errors(self) -> None:
+        root = Mock()
+        with patch.object(
+            cat_type.tk,
+            "Tk",
+            side_effect=(
+                tk.TclError('invalid command name "tcl_findLibrary"'),
+                root,
+            ),
+        ), patch.object(cat_type.gc, "collect") as collect:
+            self.assertIs(cat_type._create_tk_root(), root)
+        collect.assert_called_once()
 
     def _assert_cat_pixels(self, captured: Image.Image) -> None:
         light_cat_pixels = sum(
             1
-            for red, green, blue in captured.get_flattened_data()
+            for red, green, blue in captured.getdata()
             if red > 220 and green > 220 and blue > 220
         )
         self.assertGreater(
@@ -314,7 +340,7 @@ class OverlayRenderingTests(unittest.TestCase):
     def _assert_no_green_fringe(self, captured: Image.Image) -> None:
         green_fringe_pixels = sum(
             1
-            for red, green, blue in captured.get_flattened_data()
+            for red, green, blue in captured.getdata()
             if green > red * 1.15
             and green > blue * 1.15
             and not (red < 5 and green > 245 and blue < 5)
@@ -361,7 +387,7 @@ class CatSurfaceArtworkTests(unittest.TestCase):
     def test_gray_tabby_has_dark_purple_pads_not_purple_paw_fur(self) -> None:
         frame = load_frame(ASSETS_ROOT, "gray", "idle", 120)
         purple_pixels = sum(
-            1 for red, green, blue, alpha in frame.get_flattened_data()
+            1 for red, green, blue, alpha in frame.getdata()
             if alpha and blue > red and green < red and red > 20
         )
         self.assertGreater(purple_pixels, 20)
@@ -373,7 +399,7 @@ class CatSurfaceArtworkTests(unittest.TestCase):
                 with self.subTest(variant=variant, pose=pose):
                     frame = load_frame(ASSETS_ROOT, variant, pose, 120, color_key_safe=True)
                     fringe = sum(
-                        1 for red, green, blue, alpha in frame.get_flattened_data()
+                        1 for red, green, blue, alpha in frame.getdata()
                         if alpha >= 16 and green > red * 1.15 and green > blue * 1.15
                     )
                     self.assertEqual(fringe, 0)

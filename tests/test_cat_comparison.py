@@ -1,4 +1,5 @@
 import sys
+import gc
 import tempfile
 import tkinter as tk
 import unittest
@@ -15,6 +16,10 @@ from scripts.preview_svg_cat import PreviewWindow, classify_tk_key, export_previ
 
 
 class PreviewTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        tk._default_root = None
+        gc.collect()
+
     def test_preview_launch_bypasses_overlay_instance_and_saved_settings(self):
         with (
             patch.object(sys, "argv", ["cat_type.py", "--preview-cats"]),
@@ -75,6 +80,17 @@ class PreviewTests(unittest.TestCase):
                 event = SimpleNamespace(keysym=keysym, char=char)
                 self.assertEqual(classify_tk_key(event), expected)
 
+    def test_preview_close_releases_tk_resources(self):
+        try:
+            preview = PreviewWindow()
+        except tk.TclError as error:
+            self.skipTest(f"Tk display unavailable: {error}")
+        root = preview.root
+        preview.on_key(SimpleNamespace(char="q", keysym="q"))
+        preview.close()
+        with self.assertRaises(tk.TclError):
+            root.winfo_exists()
+
     def test_manual_poses_override_keyboard_state_and_resize_the_cat(self):
         try:
             preview = PreviewWindow()
@@ -97,7 +113,7 @@ class PreviewTests(unittest.TestCase):
                 (preview.image.width(), preview.image.height()), (210, 210)
             )
         finally:
-            preview.root.destroy()
+            preview.close()
 
     def test_cat_switch_updates_image_without_resetting_pose_or_size(self):
         try:
@@ -125,7 +141,7 @@ class PreviewTests(unittest.TestCase):
             )
             self.assertNotEqual(ginger_image, white_image)
         finally:
-            preview.root.destroy()
+            preview.close()
 
 
 if __name__ == "__main__":
