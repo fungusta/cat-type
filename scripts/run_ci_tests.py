@@ -54,14 +54,18 @@ def main() -> int:
         for index, header in enumerate(headers):
             end = headers[index + 1].start() if index + 1 < len(headers) else len(output)
             body = output[header.end():end]
-            detail = next(
-                (
-                    line.strip()
-                    for line in reversed(body.splitlines())
-                    if re.match(r"(?:AssertionError|[A-Za-z]+Error):", line.strip())
-                ),
-                "",
-            )
+            body_lines = body.splitlines()
+            detail = ""
+            for line_index, line in enumerate(body_lines):
+                if re.match(r"(?:AssertionError|[A-Za-z]+Error):", line.strip()):
+                    detail = line.strip()
+                    for extra in body_lines[line_index + 1:]:
+                        extra = extra.strip()
+                        if extra.startswith(":"):
+                            detail += " " + extra[1:].strip()
+                        elif extra:
+                            break
+                    break
             failures.append(header.group(1) + (f" — {detail}" if detail else ""))
         if not failures:
             failures = [f"unittest exited with code {result.returncode}"]
