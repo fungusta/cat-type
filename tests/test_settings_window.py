@@ -239,13 +239,18 @@ class SettingsWindowMetricsGeometryTests(unittest.TestCase):
 class SettingsWindowCiTests(unittest.TestCase):
     def test_cross_platform_workflows_run_settings_window_tests(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
+        runner = (project_root / "scripts/run_ci_tests.py").read_text(encoding="utf-8")
+        self.assertIn("tests.test_settings_window", runner)
         for workflow_path in (
             project_root / ".github/workflows/build.yml",
             project_root / ".github/workflows/release.yml",
         ):
             with self.subTest(workflow=workflow_path):
                 workflow = workflow_path.read_text(encoding="utf-8")
-                self.assertIn("tests.test_settings_window", workflow)
+                self.assertTrue(
+                    "tests.test_settings_window" in workflow
+                    or "scripts/run_ci_tests.py" in workflow
+                )
 
 
 class SettingsWindowScrollingTests(unittest.TestCase):

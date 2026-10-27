@@ -140,9 +140,17 @@ class PackagingContractTests(unittest.TestCase):
 
         for workflow in workflows:
             source = workflow.read_text(encoding="utf-8")
+            runner_source = (
+                (PROJECT_ROOT / "scripts" / "run_ci_tests.py")
+                .read_text(encoding="utf-8")
+            )
             for module in UPDATE_TEST_MODULES:
                 with self.subTest(workflow=workflow.name, module=module):
-                    self.assertIn(module, source)
+                    self.assertTrue(
+                        module in source
+                        or "scripts/run_ci_tests.py" in source
+                        and module in runner_source
+                    )
 
     def test_workflows_run_packaged_update_handoff_smokes(self) -> None:
         build = (

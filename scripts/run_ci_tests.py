@@ -49,7 +49,20 @@ def main() -> int:
     output = (result.stdout or "") + (result.stderr or "")
     print(output, end="")
     if result.returncode:
-        failures = re.findall(r"^(?:FAIL|ERROR): (.+)$", output, re.MULTILINE)
+        failures = []
+        headers = list(re.finditer(r"^(?:FAIL|ERROR): (.+)$", output, re.MULTILINE))
+        for index, header in enumerate(headers):
+            end = headers[index + 1].start() if index + 1 < len(headers) else len(output)
+            body = output[header.end():end]
+            detail = next(
+                (
+                    line.strip()
+                    for line in reversed(body.splitlines())
+                    if re.match(r"(?:AssertionError|[A-Za-z]+Error):", line.strip())
+                ),
+                "",
+            )
+            failures.append(header.group(1) + (f" — {detail}" if detail else ""))
         if not failures:
             failures = [f"unittest exited with code {result.returncode}"]
         for failure in failures:
