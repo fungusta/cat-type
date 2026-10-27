@@ -1636,6 +1636,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                             shelf.winfo_width() - shelf._padding,
                         )
 
+    def test_rounded_shelf_reuses_image_when_geometry_is_unchanged(self) -> None:
+        shelf = self.settings_window.page_switcher
+        self.settings_window.window.update()
+        first_image = shelf._shelf_image
+        shelf._draw()
+        self.assertIs(first_image, shelf._shelf_image)
+
     def test_update_status_wraps_to_the_available_card_width(self) -> None:
         self.settings_window.set_update_status(
             "A longer update status that needs to wrap cleanly inside the card."

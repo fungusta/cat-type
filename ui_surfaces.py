@@ -399,6 +399,9 @@ class RoundedBadge(tk.Canvas):
 class RoundedPanel(tk.Canvas):
     """A soft shelf surface that keeps native child widgets intact."""
 
+    _raster_cache: dict[tuple[object, ...], Image.Image] = {}
+    _raster_cache_limit = 128
+
     def __init__(
         self,
         parent: tk.Misc,
@@ -423,6 +426,7 @@ class RoundedPanel(tk.Canvas):
         self._radius = radius
         self._padding = padding
         self._focused = False
+        self._last_draw_key: tuple[object, ...] | None = None
         self.content = tk.Frame(self, background=fill)
         self._content_id = self.create_window(
             padding,
@@ -460,30 +464,48 @@ class RoundedPanel(tk.Canvas):
     def _draw(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         width = max(1, self.winfo_width())
         height = max(1, self.winfo_height())
+        key = (
+            width,
+            height,
+            self.cget("background"),
+            self._fill,
+            self._border,
+            self._radius,
+            self._focused,
+        )
+        if key == self._last_draw_key:
+            return
+        self._last_draw_key = key
         self.itemconfigure(self._content_id, width=max(1, width - self._padding * 2))
         self.delete("shelf")
         scale = 4
-        surface = Image.new("RGB", (width * scale, height * scale), self.cget("background"))
-        draw = ImageDraw.Draw(surface)
-        draw.rounded_rectangle(
-            (scale, scale, max(scale + 1, (width - 1) * scale),
-             max(scale + 1, (height - 1) * scale)),
-            radius=min(self._radius, max(1, min(width, height) // 2)) * scale,
-            fill=self._fill,
-            outline=BUTTON_ACCENT if self._focused else self._border,
-            width=2 * scale,
-        )
-        if self._focused:
+        surface = self._raster_cache.get(key)
+        if surface is None:
+            surface = Image.new("RGB", (width * scale, height * scale), self.cget("background"))
+            draw = ImageDraw.Draw(surface)
             draw.rounded_rectangle(
-                (3 * scale, 3 * scale,
-                 max(4 * scale, (width - 3) * scale),
-                 max(4 * scale, (height - 3) * scale)),
-                radius=max(1, min(self._radius - 2, max(1, min(width, height) // 2 - 2))) * scale,
-                outline=BUTTON_INK,
-                width=scale,
+                (scale, scale, max(scale + 1, (width - 1) * scale),
+                 max(scale + 1, (height - 1) * scale)),
+                radius=min(self._radius, max(1, min(width, height) // 2)) * scale,
+                fill=self._fill,
+                outline=BUTTON_ACCENT if self._focused else self._border,
+                width=2 * scale,
             )
+            if self._focused:
+                draw.rounded_rectangle(
+                    (3 * scale, 3 * scale,
+                     max(4 * scale, (width - 3) * scale),
+                     max(4 * scale, (height - 3) * scale)),
+                    radius=max(1, min(self._radius - 2, max(1, min(width, height) // 2 - 2))) * scale,
+                    outline=BUTTON_INK,
+                    width=scale,
+                )
+            surface = surface.resize((width, height), Image.Resampling.LANCZOS)
+            if len(self._raster_cache) >= self._raster_cache_limit:
+                self._raster_cache.pop(next(iter(self._raster_cache)))
+            self._raster_cache[key] = surface
         self._shelf_image = ImageTk.PhotoImage(
-            surface.resize((width, height), Image.Resampling.LANCZOS),
+            surface,
             master=self,
         )
         self.create_image(0, 0, anchor="nw", image=self._shelf_image, tags="shelf")
