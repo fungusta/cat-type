@@ -1535,6 +1535,8 @@ def _default_shutdown_signal(
 
 def _create_tk_root() -> tk.Tk:
     """Create a Tk root, recovering from transient Tcl/Tk library races."""
+    if not IS_WINDOWS:
+        return tk.Tk()
     for attempt in range(2):
         try:
             return tk.Tk()
