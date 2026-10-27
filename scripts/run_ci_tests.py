@@ -63,6 +63,8 @@ def main() -> int:
                         extra = extra.strip()
                         if extra.startswith(":"):
                             detail += " " + extra[1:].strip()
+                        elif extra.startswith(("- ", "+ ")):
+                            continue
                         elif extra:
                             break
                     break
