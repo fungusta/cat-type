@@ -14,7 +14,7 @@ from app_version import APP_VERSION, IS_BETA_BUILD
 from cat_settings import CAT_VARIANTS, AppSettings, SettingsStore
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
-from ui_surfaces import RoundedAction, RoundedBadge
+from ui_surfaces import RoundedAction, RoundedBadge, soft_pill_radius
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
@@ -1722,6 +1722,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         ]
 
         self.assertNotIn(self.settings_window.INK, polygon_fills)
+
+    def test_soft_pill_corners_are_rounded_without_becoming_capsules(self) -> None:
+        radius = soft_pill_radius(35)
+        self.assertGreater(radius, 0)
+        self.assertLess(radius, 35 // 2)
 
     def test_soft_pill_style_switch_keeps_primary_and_secondary_faces_consistent(
         self,

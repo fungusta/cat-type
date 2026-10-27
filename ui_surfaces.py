@@ -13,6 +13,12 @@ BUTTON_HOVER = "#FFF1B8"
 BUTTON_ACCENT = "#F2D66B"
 BUTTON_INK = "#302A33"
 BUTTON_MUTED = "#655C66"
+SOFT_PILL_MAX_RADIUS = 12
+
+
+def soft_pill_radius(height: int) -> int:
+    """Return a soft corner radius without turning short buttons into capsules."""
+    return min(SOFT_PILL_MAX_RADIUS, max(4, height // 3))
 
 
 def render_soft_pill(
@@ -38,13 +44,13 @@ def render_soft_pill(
     shadow_top = min(height - 1, 3 + offset)
     draw.rounded_rectangle(
         (6, shadow_top * scale, image_width - 7, image_height - scale),
-        radius=max(1, (height - 3) * 2 * scale),
+        radius=soft_pill_radius(height) * scale,
         fill=shadow,
     )
     face_bottom = min(height - 3 + offset, height - 1)
     draw.rounded_rectangle(
         (6, offset * scale, image_width - 7, face_bottom * scale),
-        radius=max(1, (height - 5) * 2 * scale),
+        radius=soft_pill_radius(height) * scale,
         fill=face,
         outline=BUTTON_BORDER,
         width=2 * scale,
@@ -53,7 +59,7 @@ def render_soft_pill(
         draw.rounded_rectangle(
             (3, max(0, offset - 1) * scale, image_width - 10,
              min(height - 1, height - 2 + offset) * scale),
-            radius=max(1, (height - 3) * 2 * scale),
+            radius=soft_pill_radius(height) * scale,
             outline=BUTTON_ACCENT,
             width=2 * scale,
         )
