@@ -88,8 +88,13 @@ class PreviewTests(unittest.TestCase):
         root = preview.root
         preview.on_key(SimpleNamespace(char="q", keysym="q"))
         preview.close()
-        with self.assertRaises(tk.TclError):
-            root.winfo_exists()
+        try:
+            exists = bool(root.winfo_exists())
+        except tk.TclError:
+            # Tcl/Tk versions differ: some remove the command immediately,
+            # while others leave a non-existent root command behind.
+            exists = False
+        self.assertFalse(exists)
 
     def test_manual_poses_override_keyboard_state_and_resize_the_cat(self):
         try:
