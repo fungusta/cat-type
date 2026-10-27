@@ -14,6 +14,7 @@ from app_version import APP_VERSION, IS_BETA_BUILD
 from cat_settings import CAT_VARIANTS, AppSettings, SettingsStore
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
+from ui_surfaces import RoundedAction, RoundedBadge
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
@@ -496,6 +497,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIn("Choose the look that follows your outfit.", texts)
         self.assertIn("Where your typing companion settles in.", texts)
         self.assertIn("How long the cat stays after typing.", texts)
+
+    def test_settings_placement_control_uses_the_shared_soft_pill(self) -> None:
+        self.assertIsInstance(self.settings_window.placement_control, RoundedAction)
+
+    def test_settings_slider_values_use_shared_pill_badges(self) -> None:
+        self.assertTrue(self.settings_window._slider_value_badges)
+        self.assertTrue(
+            all(isinstance(badge, RoundedBadge)
+                for badge in self.settings_window._slider_value_badges)
+        )
 
     def test_settings_uses_only_functional_copy_and_starts_with_switcher(
         self,

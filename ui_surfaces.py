@@ -332,6 +332,64 @@ class RoundedAction(tk.Canvas):
             return self._state
         return super().cget(key)
 
+
+class RoundedBadge(tk.Canvas):
+    """A non-interactive Butter Sun value chip for compact setting values."""
+
+    def __init__(self, parent: tk.Misc, *, text: str, font: object) -> None:
+        self._text = str(text)
+        self._font = font
+        face = tkfont.Font(parent, font=font)
+        self._width = max(42, face.measure(self._text) + 18)
+        self._height = max(28, face.metrics("linespace") + 10)
+        super().__init__(
+            parent,
+            width=self._width,
+            height=self._height,
+            background=str(parent.cget("background")),
+            highlightthickness=0,
+            borderwidth=0,
+            takefocus=False,
+        )
+        self._draw()
+
+    def _draw(self) -> None:
+        self.delete("all")
+        image = render_soft_pill(
+            self,
+            str(self.cget("background")),
+            self._width,
+            self._height,
+            BUTTON_ACCENT,
+        )
+        self._image = image
+        self.create_image(0, 0, anchor="nw", image=image)
+        self.create_text(
+            self._width // 2,
+            self._height // 2,
+            text=self._text,
+            fill=BUTTON_INK,
+            font=self._font,
+        )
+
+    def configure(self, cnf: dict | None = None, **kwargs: object) -> object:
+        if cnf is not None:
+            return super().configure(cnf, **kwargs)
+        if "text" in kwargs:
+            self._text = str(kwargs.pop("text"))
+            face = tkfont.Font(self, font=self._font)
+            self._width = max(42, face.measure(self._text) + 18)
+            super().configure(width=self._width)
+            self._draw()
+        return super().configure(**kwargs) if kwargs else None
+
+    config = configure
+
+    def cget(self, key: str) -> object:
+        if key == "text":
+            return self._text
+        return super().cget(key)
+
 class RoundedPanel(tk.Canvas):
     """A soft shelf surface that keeps native child widgets intact."""
 

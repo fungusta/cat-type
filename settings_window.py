@@ -18,7 +18,7 @@ from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
-from ui_surfaces import RoundedPanel, RoundedChoice, RoundedAction
+from ui_surfaces import RoundedPanel, RoundedChoice, RoundedAction, RoundedBadge
 
 
 CAT_STYLE_LABELS = {
@@ -968,6 +968,31 @@ class SettingsWindow:
 
     def _mix_wardrobe(self) -> None:
         self.wardrobe.mix_it_up()
+
+    def _open_placement_menu(self) -> None:
+        menu = tk.Menu(
+            self.window,
+            tearoff=False,
+            background=self.CARD,
+            foreground=self.INK,
+            activebackground=self.PEACH,
+            activeforeground=self.INK,
+            font=self.fonts["body"],
+        )
+        for label in PLACEMENT_LABELS:
+            menu.add_radiobutton(
+                label=label,
+                variable=self.placement,
+                value=label,
+            )
+        try:
+            menu.tk_popup(
+                self.placement_control.winfo_rootx(),
+                self.placement_control.winfo_rooty()
+                + self.placement_control.winfo_height(),
+            )
+        finally:
+            menu.grab_release()
 
     def _refresh_page_heading_actions(self) -> None:
         if not hasattr(self, "mix_it_up_button"):
@@ -2109,15 +2134,22 @@ class SettingsWindow:
             "Favorite spot",
             "Where your typing companion settles in.",
         ).pack(side="left", fill="x", expand=True)
-        placement_control = ttk.Combobox(
+        placement_control = RoundedAction(
             placement_row,
-            textvariable=self.placement,
-            values=list(PLACEMENT_LABELS),
-            state="readonly",
-            style=self.combobox_style,
+            text=self.placement.get(),
+            command=self._open_placement_menu,
+            style=self.secondary_button_style,
+            cursor="hand2",
+            takefocus=True,
         )
         placement_control.pack(side="right")
         self.placement_control = placement_control
+        self.placement.trace_add(
+            "write",
+            lambda *_args: self.placement_control.configure(
+                text=self.placement.get()
+            ),
+        )
         self._slider(
             content,
             "Preview scale",
@@ -2476,15 +2508,15 @@ class SettingsWindow:
             )
         else:
             self._field_label(row, label).pack(side="left")
-        value_label = tk.Label(
+        value_label = RoundedBadge(
             row,
-            background=self.PEACH,
-            foreground=self.ACCENT_DARK,
+            text="",
             font=self.fonts["control"],
-            padx=7,
-            pady=2,
         )
         value_label.pack(side="right")
+        if not hasattr(self, "_slider_value_badges"):
+            self._slider_value_badges: list[RoundedBadge] = []
+        self._slider_value_badges.append(value_label)
 
         def update(value: str) -> None:
             value_label.configure(text=formatter(value))
