@@ -102,8 +102,12 @@ class PreviewTests(unittest.TestCase):
         except tk.TclError as error:
             self.skipTest(f"Tk display unavailable: {error}")
         try:
-            for _ in range(6):
-                preview.on_key(SimpleNamespace(char="q", keysym="q"))
+            with patch(
+                "scripts.preview_svg_cat.time.monotonic",
+                side_effect=(0.01 * index for index in range(6)),
+            ):
+                for _ in range(6):
+                    preview.on_key(SimpleNamespace(char="q", keysym="q"))
             self.assertEqual(preview.pose_text.get(), "excited")
             for pose in POSE_NAMES:
                 preview.show_pose(pose)
