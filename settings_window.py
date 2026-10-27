@@ -762,9 +762,10 @@ class SettingsWindow:
             background=self.ACCENT,
             foreground=self.INK,
             font=self.fonts["control"],
-            anchor="e",
+            anchor="center",
+            justify="center",
         )
-        self.save_status_label.pack(anchor="e", pady=2)
+        self.save_status_label.pack(fill="both", expand=True, pady=2)
         self.save_status.trace_add("write", self._refresh_save_status_surface)
         self._refresh_save_status_surface()
         self.columns.pack(fill="x")

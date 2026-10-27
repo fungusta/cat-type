@@ -1973,6 +1973,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertIn(call(1600, self.settings_window._clear_save_feedback), after.call_args_list)
         self.settings_window._clear_save_feedback()
 
+    def test_saved_feedback_text_is_centered_inside_its_pill(self) -> None:
+        self.assertEqual(self.settings_window.save_status_label.cget("anchor"), "center")
+        self.assertEqual(self.settings_window.save_status_label.cget("justify"), "center")
+        pack_info = self.settings_window.save_status_label.pack_info()
+        self.assertEqual(pack_info.get("fill"), "both")
+        self.assertTrue(bool(int(pack_info.get("expand", 0))))
+
     def test_failure_status_surface_has_room_for_retry_copy(self) -> None:
         self.settings_window.save_status.set("Couldn't save this change. Try again.")
         self.settings_window.window.update_idletasks()
