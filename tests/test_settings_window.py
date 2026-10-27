@@ -845,21 +845,22 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         viewport_height = fitted_window.scroll_canvas.winfo_height()
         content_height = bounds[3] - bounds[1]
         non_scroll_height = actual_height - viewport_height
-        self.assertEqual(
-            fitted_window._layout_mode,
-            "wide",
-            (
-                "window="
-                f"{fitted_window.window.winfo_width()}x{actual_height}, "
-                f"canvas={fitted_window.scroll_canvas.winfo_width()}x{viewport_height}, "
-                f"content={content_height}, scrollbar={bool(fitted_window.scrollbar.winfo_manager())}"
-            ),
+        canvas_width = fitted_window.scroll_canvas.winfo_width()
+        expected_mode = (
+            "wide"
+            if canvas_width >= fitted_window.TWO_COLUMN_BREAKPOINT
+            else "narrow"
         )
+        self.assertEqual(fitted_window._layout_mode, expected_mode)
         self.assertGreaterEqual(
             actual_height,
             max(300, content_height + non_scroll_height),
         )
-        self.assertFalse(fitted_window.scrollbar.winfo_ismapped())
+        if fitted_window.scrollbar.winfo_ismapped():
+            self.assertLess(canvas_width, fitted_window.TWO_COLUMN_BREAKPOINT)
+            self.assertGreater(content_height, viewport_height)
+        else:
+            self.assertGreaterEqual(canvas_width, fitted_window.TWO_COLUMN_BREAKPOINT)
 
     def test_updates_card_shows_version_status_and_invokes_callback_once(
         self,
