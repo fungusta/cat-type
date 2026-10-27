@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 import tkinter as tk
 import tempfile
 import unittest
@@ -403,11 +402,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         except tk.TclError as error:
             self.skipTest(f"Tk display is unavailable: {error}")
         self.root.withdraw()
-        self._tk_scaling = (
-            float(self.root.tk.call("tk", "scaling"))
-            if sys.platform == "win32"
-            else None
-        )
+        self._tk_scaling = float(self.root.tk.call("tk", "scaling"))
         self.addCleanup(self.root.destroy)
         self.on_save = Mock()
         self.on_check_for_updates = Mock()
@@ -424,11 +419,10 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.addCleanup(self.settings_window.close)
 
     def tearDown(self) -> None:
-        if self._tk_scaling is not None:
-            try:
-                self.root.tk.call("tk", "scaling", self._tk_scaling)
-            except tk.TclError:
-                pass
+        try:
+            self.root.tk.call("tk", "scaling", self._tk_scaling)
+        except tk.TclError:
+            pass
 
     @staticmethod
     def _widget_texts(widget: tk.Misc) -> set[str]:
@@ -798,7 +792,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_opening_remeasures_after_scrollbar_changes_layout_mode(
         self,
     ) -> None:
-        self.root.tk.call("tk", "scaling", 1.0)
+        self.root.tk.call("tk", "scaling", 0.5)
         original_center = SettingsWindow._center
         with (
             patch.object(SettingsWindow, "PREFERRED_HEIGHT", 300),
