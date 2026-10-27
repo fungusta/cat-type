@@ -821,9 +821,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             fitted_window.window.winfo_screenheight = lambda: 2000
             fitted_window.window.maxsize = lambda: (5000, 5000)
             scrollbar_width = fitted_window.scrollbar.winfo_reqwidth()
-            opening_width = (
-                fitted_window.TWO_COLUMN_BREAKPOINT + scrollbar_width - 1
+            opening_width = fitted_window.TWO_COLUMN_BREAKPOINT + scrollbar_width - 1
+            fitted_window.window.geometry(f"{opening_width}x300")
+            fitted_window.window.update()
+            frame_inset = max(
+                0,
+                fitted_window.window.winfo_width()
+                - fitted_window.scroll_canvas.winfo_width()
+                - scrollbar_width,
             )
+            opening_width = fitted_window.TWO_COLUMN_BREAKPOINT + frame_inset + 1
             fitted_window.window.geometry(f"{opening_width}x300")
             fitted_window.window.update()
             self.assertEqual(fitted_window.window.winfo_height(), 300)
