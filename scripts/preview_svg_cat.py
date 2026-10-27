@@ -224,7 +224,6 @@ class PreviewWindow:
             self._cat_trace = None
         self.image_label.configure(image="")
         self.image = None  # type: ignore[assignment]
-        self.root.quit()
         self.root.destroy()
 
     def run(self) -> None:
