@@ -814,6 +814,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             fitted_window.settings_shelves[0].pack_forget()
             for card in fitted_window.settings_shelves[1:]:
                 card.pack_forget()
+            # Give the remeasure pass enough virtual screen height to hide
+            # the scrollbar after the content grows; native runner displays
+            # otherwise disagree about the available desktop height.
+            fitted_window.window.winfo_screenwidth = lambda: 2000
+            fitted_window.window.winfo_screenheight = lambda: 2000
+            fitted_window.window.maxsize = lambda: (5000, 5000)
             scrollbar_width = fitted_window.scrollbar.winfo_reqwidth()
             opening_width = (
                 fitted_window.TWO_COLUMN_BREAKPOINT + scrollbar_width - 1
