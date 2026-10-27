@@ -820,7 +820,7 @@ class SettingsWindow:
         )
         self.page_switcher.grid(row=0, column=0, sticky="nw", padx=(26, 18), pady=(24, 18))
         tabs = self.page_switcher.content
-        tabs.configure(padx=8, pady=8)
+        tabs.configure(padx=4, pady=8)
         tabs.grid_columnconfigure(1, weight=1)
         self.rail_preview = tk.Canvas(
             tabs,
@@ -907,7 +907,7 @@ class SettingsWindow:
                 pady=10,
                 cursor="hand2",
                 takefocus=True,
-                min_width=choice_widths[label],
+                min_width=max(60, rail_content_width - 8),
             )
             button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button

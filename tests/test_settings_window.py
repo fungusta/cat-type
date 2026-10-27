@@ -611,6 +611,15 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertLessEqual(int(self.settings_window.rail_preview.cget("height")), 64)
         self.assertEqual(self.settings_window.rail_brand_title.grid_info()["column"], 1)
 
+    def test_navigation_pills_share_one_face_width(self) -> None:
+        widths = {button._size[0] for button in self.settings_window.page_buttons.values()}
+        self.assertEqual(len(widths), 1)
+        self.settings_window.window.update_idletasks()
+        self.assertLessEqual(
+            next(iter(widths)),
+            self.settings_window.page_switcher.content.winfo_width() - 8,
+        )
+
     def test_page_content_starts_in_the_main_host(self) -> None:
         self.settings_window.active_page.set("Settings")
         self.settings_window._switch_page()
