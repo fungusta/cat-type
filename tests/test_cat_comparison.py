@@ -21,6 +21,13 @@ class PreviewTests(unittest.TestCase):
             tk._default_root = None
             gc.collect()
 
+    @staticmethod
+    def _close_preview(preview: PreviewWindow) -> None:
+        if sys.platform == "win32":
+            preview.close()
+        else:
+            preview.root.destroy()
+
     def test_preview_launch_bypasses_overlay_instance_and_saved_settings(self):
         with (
             patch.object(sys, "argv", ["cat_type.py", "--preview-cats"]),
@@ -81,6 +88,7 @@ class PreviewTests(unittest.TestCase):
                 event = SimpleNamespace(keysym=keysym, char=char)
                 self.assertEqual(classify_tk_key(event), expected)
 
+    @unittest.skipUnless(sys.platform == "win32", "Windows Tk lifecycle")
     def test_preview_close_releases_tk_resources(self):
         try:
             preview = PreviewWindow()
@@ -123,7 +131,7 @@ class PreviewTests(unittest.TestCase):
                 (preview.image.width(), preview.image.height()), (210, 210)
             )
         finally:
-            preview.close()
+            self._close_preview(preview)
 
     def test_cat_switch_updates_image_without_resetting_pose_or_size(self):
         try:
@@ -151,7 +159,7 @@ class PreviewTests(unittest.TestCase):
             )
             self.assertNotEqual(ginger_image, white_image)
         finally:
-            preview.close()
+            self._close_preview(preview)
 
 
 if __name__ == "__main__":
