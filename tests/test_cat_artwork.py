@@ -12,6 +12,12 @@ from cat_settings import CAT_VARIANTS
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 
 
+def _pixel_data(image):
+    """Read pixels across Pillow versions without triggering deprecations."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return flattened() if flattened is not None else image.getdata()
+
+
 class CatArtworkTests(unittest.TestCase):
     def artwork(self):
         self.assertIsNotNone(
@@ -89,7 +95,7 @@ class CatArtworkTests(unittest.TestCase):
                         self.assertEqual(pad.get("display"), "inline" if visible else "none")
                         color = pad.get("fill").lstrip("#")
                         rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
-                        pixels = list(frame.crop(bounds).getdata())
+                        pixels = list(_pixel_data(frame.crop(bounds)))
                         self.assertEqual((*rgb, 255) in pixels, visible)
 
     def test_artwork_is_editable_vector_groups_without_embedded_images(self):
@@ -112,8 +118,8 @@ class CatArtworkTests(unittest.TestCase):
                 art = self.artwork()
                 preview = art.load_frame(ASSETS, variant, "idle", 148)
                 overlay = art.load_frame(ASSETS, variant, "idle", 148, color_key_safe=True)
-                self.assertTrue(set(overlay.getchannel("A").getdata()) <= {0, 255})
-                self.assertTrue(any(0 < alpha < 255 for alpha in preview.getchannel("A").getdata()))
+                self.assertTrue(set(_pixel_data(overlay.getchannel("A"))) <= {0, 255})
+                self.assertTrue(any(0 < alpha < 255 for alpha in _pixel_data(preview.getchannel("A"))))
 
     def test_every_canonical_cat_uses_an_editable_svg_source(self):
         art = self.artwork()

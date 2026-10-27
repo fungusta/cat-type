@@ -32,6 +32,12 @@ from cat_type import (
 )
 
 
+def _pixel_data(image):
+    """Read pixels across Pillow versions without triggering deprecations."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return flattened() if flattened is not None else image.getdata()
+
+
 @unittest.skipUnless(
     sys.platform == "win32",
     "Windows-only rendering integration",
@@ -81,7 +87,7 @@ class OverlayRenderingTests(unittest.TestCase):
                     # Compare interior opaque crown pixels in the actual native window.
                     gold_pixels = [
                         (index % size, index // size)
-                        for index, (red, green, blue, alpha) in enumerate(expected.getdata())
+                        for index, (red, green, blue, alpha) in enumerate(_pixel_data(expected))
                         if alpha == 255 and red > 200 and 100 < green < 230 and blue < 100
                     ]
                     self.assertGreater(len(gold_pixels), 10)
@@ -107,7 +113,7 @@ class OverlayRenderingTests(unittest.TestCase):
                         self.assertEqual(app._last_rendered_frame, (variant, expected))
                         capture = self._capture_window(app.root.winfo_id(), 120, 120)
                         coat = load_frame(ASSETS_ROOT, variant, expected, 120).getpixel((60, 50))[:3]
-                        self.assertGreater(sum(pixel == coat for pixel in capture.getdata()), 1000)
+                        self.assertGreater(sum(pixel == coat for pixel in _pixel_data(capture)), 1000)
                         self._assert_no_green_fringe(capture)
                         captures[expected] = capture.tobytes()
                     self.assertEqual(len(set(captures.values())), 3)
@@ -181,7 +187,7 @@ class OverlayRenderingTests(unittest.TestCase):
             )
             ginger_pixels = sum(
                 1
-                for red, green, blue in captured.getdata()
+                for red, green, blue in _pixel_data(captured)
                 if red > 220 and 80 < green < 210 and blue < 100
             )
             self.assertGreater(ginger_pixels, 1_000)
@@ -328,7 +334,7 @@ class OverlayRenderingTests(unittest.TestCase):
     def _assert_cat_pixels(self, captured: Image.Image) -> None:
         light_cat_pixels = sum(
             1
-            for red, green, blue in captured.getdata()
+            for red, green, blue in _pixel_data(captured)
             if red > 220 and green > 220 and blue > 220
         )
         self.assertGreater(
@@ -387,7 +393,7 @@ class CatSurfaceArtworkTests(unittest.TestCase):
     def test_gray_tabby_has_dark_purple_pads_not_purple_paw_fur(self) -> None:
         frame = load_frame(ASSETS_ROOT, "gray", "idle", 120)
         purple_pixels = sum(
-            1 for red, green, blue, alpha in frame.getdata()
+            1 for red, green, blue, alpha in _pixel_data(frame)
             if alpha and blue > red and green < red and red > 20
         )
         self.assertGreater(purple_pixels, 20)
@@ -399,7 +405,7 @@ class CatSurfaceArtworkTests(unittest.TestCase):
                 with self.subTest(variant=variant, pose=pose):
                     frame = load_frame(ASSETS_ROOT, variant, pose, 120, color_key_safe=True)
                     fringe = sum(
-                        1 for red, green, blue, alpha in frame.getdata()
+                        1 for red, green, blue, alpha in _pixel_data(frame)
                         if alpha >= 16 and green > red * 1.15 and green > blue * 1.15
                     )
                     self.assertEqual(fringe, 0)

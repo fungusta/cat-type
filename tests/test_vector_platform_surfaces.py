@@ -17,13 +17,19 @@ import cat_type
 from cat_settings import CAT_VARIANTS, AppSettings
 
 
+def _pixel_data(image):
+    """Read pixels across Pillow versions without triggering deprecations."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return flattened() if flattened is not None else image.getdata()
+
+
 class VectorPlatformSurfaceTests(unittest.TestCase):
     def soft_edge_pixels(self, variant, **outfit):
         preview = cat_type.load_frame(cat_type.APP_DIR / "assets", variant, "idle", 120, **outfit)
         # Ear silhouettes vary; sample their rendered edges instead of a fixed point.
         pixels = [
             (index % preview.width, index // preview.width)
-            for index, alpha in enumerate(preview.getchannel("A").getdata())
+            for index, alpha in enumerate(_pixel_data(preview.getchannel("A")))
             if 0 < alpha < 128
         ]
         self.assertTrue(pixels, "The vector preview must contain soft edge pixels")
@@ -189,7 +195,7 @@ class VectorPlatformSurfaceTests(unittest.TestCase):
                 with self.subTest(variant=variant):
                     displayed = ImageTk.getimage(frames[variant]["idle"]).convert("RGBA")
                     self.assertLessEqual(
-                        set(displayed.getchannel("A").getdata()),
+                        set(_pixel_data(displayed.getchannel("A"))),
                         {0, 255},
                     )
                     self.assertTrue(all(displayed.getpixel(point)[3] == 0
