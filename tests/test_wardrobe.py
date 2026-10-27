@@ -9,7 +9,7 @@ from settings_window import SettingsWindow
 from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID
 from wardrobe_view import WardrobeView
-from ui_surfaces import RoundedPanel, RoundedChoice
+from ui_surfaces import RoundedAction, RoundedPanel, RoundedChoice
 import inspect
 
 
@@ -84,6 +84,27 @@ class WardrobeTests(unittest.TestCase):
                 for tile in window.wardrobe.choice_tiles.values()
             )
         )
+
+    def test_wardrobe_accessory_actions_use_shared_soft_pills(self):
+        window = self.window()
+
+        self.assertTrue(
+            all(isinstance(button, RoundedAction)
+                for button in window.wardrobe.buttons.values())
+        )
+        self.assertTrue(
+            all(isinstance(link, RoundedAction)
+                for link in window.wardrobe.achievement_links.values())
+        )
+
+    def test_achievements_group_rewards_in_one_album_shelf(self):
+        window = self.window()
+
+        self.assertIsInstance(window.achievements.album_shelf, RoundedPanel)
+        self.assertEqual(window.achievements.album_shelf._radius, 18)
+        self.assertIs(window.achievements.cards_area.master,
+                      window.achievements.album_shelf.content)
+        self.assertTrue(window.achievements.status_badges)
 
     def test_mix_it_up_chooses_only_unlocked_accessories(self):
         window = self.window({'crown', 'round-glasses'})

@@ -962,6 +962,9 @@ class SettingsWindow:
         elif selected == "Achievements":
             self.achievements.pack(fill="x")
             self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
+            self.window.update_idletasks()
+            self.achievements.refresh_layout()
+            self.window.after_idle(self.achievements.refresh_layout)
         else:
             self.columns.pack(fill="x")
         self.scroll_canvas.yview_moveto(0)
@@ -1008,9 +1011,35 @@ class SettingsWindow:
         self.active_page.set("Achievements")
         self._switch_page()
         self.window.update_idletasks()
+        self.achievements.refresh_layout()
+        self.window.update_idletasks()
         card = self.achievements.focus_reward(accessory_id)
-        offset = card.winfo_rooty() - self.scroll_content.winfo_rooty() - 12
-        self.scroll_canvas.yview_moveto(max(0, offset) / max(1, self.scroll_content.winfo_height()))
+        # Scroll in canvas coordinates so nested shelves remain visible after
+        # the album wrapper changes the page's requested height.
+        viewport_top = self.scroll_canvas.canvasy(0)
+        viewport_height = self.scroll_canvas.winfo_height()
+        card_top = (
+            card.winfo_rooty()
+            - self.scroll_canvas.winfo_rooty()
+            + viewport_top
+        )
+        card_bottom = card_top + card.winfo_height()
+        target = viewport_top
+        if card_top < viewport_top:
+            target = card_top - 12
+        elif card_bottom > viewport_top + viewport_height:
+            target = card_bottom - viewport_height + 12
+        bounds = self.scroll_canvas.bbox("all")
+        max_scroll = max(
+            0,
+            (bounds[3] - bounds[1] - viewport_height)
+            if bounds is not None
+            else 0,
+        )
+        scroll_extent = max(1, (bounds[3] - bounds[1]) if bounds is not None else 1)
+        self.scroll_canvas.yview_moveto(
+            max(0, min(target, max_scroll)) / scroll_extent
+        )
 
     def _build_companion_card(self, parent: tk.Frame) -> None:
         card, content = self._card(parent, "Companion")

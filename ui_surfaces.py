@@ -340,11 +340,21 @@ class RoundedAction(tk.Canvas):
 
 
 class RoundedBadge(tk.Canvas):
-    """A non-interactive Butter Sun value chip for compact setting values."""
+    """A non-interactive value chip for compact setting and reward states."""
 
-    def __init__(self, parent: tk.Misc, *, text: str, font: object) -> None:
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        text: str,
+        font: object,
+        fill: str = BUTTON_ACCENT,
+        foreground: str = BUTTON_INK,
+    ) -> None:
         self._text = str(text)
         self._font = font
+        self._fill = fill
+        self._foreground = foreground
         face = tkfont.Font(parent, font=font)
         self._width = max(42, face.measure(self._text) + 18)
         self._height = max(28, face.metrics("linespace") + 10)
@@ -366,7 +376,7 @@ class RoundedBadge(tk.Canvas):
             str(self.cget("background")),
             self._width,
             self._height,
-            BUTTON_ACCENT,
+            self._fill,
         )
         self._image = image
         self.create_image(0, 0, anchor="nw", image=image)
@@ -374,7 +384,7 @@ class RoundedBadge(tk.Canvas):
             self._width // 2,
             self._height // 2,
             text=self._text,
-            fill=BUTTON_INK,
+            fill=self._foreground,
             font=self._font,
         )
 
@@ -386,6 +396,12 @@ class RoundedBadge(tk.Canvas):
             face = tkfont.Font(self, font=self._font)
             self._width = max(42, face.measure(self._text) + 18)
             super().configure(width=self._width)
+            self._draw()
+        if "fill" in kwargs:
+            self._fill = str(kwargs.pop("fill"))
+            self._draw()
+        if "foreground" in kwargs:
+            self._foreground = str(kwargs.pop("foreground"))
             self._draw()
         return super().configure(**kwargs) if kwargs else None
 
