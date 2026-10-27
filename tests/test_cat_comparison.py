@@ -17,8 +17,9 @@ from scripts.preview_svg_cat import PreviewWindow, classify_tk_key, export_previ
 
 class PreviewTests(unittest.TestCase):
     def tearDown(self) -> None:
-        tk._default_root = None
-        gc.collect()
+        if sys.platform == "win32":
+            tk._default_root = None
+            gc.collect()
 
     def test_preview_launch_bypasses_overlay_instance_and_saved_settings(self):
         with (
