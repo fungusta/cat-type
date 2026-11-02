@@ -463,6 +463,44 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             texts.update(SettingsWindowTkLayoutTests._widget_texts(child))
         return texts
 
+    def test_native_chrome_survives_initial_tk_wrapper_recreation(self):
+        import sys
+        if sys.platform != "win32":
+            self.skipTest("Windows native wrapper")
+        view = self.settings_window
+        chrome = view._window_chrome
+        self.assertIsNotNone(chrome.hwnd)
+        self.assertEqual(chrome.hwnd, chrome.user.GetParent(view.window.winfo_id()))
+        chrome.minimize()
+        view.window.update()
+        self.assertTrue(chrome.user.IsIconic(chrome.hwnd))
+        view.show()
+        view.window.update()
+        self.assertFalse(chrome.user.IsIconic(chrome.hwnd))
+        view._toggle_maximize()
+        view.window.update()
+        self.assertTrue(chrome.is_maximized())
+        self.assertEqual(view.title_bar.controls[1].cget("text"), "Restore")
+        view._toggle_maximize()
+        view.window.update()
+        self.assertFalse(chrome.is_maximized())
+
+    def test_themed_scrollbar_colors_and_overflow_access(self):
+        from tkinter import ttk
+        view = self.settings_window
+        style = ttk.Style(view.window)
+        self.assertEqual(style.lookup(view.scrollbar_style, "background"), view.ACCENT)
+        self.assertEqual(style.lookup(view.scrollbar_style, "background", ("pressed",)), view.INK)
+        self.assertEqual(style.lookup(view.scrollbar_style, "troughcolor"), view.BACKGROUND)
+        self.assertEqual(str(view.scrollbar.cget("takefocus")), "1")
+        view.window.geometry("700x480")
+        view.window.update()
+        view._sync_scrollbar_visibility()
+        view.window.update_idletasks()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+        view.scrollbar.focus_force()
+        self.assertEqual(view.window.focus_get(), view.scrollbar)
+
     def test_settings_uses_companion_and_behavior_shelves(self) -> None:
         texts = self._widget_texts(self.settings_window.columns)
         self.assertIn("Companion", texts)

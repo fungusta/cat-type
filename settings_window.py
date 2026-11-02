@@ -19,6 +19,7 @@ from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
 from ui_surfaces import RoundedPanel, RoundedChoice, RoundedAction, RoundedBadge
+from window_chrome import ThemedTitleBar, NativeWindowChrome
 
 
 CAT_STYLE_LABELS = {
@@ -389,7 +390,7 @@ class SettingsWindow:
         self.window.minsize(self.MIN_WIDTH, self.MIN_HEIGHT)
         self.window.resizable(True, True)
         self.window.configure(background=self.BACKGROUND)
-        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.window.protocol("WM_DELETE_WINDOW", self._close_from_chrome)
         self._configure_fonts()
         if icon_path:
             try:
@@ -605,14 +606,12 @@ class SettingsWindow:
             gripcount=0,
         )
         style.configure(
-            "Cat.Vertical.TScrollbar",
-            background=self.PEACH,
-            troughcolor=self.BACKGROUND,
-            bordercolor=self.BACKGROUND,
-            lightcolor=self.PEACH,
-            darkcolor=self.PEACH,
-            arrowcolor=self.ACCENT_DARK,
-        )
+            self.scrollbar_style, background=self.ACCENT, troughcolor=self.BACKGROUND,
+            bordercolor=self.BACKGROUND, lightcolor=self.ACCENT, darkcolor=self.ACCENT,
+            arrowcolor=self.INK, width=18, arrowsize=18)
+        style.map(self.scrollbar_style,
+                  background=[("pressed", self.INK), ("active", self.INK), ("focus", self.INK)],
+                  arrowcolor=[("pressed", self.CARD), ("active", self.CARD), ("focus", self.CARD)])
         style.configure(
             "Cat.TButton",
             background=self.CARD,
@@ -685,7 +684,45 @@ class SettingsWindow:
             self._preview_frames[variant] = vector_frames
             self._rail_preview_frames[variant] = rail_frames
 
+    def _close_from_chrome(self) -> None:
+        self.close()
+
+    def _toggle_maximize(self) -> None:
+        self._window_chrome.toggle_maximize()
+        self.title_bar.set_maximized(self._window_chrome.is_maximized())
+
+    def _begin_window_drag(self, event) -> None:
+        self._window_chrome.begin_drag(event)
+
+    def _drag_window(self, event) -> None:
+        # Windows owns the modal move loop, including snap and drag-to-restore.
+        if not self._window_chrome.hwnd:
+            self.title_bar.drag_move(event)
+
+    def _sync_window_chrome(self, event) -> None:
+        if event.widget is self.window and not getattr(self, "_chrome_failed", False):
+            self._window_chrome.minimum_size = self.window.minsize()
+            if not self._window_chrome.install():
+                self._chrome_failed = True
+                self.window.overrideredirect(False)
+                self.title_bar.pack_forget()
+                return
+            self.title_bar.set_maximized(self._window_chrome.is_maximized())
+
     def _build(self) -> None:
+        self._window_chrome = NativeWindowChrome(self.window)
+        self.title_bar = ThemedTitleBar(
+            self.window, on_minimize=self._window_chrome.minimize,
+            on_toggle_maximize=self._toggle_maximize, on_close=self._close_from_chrome)
+        if sys.platform == "win32":
+            self.window.overrideredirect(True)
+            self.title_bar.pack(side="top", fill="x")
+            for region in (self.title_bar, self.title_bar.title):
+                region.bind("<ButtonPress-1>", self._begin_window_drag)
+                region.bind("<B1-Motion>", self._drag_window)
+            self.window.bind("<Configure>", self._sync_window_chrome, add="+")
+            self.window.bind("<Map>", self._sync_window_chrome, add="+")
+        # Unsupported window systems retain a native frame without duplicate controls.
         self.body = tk.Frame(self.window, background=self.BACKGROUND)
         self.body.pack(fill="both", expand=True)
 
@@ -701,6 +738,7 @@ class SettingsWindow:
             self.scroll_host,
             orient="vertical",
             style=self.scrollbar_style,
+            takefocus=True,
         )
         self.scrollbar.pack(side="right", fill="y")
 
@@ -832,10 +870,12 @@ class SettingsWindow:
         maximum_height = self.window.maxsize()[1]
         if maximum_height > 0:
             available = min(available, maximum_height)
-        desired = min(available, max(self.window.winfo_height(), bounds[3] - bounds[1] + self.footer.winfo_reqheight() + 26))
+        chrome_height = self.title_bar.winfo_reqheight() if self.title_bar.winfo_manager() else 0
+        desired = min(available, max(self.window.winfo_height(), bounds[3] - bounds[1] + self.footer.winfo_reqheight() + chrome_height + 26))
         width = self.window.winfo_width()
         x = max(4, (self.window.winfo_screenwidth() - width) // 2)
         y = max(4, (self.window.winfo_screenheight() - desired - 32) // 2)
+        self._last_fitted_window_height = desired
         self.window.geometry(f"{width}x{desired}+{x}+{y}")
 
     def _reward_palette(self) -> dict[str, str]:
@@ -2664,6 +2704,9 @@ class SettingsWindow:
         self,
         event: tk.Event[tk.Misc],
     ) -> None:
+        if self.window.winfo_height() < getattr(self, "_last_fitted_window_height", 0):
+            # An explicit shrink takes ownership away from startup auto-sizing.
+            self._startup_fit_remaining = 0
         self.scroll_canvas.itemconfigure(
             self._scroll_content_id,
             width=event.width,
@@ -3042,7 +3085,7 @@ class SettingsWindow:
             self.window.update_idletasks()
             measured_height = self.window.winfo_height()
             viewport_height = self._content_viewport_height(
-                measured_height,
+                measured_height - (self.title_bar.winfo_height() if hasattr(self, "title_bar") and self.title_bar.winfo_manager() else 0),
                 self.footer.winfo_reqheight(),
             )
             self._settle_content_layout(width, viewport_height)
