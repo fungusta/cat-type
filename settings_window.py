@@ -872,6 +872,7 @@ class SettingsWindow:
             self._shelf_builders = [self._build_appearance_card, self._build_behavior_card, self._build_updates_card]
         if self._shelf_builders:
             self._shelf_builders.pop(0)(self.columns)
+            self._invalidate_scrollbar_reflow()
             self._display_preview()
         callback = self._build_settings_shelves if self._shelf_builders else self._fit_hydrated_content
         self._shelves_after_id = self.window.after(0, callback)
@@ -908,7 +909,8 @@ class SettingsWindow:
             slots=self.outfit_vars, unlocked=self.unlocked_accessories,
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
             palette=self._reward_palette(), fonts=self.fonts,
-            responsive_width=self._stable_scroll_layout_width)
+            responsive_width=self._stable_scroll_layout_width,
+            on_content_change=self._invalidate_scrollbar_reflow)
         self.wardrobe.update_unlocks(self.unlocked_accessories, tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_wardrobe_new_ids))
         self._pending_wardrobe_new_ids.clear()
@@ -919,7 +921,8 @@ class SettingsWindow:
         self.achievements = AchievementsView(
             self.page_host, assets_root=self._assets_root,
             metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
-            palette=self._reward_palette(), fonts=self.fonts)
+            palette=self._reward_palette(), fonts=self.fonts,
+            on_content_change=self._invalidate_scrollbar_reflow)
         self.achievements.mark_new(tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_achievement_new_ids))
         self._pending_achievement_new_ids.clear()
@@ -965,6 +968,8 @@ class SettingsWindow:
                 self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
 
     def _refresh_preview_error(self) -> None:
+        if bool(self._preview_errors) != bool(self.preview_error_surface.winfo_manager()):
+            self._invalidate_scrollbar_reflow()
         if self._preview_errors:
             self.preview_error_text.set("Some cat previews couldn't load.")
             self.preview_error_surface.grid(
@@ -1135,6 +1140,7 @@ class SettingsWindow:
             )
 
     def _switch_page(self) -> None:
+        self._invalidate_scrollbar_reflow()
         selected = self.active_page.get()
         if selected != "Settings":
             self._startup_fit_remaining = 0
@@ -1332,6 +1338,7 @@ class SettingsWindow:
         card.pack(fill="x", pady=(0, 14))
 
     def _toggle_privacy_details(self) -> None:
+        self._invalidate_scrollbar_reflow()
         self._privacy_details_visible = not self._privacy_details_visible
         if self._privacy_details_visible:
             self.privacy_explanation.pack(fill="x", pady=(8, 0))
@@ -1373,6 +1380,7 @@ class SettingsWindow:
         request_attempted: bool = False,
     ) -> None:
         self._input_monitoring_granted = bool(granted)
+        self._invalidate_scrollbar_reflow()
         self._input_monitoring_request_attempted = bool(request_attempted)
         if not hasattr(self, "input_monitoring_button"):
             return
@@ -2245,6 +2253,7 @@ class SettingsWindow:
         canvas.tag_lower(rectangle_id, text_id)
 
     def _refresh_usage_metrics(self) -> None:
+        self._invalidate_scrollbar_reflow()
         today = datetime.now().astimezone().date()
         week = self.usage_metrics.daily_series(7, ending_on=today)
         today_count = self.usage_metrics.count_for_day(today)
@@ -2799,6 +2808,15 @@ class SettingsWindow:
         # should not turn into a second dashboard at wide sizes.
         self.columns.grid_columnconfigure(0, weight=1)
 
+    def _invalidate_scrollbar_reflow(self) -> None:
+        """Allow another visibility trial after a semantic content change."""
+        self._scrollbar_content_revision = getattr(self, "_scrollbar_content_revision", 0) + 1
+        if hasattr(self, "scroll_canvas") and hasattr(self, "window"):
+            pending = getattr(self, "_scroll_sync_after_id", None)
+            if pending is not None:
+                self.window.after_cancel(pending)
+            self._scroll_sync_after_id = self.window.after_idle(self._sync_scrollbar_visibility)
+
     def _sync_scrollbar_visibility(
         self,
         viewport_height: int | None = None,
@@ -2827,15 +2845,29 @@ class SettingsWindow:
                     child.winfo_rooty() - origin_y + child.winfo_reqheight(),
                 )
                 pending.extend(child.winfo_children())
+        # Geometry and widget identity can both change during responsive
+        # pagination. Only semantic actions advance the content revision.
+        context = (self.scroll_canvas.master.winfo_width(), available_height,
+                   getattr(self, "_scrollbar_content_revision", 0))
+        if context != getattr(self, "_scrollbar_reflow_context", None):
+            self._scrollbar_reflow_context = context
+            self._scrollbar_hide_trial = False
+            self._scrollbar_latched = False
         overflows = content_height > available_height
         is_visible = bool(self.scrollbar.winfo_manager())
         if overflows and not is_visible:
+            # If removing the gutter recreated overflow without a real resize
+            # or content change, keep it until such a change. In this ambiguous
+            # range the bar may have no scroll travel, but remains reachable and
+            # the UI settles after at most one hide/show instead of oscillating.
+            self._scrollbar_latched = self._scrollbar_hide_trial
             self.scrollbar.pack(
                 side="right",
                 fill="y",
                 before=self.scroll_canvas,
             )
-        elif not overflows and is_visible:
+        elif not overflows and is_visible and not self._scrollbar_latched:
+            self._scrollbar_hide_trial = True
             self.scrollbar.pack_forget()
             self.scroll_canvas.yview_moveto(0)
 
@@ -2900,6 +2932,7 @@ class SettingsWindow:
                 for slot, variable in self.outfit_vars.items()}
 
     def _refresh_outfit_preview(self) -> None:
+        self._invalidate_scrollbar_reflow()
         self._preview_errors.clear()
         self._preview_attempts.clear()
         self._refresh_preview_error()
@@ -3039,6 +3072,7 @@ class SettingsWindow:
         self.save_status.set("")
 
     def _refresh_save_status_surface(self, *_args: object) -> None:
+        self._invalidate_scrollbar_reflow()
         text = self.save_status.get()
         if not text:
             self.save_status_surface.pack_forget()
@@ -3216,6 +3250,7 @@ class SettingsWindow:
     def update_achievements(
         self, unlocked: set[str], newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
+        self._invalidate_scrollbar_reflow()
         self.unlocked_accessories = set(unlocked)
         if newly_unlocked:
             self._new_achievement_ids.update(item.id for item in newly_unlocked)
@@ -3233,11 +3268,13 @@ class SettingsWindow:
             self._pending_achievement_new_ids.update(item.id for item in newly_unlocked)
 
     def set_new_achievements(self, newly_unlocked: tuple[Accessory, ...]) -> None:
+        self._invalidate_scrollbar_reflow()
         if not newly_unlocked:
             return
         self.update_achievements(self.unlocked_accessories, newly_unlocked)
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
+        self._invalidate_scrollbar_reflow()
         self.update_status_text.set(text)
         self._update_checking = checking
         if not hasattr(self, "check_for_updates_button"):
