@@ -365,6 +365,12 @@ class SettingsWindow:
         self._save_after_id: str | None = None
         self._save_feedback_after_id: str | None = None
         self._after_id: str | None = None
+        self._preview_hydration_after_id: str | None = None
+        self._shelves_after_id: str | None = None
+        self._startup_fit_remaining = 6
+        self._scroll_sync_after_id: str | None = None
+        self._pending_wardrobe_new_ids = {item.id for item in newly_unlocked}
+        self._pending_achievement_new_ids = {item.id for item in newly_unlocked}
         self._preview_step = 0
         self._preview_variant = "gray"
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
@@ -429,16 +435,20 @@ class SettingsWindow:
         self.save_status = tk.StringVar(value="")
 
         self._configure_styles()
-        self._load_preview_frames(icon_path)
         self._build()
-        self._refresh_outfit_preview()
         self.window.bind("<Escape>", self._close_from_shortcut)
         self.window.bind("<Control-s>", self._save_from_shortcut)
         if sys.platform == "darwin":
             self.window.bind("<Command-s>", self._save_from_shortcut)
-        self._center()
+        self._center_shell()
         self.window.lift()
         self.window.focus_force()
+        self._shelves_after_id = self.window.after_idle(self._build_settings_shelves)
+        self._preview_icon_path = str(self._assets_root / "cat-type.png")
+        selected = next((variant for label, variant in CAT_STYLE_LABELS.items() if label == self.cat_style.get()), CAT_VARIANTS[0])
+        ordered = (selected,) + tuple(variant for variant in CAT_VARIANTS if variant != selected) if selected in CAT_VARIANTS else CAT_VARIANTS
+        self._preview_queue = [(variant, pose) for variant in ordered for pose in ("idle", "tap-left", "tap-right", "excited")]
+        self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
         self._animate_preview()
         self._last_saved_settings = self._settings_from_controls()
         for variable in (
@@ -648,14 +658,18 @@ class SettingsWindow:
             relief=[("pressed", "sunken"), ("!pressed", "raised")],
         )
 
-    def _load_preview_frames(self, icon_path: str | None) -> None:
+    def _load_preview_frames(
+        self, icon_path: str | None,
+        variants: tuple[str, ...] | None = None,
+        poses: tuple[str, ...] | None = None,
+    ) -> None:
         if not icon_path:
             return
         assets_root = Path(icon_path).parent
-        for variant in CAT_VARIANTS:
-            vector_frames: dict[str, ImageTk.PhotoImage] = {}
-            rail_frames: dict[str, ImageTk.PhotoImage] = {}
-            for name in ("idle", "tap-left", "tap-right", "excited"):
+        for variant in (variants or CAT_VARIANTS):
+            vector_frames = self._preview_frames.setdefault(variant, {})
+            rail_frames = self._rail_preview_frames.setdefault(variant, {})
+            for name in (poses or ("idle", "tap-left", "tap-right", "excited")):
                 image = load_frame(
                     assets_root, variant, name, 148,
                     **self._selected_outfit(),
@@ -773,21 +787,12 @@ class SettingsWindow:
         self.settings_shelves: list[tk.Misc] = []
         self.settings_shelf_titles: list[str] = []
 
-        self._build_appearance_card(self.columns)
-        self._build_behavior_card(self.columns)
-        self._build_updates_card(self.columns)
-        self._build_metrics_page(self.page_host)
-        reward_palette = {
-            "background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
-            "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
-            "accent_dark": self.ACCENT_DARK, "border": self.BORDER,
+        self._page_views: dict[str, tk.Misc] = {"Settings": self.columns}
+        self._page_factories: dict[str, Callable[[], tk.Misc]] = {
+            "Metrics": self._create_metrics_page,
+            "Wardrobe": self._create_wardrobe_page,
+            "Achievements": self._create_achievements_page,
         }
-        self.wardrobe = WardrobeView(
-            self.page_host, assets_root=self._assets_root,
-            slots=self.outfit_vars, unlocked=self.unlocked_accessories,
-            on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
-            palette=reward_palette, fonts=self.fonts,
-        )
         self.mix_it_up_button = RoundedAction(
             self.page_heading,
             text="Mix it up",
@@ -797,18 +802,78 @@ class SettingsWindow:
             takefocus=True,
         )
         self._refresh_page_heading_actions()
+        self._refresh_usage_metrics()
+
+    def _build_settings_shelves(self) -> None:
+        self._shelves_after_id = None
+        if self.active_page.get() != "Settings":
+            return
+        if not hasattr(self, "_shelf_builders"):
+            self._shelf_builders = [self._build_appearance_card, self._build_behavior_card, self._build_updates_card]
+        if self._shelf_builders:
+            self._shelf_builders.pop(0)(self.columns)
+            self._display_preview()
+        callback = self._build_settings_shelves if self._shelf_builders else self._fit_hydrated_content
+        self._shelves_after_id = self.window.after(0, callback)
+
+    def _fit_hydrated_content(self) -> None:
+        self._shelves_after_id = None
+        bounds = self.scroll_canvas.bbox("all")
+        if bounds is None:
+            return
+        available = self.window.winfo_screenheight() - self.SCREEN_VERTICAL_MARGIN
+        maximum_height = self.window.maxsize()[1]
+        if maximum_height > 0:
+            available = min(available, maximum_height)
+        desired = min(available, max(self.window.winfo_height(), bounds[3] - bounds[1] + self.footer.winfo_reqheight() + 26))
+        width = self.window.winfo_width()
+        x = max(4, (self.window.winfo_screenwidth() - width) // 2)
+        y = max(4, (self.window.winfo_screenheight() - desired - 32) // 2)
+        self.window.geometry(f"{width}x{desired}+{x}+{y}")
+
+    def _reward_palette(self) -> dict[str, str]:
+        return {"background": self.BACKGROUND, "card": self.CARD, "peach": self.PEACH,
+                "ink": self.INK, "muted": self.MUTED, "accent": self.ACCENT,
+                "accent_dark": self.ACCENT_DARK, "border": self.BORDER}
+
+    def _create_metrics_page(self) -> tk.Misc:
+        self._build_metrics_page(self.page_host)
+        return self.metrics_page
+
+    def _create_wardrobe_page(self) -> tk.Misc:
+        self.wardrobe = WardrobeView(
+            self.page_host, assets_root=self._assets_root,
+            slots=self.outfit_vars, unlocked=self.unlocked_accessories,
+            on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
+            palette=self._reward_palette(), fonts=self.fonts)
+        self.wardrobe.update_unlocks(self.unlocked_accessories, tuple(
+            ACCESSORY_BY_ID[item] for item in self._pending_wardrobe_new_ids))
+        self._pending_wardrobe_new_ids.clear()
+        return self.wardrobe
+
+    def _create_achievements_page(self) -> tk.Misc:
         self.achievements = AchievementsView(
             self.page_host, assets_root=self._assets_root,
             metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
-            palette=reward_palette, fonts=self.fonts,
-        )
-        self._refresh_usage_metrics()
-        if self._new_achievement_ids:
-            self.update_achievements(
-                self.unlocked_accessories,
-                tuple(ACCESSORY_BY_ID[item_id] for item_id in self._new_achievement_ids
-                      if item_id in ACCESSORY_BY_ID),
-            )
+            palette=self._reward_palette(), fonts=self.fonts)
+        self.achievements.mark_new(tuple(
+            ACCESSORY_BY_ID[item] for item in self._pending_achievement_new_ids))
+        self._pending_achievement_new_ids.clear()
+        return self.achievements
+
+    def _ensure_page(self, label: str) -> tk.Misc:
+        if label not in self._page_views:
+            self._page_views[label] = self._page_factories[label]()
+        return self._page_views[label]
+
+    def _hydrate_preview_step(self) -> None:
+        self._preview_hydration_after_id = None
+        if self._preview_queue:
+            variant, pose = self._preview_queue.pop(0)
+            self._load_preview_frames(self._preview_icon_path, (variant,), (pose,))
+            self._display_preview()
+            if self._preview_queue:
+                self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
 
     def _build_page_switcher(self, parent: tk.Frame) -> None:
         self.page_switcher = RoundedPanel(
@@ -941,6 +1006,10 @@ class SettingsWindow:
 
     def _switch_page(self) -> None:
         selected = self.active_page.get()
+        if selected != "Settings":
+            self._startup_fit_remaining = 0
+        elif self._shelves_after_id is None and not hasattr(self, "check_for_updates_button"):
+            self._shelves_after_id = self.window.after_idle(self._build_settings_shelves)
         if hasattr(self, "page_heading_text"):
             self.page_heading_text.set(selected)
         self._refresh_page_heading_actions()
@@ -949,26 +1018,17 @@ class SettingsWindow:
             self._new_achievement_ids.clear()
             self._refresh_achievement_indicator()
         self._refresh_page_buttons()
-        self.columns.pack_forget()
-        self.metrics_page.pack_forget()
-        self.wardrobe.pack_forget()
-        self.achievements.pack_forget()
+        for page in self._page_views.values():
+            page.pack_forget()
+        self._ensure_page(selected).pack(fill="x")
         if selected == "Metrics":
-            self.metrics_page.pack(fill="x")
             self._refresh_usage_metrics()
-        elif selected == "Wardrobe":
-            self.wardrobe.pack(fill="x")
-            self.wardrobe.update_unlocks(self.unlocked_accessories)
         elif selected == "Achievements":
-            self.achievements.pack(fill="x")
             self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
-            self.window.update_idletasks()
-            self.achievements.refresh_layout()
-            self.window.after_idle(self.achievements.refresh_layout)
-        else:
-            self.columns.pack(fill="x")
         self.scroll_canvas.yview_moveto(0)
-        self.window.after_idle(self._sync_scrollbar_visibility)
+        if self._scroll_sync_after_id is not None:
+            self.window.after_cancel(self._scroll_sync_after_id)
+        self._scroll_sync_after_id = self.window.after_idle(self._sync_scrollbar_visibility)
 
     def _mix_wardrobe(self) -> None:
         self.wardrobe.mix_it_up()
@@ -1148,7 +1208,9 @@ class SettingsWindow:
         else:
             self.privacy_explanation.pack_forget()
             self.privacy_details_button.configure(text="Privacy details")
-        self.window.after_idle(self._sync_scrollbar_visibility)
+        if self._scroll_sync_after_id is not None:
+            self.window.after_cancel(self._scroll_sync_after_id)
+        self._scroll_sync_after_id = self.window.after_idle(self._sync_scrollbar_visibility)
 
     def _handle_input_monitoring_action(self) -> None:
         if self._input_monitoring_granted:
@@ -2575,6 +2637,9 @@ class SettingsWindow:
         if bounds is not None:
             self.scroll_canvas.configure(scrollregion=bounds)
         self._sync_scrollbar_visibility()
+        if self._startup_fit_remaining and hasattr(self, "_shelf_builders") and not self._shelf_builders:
+            self._startup_fit_remaining -= 1
+            self._fit_hydrated_content()
 
     def _on_canvas_configure(
         self,
@@ -2685,12 +2750,17 @@ class SettingsWindow:
                 for slot, variable in self.outfit_vars.items()}
 
     def _refresh_outfit_preview(self) -> None:
-        self._load_preview_frames(str(self._assets_root / "cat-type.png"))
+        self._preview_frames.clear()
+        self._rail_preview_frames.clear()
+        self._preview_queue = [(variant, pose) for variant in CAT_VARIANTS for pose in ("idle", "tap-left", "tap-right", "excited")]
+        if self._preview_hydration_after_id is None:
+            self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
+        self._load_preview_frames(str(self._assets_root / "cat-type.png"), (self._preview_variant,))
         self._display_preview()
 
     def _display_preview(self) -> None:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
-        if self._preview_frames:
+        if self._preview_frames and hasattr(self, "preview_canvas"):
             selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
             if selected in CAT_VARIANTS:
                 self._preview_variant = selected
@@ -2711,7 +2781,8 @@ class SettingsWindow:
                         self._rail_preview_image,
                         image=rail_frame,
                     )
-                self.wardrobe.set_preview(frame)
+                if hasattr(self, "wardrobe"):
+                    self.wardrobe.set_preview(frame)
 
     def _animate_preview(self) -> None:
         self._display_preview()
@@ -2904,6 +2975,14 @@ class SettingsWindow:
             self._sync_scrollbar_visibility(viewport_height)
             self.window.update_idletasks()
 
+    def _center_shell(self) -> None:
+        width, height = self._fit_to_screen(self.PREFERRED_WIDTH, self.PREFERRED_HEIGHT,
+            self.window.winfo_screenwidth(), self.window.winfo_screenheight())
+        self.window.minsize(min(self.MIN_WIDTH, width), min(self.MIN_HEIGHT, height))
+        x = max(4, (self.window.winfo_screenwidth() - width) // 2)
+        y = max(4, (self.window.winfo_screenheight() - height - 32) // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+
     def _center(self) -> None:
         self.window.update_idletasks()
         screen_width = self.window.winfo_screenwidth()
@@ -2968,7 +3047,7 @@ class SettingsWindow:
     def update_usage_metrics(self, metrics: UsageMetrics) -> None:
         self.usage_metrics = metrics
         self._refresh_usage_metrics()
-        if self.active_page.get() == "Achievements":
+        if self.active_page.get() == "Achievements" and hasattr(self, "achievements"):
             self.achievements.update_progress(metrics, self.unlocked_accessories)
 
     def update_achievements(
@@ -2980,20 +3059,20 @@ class SettingsWindow:
             if self.active_page.get() != "Achievements":
                 self._achievements_unread = True
                 self._refresh_achievement_indicator()
-        self.wardrobe.update_unlocks(unlocked, newly_unlocked)
-        self.achievements.update_progress(self.usage_metrics, unlocked)
-        if newly_unlocked:
+        if hasattr(self, "wardrobe"):
+            self.wardrobe.update_unlocks(unlocked, newly_unlocked)
+        else:
+            self._pending_wardrobe_new_ids.update(item.id for item in newly_unlocked)
+        if hasattr(self, "achievements"):
+            self.achievements.update_progress(self.usage_metrics, unlocked)
             self.achievements.mark_new(newly_unlocked)
+        else:
+            self._pending_achievement_new_ids.update(item.id for item in newly_unlocked)
 
     def set_new_achievements(self, newly_unlocked: tuple[Accessory, ...]) -> None:
         if not newly_unlocked:
             return
-        self._new_achievement_ids.update(item.id for item in newly_unlocked)
-        self._achievements_unread = self.active_page.get() != "Achievements"
-        self._refresh_achievement_indicator()
-        self.wardrobe.update_unlocks(self.unlocked_accessories, newly_unlocked)
-        self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
-        self.achievements.mark_new(newly_unlocked)
+        self.update_achievements(self.unlocked_accessories, newly_unlocked)
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)
@@ -3011,9 +3090,26 @@ class SettingsWindow:
         if (self._save_after_id is not None or self._save_failed) and not self._save():
             return
         try:
+            for name in ("_preview_hydration_after_id", "_shelves_after_id", "_save_feedback_after_id", "_scroll_sync_after_id"):
+                callback = getattr(self, name, None)
+                if callback is not None:
+                    self.window.after_cancel(callback)
+                    setattr(self, name, None)
             if self._after_id is not None:
                 self.window.after_cancel(self._after_id)
                 self._after_id = None
+            # Tk deletes widget commands on destroy, but queued idle scripts
+            # survive. Cancel timers owned by this window and its descendants.
+            widgets = [self.window]
+            commands = set()
+            while widgets:
+                widget = widgets.pop()
+                commands.update(getattr(widget, "_tclCommands", ()) or ())
+                widgets.extend(widget.winfo_children())
+            for callback in self.window.tk.call("after", "info"):
+                script = self.window.tk.call("after", "info", callback)[0]
+                if str(script).split()[0] in commands:
+                    self.window.tk.call("after", "cancel", callback)
             self.window.destroy()
         except tk.TclError:
             pass

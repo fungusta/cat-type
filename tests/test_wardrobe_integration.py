@@ -99,6 +99,8 @@ class WardrobeIntegrationTests(unittest.TestCase):
         with patch('cat_type.set_launch_at_startup'):
             app._set_enabled(False)
             self.assertFalse(window.enabled.get())
+            window.active_page.set('Metrics')
+            window._switch_page()
             window.metrics_view_buttons['columns'].invoke()
         self.assertFalse(app.settings.enabled)
         self.assertFalse(app.settings_store.load().enabled)

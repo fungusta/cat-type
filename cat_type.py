@@ -1746,12 +1746,16 @@ class CatTypeApp:
             except tk.TclError:
                 pass
 
-        self.frames = self._load_frames(self.settings.size_percent)
-        self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
-        self.frame_height = self.frames[CAT_VARIANTS[0]]["idle"].height()
+        if self.settings.cat_style in CAT_VARIANTS:
+            self._active_variant = self.settings.cat_style
+        self.frames = self._load_frames(
+            self.settings.size_percent, (self._active_variant,),
+        )
+        self.frame_width = self.frames[self._active_variant]["idle"].width()
+        self.frame_height = self.frames[self._active_variant]["idle"].height()
         self.label = tk.Label(
             self.root,
-            image=self.frames[CAT_VARIANTS[0]]["idle"],
+            image=self.frames[self._active_variant]["idle"],
             borderwidth=0,
             highlightthickness=0,
             background=self._window_background,
@@ -1760,6 +1764,7 @@ class CatTypeApp:
         self.root.update_idletasks()
         self._make_overlay_non_interactive()
         self.root.withdraw()
+        self._frame_hydration_after_id = self.root.after_idle(self._hydrate_frame_variant)
         self.root.protocol("WM_DELETE_WINDOW", self.shutdown)
         if IS_MACOS:
             self._macos_overlay_surface = _MacOSNativeOverlaySurface(
@@ -2275,6 +2280,10 @@ class CatTypeApp:
         if shutdown_signal is not None:
             shutdown_signal.close()
         self._hide()
+        hydration_id = getattr(self, "_frame_hydration_after_id", None)
+        if hydration_id is not None:
+            self.root.after_cancel(hydration_id)
+            self._frame_hydration_after_id = None
         permission_poll_id = getattr(
             self,
             "_monitoring_permission_poll_id",
@@ -2472,6 +2481,7 @@ class CatTypeApp:
             else:
                 self._active_variant = self.settings.cat_style
 
+        self._ensure_frame_variant(self._active_variant)
         rendered_frame = (self._active_variant, frame_name)
         if rendered_frame != self._last_rendered_frame:
             if native_surface is not None and native_surface.installed:
@@ -2632,6 +2642,7 @@ class CatTypeApp:
     def _load_frames(
         self,
         size_percent: int,
+        variants: tuple[str, ...] | None = None,
     ) -> dict[str, dict[str, tk.PhotoImage | ImageTk.PhotoImage]]:
         size = max(1, round(BASE_SIZE * size_percent / 100))
         return {
@@ -2646,8 +2657,21 @@ class CatTypeApp:
                 )
                 for name in FRAME_NAMES
             }
-            for variant in CAT_VARIANTS
+            for variant in (CAT_VARIANTS if variants is None else variants)
         }
+
+    def _ensure_frame_variant(self, variant: str) -> None:
+        if variant not in self.frames:
+            self.frames.update(self._load_frames(self.settings.size_percent, (variant,)))
+
+    def _hydrate_frame_variant(self) -> None:
+        self._frame_hydration_after_id = None
+        for variant in CAT_VARIANTS:
+            if variant not in self.frames:
+                self._ensure_frame_variant(variant)
+                if any(item not in self.frames for item in CAT_VARIANTS):
+                    self._frame_hydration_after_id = self.root.after_idle(self._hydrate_frame_variant)
+                break
 
     def _start_tray(self) -> None:
         import pystray
@@ -2845,12 +2869,12 @@ class CatTypeApp:
         ):
             if self._overlay_visible:
                 self._hide()
-            self.frames = self._load_frames(self.settings.size_percent)
+            self.frames = self._load_frames(self.settings.size_percent, (self._active_variant,))
             surface = getattr(self, "_macos_overlay_surface", None)
             if surface is not None:
                 surface.set_outfit(**self.settings.outfit())
-            self.frame_width = self.frames[CAT_VARIANTS[0]]["idle"].width()
-            self.frame_height = self.frames[CAT_VARIANTS[0]]["idle"].height()
+            self.frame_width = self.frames[self._active_variant]["idle"].width()
+            self.frame_height = self.frames[self._active_variant]["idle"].height()
             self.label.configure(
                 image=self.frames[self._active_variant]["idle"]
             )

@@ -37,6 +37,7 @@ class SettingsWindowSizingTests(unittest.TestCase):
                 "_load_preview_frames",
                 "_build",
                 "_center",
+                "_center_shell",
                 "_animate_preview",
                 "_settings_from_controls",
             ):
@@ -402,8 +403,24 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         except tk.TclError as error:
             self.skipTest(f"Tk display is unavailable: {error}")
         self.root.withdraw()
+        # Legacy layout cases inspect fully hydrated controls. Startup construction
+        # and lazy destination reuse are exercised separately.
+        original_init = SettingsWindow.__init__
+        def hydrated_init(view, *args, **kwargs):
+            original_init(view, *args, **kwargs)
+            view.window.update()
+            view._ensure_page("Metrics")
+        hydration = patch.object(SettingsWindow, "__init__", hydrated_init)
+        hydration.start()
+        self.addCleanup(hydration.stop)
         self._tk_scaling = float(self.root.tk.call("tk", "scaling"))
-        self.addCleanup(self.root.destroy)
+        def destroy_root():
+            # Save-failure tests intentionally leave the window open; stop its
+            # timers before destroying the test interpreter unconditionally.
+            for callback in self.root.tk.call("after", "info"):
+                self.root.tk.call("after", "cancel", callback)
+            self.root.destroy()
+        self.addCleanup(destroy_root)
         self.on_save = Mock()
         self.on_check_for_updates = Mock()
         self.on_open_release_page = Mock()
