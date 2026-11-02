@@ -227,14 +227,29 @@ class WardrobeView(tk.Frame):
                 )
                 link.grid(row=2, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
                 self.achievement_links[item.id] = link
-                def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label):
+                def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label,
+                            badge=badge, link=link):
                     compact = event.width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
-                    copy.grid_configure(columnspan=2 if compact else 1)
-                    button.grid_configure(row=1 if compact else 0,
-                                          column=1 if compact else 2,
-                                          rowspan=1 if compact else 2,
-                                          sticky="w" if compact else "",
-                                          padx=(0, 4) if compact else (14, 4))
+                    # The two-column compact layout still needs room beside
+                    # the thumbnail for unwrappable badges and actions. Font
+                    # metrics vary by platform; stack everything when that
+                    # measured minimum no longer fits.
+                    stacked = event.width < thumbnail.winfo_reqwidth() + 18 + max(
+                        badge.winfo_reqwidth(), button.winfo_reqwidth() + 4,
+                        link.winfo_reqwidth() + 4,
+                    )
+                    thumbnail.grid_configure(rowspan=1 if stacked else 2)
+                    copy.grid_configure(row=1 if stacked else 0,
+                                        column=0 if stacked else 1,
+                                        columnspan=3 if stacked else (2 if compact else 1))
+                    button.grid_configure(row=2 if stacked else (1 if compact else 0),
+                                          column=0 if stacked else (1 if compact else 2),
+                                          rowspan=1 if compact or stacked else 2,
+                                          sticky="w" if compact or stacked else "",
+                                          padx=(0, 4) if compact or stacked else (14, 4))
+                    link.grid_configure(row=3 if stacked else 2,
+                                        column=0 if stacked else 1,
+                                        columnspan=3 if stacked else 2)
                 tile_content.bind("<Configure>", arrange, add="+")
 
     def _resize_choices(self, event: tk.Event) -> None:

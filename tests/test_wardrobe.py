@@ -58,6 +58,38 @@ class WardrobeTests(unittest.TestCase):
         self.assertIn("round-glasses", view._new_ids)
         self.assertEqual(window.glasses.get(), "none")
 
+    def test_new_badge_fits_when_card_only_has_room_for_one_action(self):
+        original_scaling = self.root.tk.call("tk", "scaling")
+        self.root.tk.call("tk", "scaling", 2.5)
+        self.addCleanup(lambda: self.root.tk.call("tk", "scaling", original_scaling))
+        window = self.window()
+        view = window.wardrobe
+        view.update_unlocks({"round-glasses"}, (ACCESSORY_BY_ID["round-glasses"],))
+        view.focus_item("round-glasses")
+        tile = view.choice_tiles["round-glasses"]
+        badge = view.new_badges["round-glasses"]
+        action = view.achievement_links["round-glasses"]
+        # Allocate enough width for the widest action, independent of platform
+        # font metrics and the surrounding settings navigation width.
+        tile.grid_remove()
+        narrow_width = action.winfo_reqwidth() + 4 + 12
+        for width in (narrow_width, 600, narrow_width):
+            with self.subTest(width=width):
+                tile.place(x=0, y=0, width=width)
+                window.window.update()
+                self.assertTrue(badge.winfo_ismapped())
+                self.assertGreaterEqual(badge.winfo_width(), badge.winfo_reqwidth())
+                status = next(child for child in badge.master.winfo_children()
+                              if isinstance(child, tk.Label))
+                self.assertLessEqual(status.winfo_rooty() + status.winfo_height(), badge.winfo_rooty())
+                for widget in (badge, action, view.buttons["round-glasses"]):
+                    self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth())
+                    self.assertGreaterEqual(widget.winfo_rootx(), tile.winfo_rootx())
+                    self.assertLessEqual(widget.winfo_rootx() + widget.winfo_width(),
+                                         tile.winfo_rootx() + tile.winfo_width())
+                    self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(),
+                                         tile.winfo_rooty() + tile.winfo_height())
+
     def test_high_scaling_narrow_cards_wrap_all_copy_and_keep_actions_inside(self):
         original_scaling = self.root.tk.call("tk", "scaling")
         self.root.tk.call("tk", "scaling", 2.5)
