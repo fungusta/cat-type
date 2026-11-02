@@ -1,10 +1,10 @@
 # Startup, pagination, and shell verification
 
-Verification date: 2026-11-02 (Asia/Singapore). Implementation: `42b55a6`.
+Verification date: 2026-11-02 (Asia/Singapore). Latest verified implementation: `5e0d2da`; original timing baseline: `42b55a6`.
 
 ## Scope and environment
 
-This report covers Task 6 of the 2026-10-28 startup/pagination/shell plan. Local execution uses Windows and Python 3.11.0, rather than the plan's proposed Python 3.12. Tests use real Tk. This is source execution, not a packaged Release build. The focused and full suites ran concurrently; their elapsed durations are regression evidence under shared load, not performance benchmarks. Timing samples run only after both suites finish.
+This report covers Task 6 of the 2026-10-28 startup/pagination/shell plan. Local execution uses Windows and Python 3.11.0, rather than the plan's proposed Python 3.12. Tests use real Tk. This is source execution, not a packaged Release build. The original focused and full suites at `42b55a6` ran concurrently; their elapsed durations are regression evidence under shared load, not performance benchmarks. Timing samples ran only after both original suites finished. A fresh serial full-suite run covers subsequent commits `4781bb6` (enlarged-text wrapping), `7539cb7` (deferred preview error recovery), and `5e0d2da` (enlarged-text new-badge containment), with no concurrent GUI tests.
 
 The custom client-drawn frame is Windows-only. macOS/Linux retain their native decoration without duplicate custom controls. This preserves a supported window-manager path but does not meet the original cross-platform custom-title-bar visual goal. No macOS/Linux GUI execution or remote GitHub Actions matrix is claimed here.
 
@@ -24,11 +24,14 @@ git diff --check
 
 | Check | Result |
 | --- | --- |
-| Focused UI suite | 151 tests, 241.608 s, OK, exit 0 |
-| Full CI-equivalent | 445 tests, 287.066 s, OK (18 skips), exit 0 |
+| Original focused UI suite (`42b55a6`) | 151 tests, 241.608 s, OK, exit 0 |
+| Original full CI-equivalent (`42b55a6`) | 445 tests, 287.066 s, OK (18 skips), exit 0 |
+| Final serial full CI-equivalent (`5e0d2da`) | 451 tests, 222.474 s, OK (18 skips), exit 0 |
 | `git diff --check` | Exit 0, no diagnostics |
 
-The 18 skips are platform-appropriate: three macOS window-manager tests, three Xorg keyboard tests, one Linux work-area test, one macOS work-area test, and ten Linux portable staging tests. Linux-only integration is conditionally added by the runner only on Linux, so it did not run here. Logs also contained Google Drive registry-key access diagnostics; no unittest failure resulted. The focused helper printed 0.1138 s shell construction and 2.295 s shell/navigation under concurrent test load; the isolated measurements below are the performance evidence.
+The final full-suite run executed `python scripts/run_ci_tests.py` alone, after the coordinator confirmed other GUI suites had finished. It includes all focused UI modules; the standalone focused command was not separately rerun at the final head. An earlier post-fix CI attempt was interrupted before its result to avoid overlap with reviewer GUI checks and is not counted as verification evidence.
+
+The 18 skips in both completed CI runs are platform-appropriate: three macOS window-manager tests, three Xorg keyboard tests, one Linux work-area test, one macOS work-area test, and ten Linux portable staging tests. Linux-only integration is conditionally added by the runner only on Linux, so it did not run here. Logs also contained Google Drive registry-key access diagnostics; no unittest failure resulted. The focused helper printed 0.1138 s shell construction and 2.295 s shell/navigation under concurrent test load; the isolated measurements below are the performance evidence.
 
 ## Construction, pagination, and layout evidence
 
@@ -38,7 +41,11 @@ Collection regressions check active-slice-only mounting, four-card normal/two-ca
 
 Real-Tk bounds tests cover shelf/card content and pager containment, scrollbar reachability, measured wrapping, narrow layouts, and scaled layout behavior. A separate native visual inspection by the coordinating agent at 920x1360 confirmed Settings title bar/shelves, four complete Wardrobe cards and pager on both pages 1 and 2 (items 1-4 and 5-8), and a 2x2 Achievements page with pager. A geometry reviewer additionally checked live Tk bounds at 920x1360, 620x500, and 920x800. Compact/high-DPI screenshots, physical taskbar interaction, pointer dragging/resizing, and other operating systems were not visually verified in this run. Automated Windows tests exercise native resize-edge hit testing, minimize/restore, maximize/restore, system-close routing, native styles/taskbar identity, and Tk wrapper recreation; these do not substitute for physical pointer and taskbar checks.
 
+The final suite adds real-Tk regressions at scaling 2.5 and 620x700 geometry for Wardrobe label wrapping, action/card/pager containment, and complete new-badge visibility without status overlap across page changes. Preview error tests cover transient renderer recovery, bounded persistent PhotoImage failure with visible user retry, SVG parser failures, and close-time retry cancellation. These are automated geometry/error-injection checks; they do not add physical high-DPI or failure-state screenshots.
+
 ## Timing method and limitations
+
+The timings below were collected at `42b55a6`, before the enlarged-text wrapping, new-badge containment, and preview recovery fixes. They are historical measurements of that implementation; they have not been rerun at `5e0d2da` and must not be presented as final-head performance results.
 
 Five fresh Python processes provide process-cold samples; they do not flush the OS filesystem cache or measure reboot-cold startup. One separate Python process performs one discarded priming run, then five retained warm runs with shared Python/render caches and fresh Tk roots/app instances. Imports precede the app-init timer, so process launch/import time is excluded. Profiles live under workspace TEMP; keyboard hooks, tray and event-loop monitoring are not started, and update checking is not invoked. App initialization and `open_settings` use their real constructors; no renderer mocks or instrumentation patches are used.
 
