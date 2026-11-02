@@ -582,6 +582,14 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         view = self.settings_window
         view.window.geometry("700x480")
         view.window.update()
+        # Native fonts can make the settings page shorter than two viewports.
+        # Provide enough real content that PageDown cannot already reach End.
+        spacer = tk.Frame(
+            view.scroll_content, height=view.scroll_canvas.winfo_height() * 4
+        )
+        columns, rows = view.scroll_content.grid_size()
+        spacer.grid(row=rows, column=0, columnspan=max(1, columns))
+        view.window.update()
         view.scrollbar.focus_force()
         view.window.update()
         def press(key):

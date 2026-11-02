@@ -168,16 +168,20 @@ class StartupReviewRegressionTests(unittest.TestCase):
                 canvas = self.view.rail_preview
                 texts = [canvas.itemcget(item, 'text') for item in canvas.find_all()
                          if canvas.type(item) == 'text' and canvas.itemcget(item, 'state') != 'hidden']
-                observed.append((self.view.window.winfo_ismapped(), texts, render.call_count, canvas.winfo_ismapped()))
+                observed.append((texts, render.call_count, canvas.winfo_ismapped()))
                 self.view.page_buttons['Metrics'].invoke()
         self.view.rail_preview.bind('<Map>', first_map, add='+')
         with patch.object(settings_window, 'load_frame', wraps=settings_window.load_frame) as render:
             self.root.update()
         self.assertTrue(observed)
-        self.assertTrue(observed[0][0])
-        self.assertEqual(observed[0][2], 0)
-        self.assertTrue(observed[0][3])
-        self.assertTrue(any('White' in text for text in observed[0][1]))
+        self.assertEqual(observed[0][1], 0)
+        self.assertTrue(observed[0][2])
+        self.assertTrue(any('White' in text for text in observed[0][0]))
+        # Aqua can dispatch the child's Map before updating its toplevel's
+        # mapped flag. Check ancestor visibility after the event loop settles;
+        # the child-map snapshot still proves the shell precedes rendering.
+        self.assertTrue(self.view.window.winfo_viewable())
+        self.assertTrue(self.view.rail_preview.winfo_viewable())
         self.assertEqual(self.view.active_page.get(), 'Metrics')
         self.assertFalse(hasattr(self.view, 'preview_canvas'))
 
