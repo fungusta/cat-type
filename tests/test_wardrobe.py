@@ -30,6 +30,19 @@ class WardrobeTests(unittest.TestCase):
         start = view._page_index * view._page_size
         self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[start:start + view._page_size]})
 
+    def test_mix_it_up_clears_new_badge_for_off_page_equipped_item(self):
+        window = self.window()
+        view = window.wardrobe
+        view.update_unlocks({"angel-wings"}, (ACCESSORY_BY_ID["angel-wings"],))
+        view.show_page(0)
+        self.assertNotIn("angel-wings", view.buttons)
+        view.mix_it_up()
+        self.assertEqual(window.back.get(), "angel-wings")
+        self.assertNotIn("angel-wings", view._new_ids)
+        view.focus_item("angel-wings")
+        self.assertEqual(view.buttons["angel-wings"].cget("text"), "Equipped")
+        self.assertEqual(view.new_badges["angel-wings"].winfo_manager(), "")
+
     def test_resize_preserves_first_item_and_off_page_unlock_badge(self):
         from types import SimpleNamespace
         window = self.window()

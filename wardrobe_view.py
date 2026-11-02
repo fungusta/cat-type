@@ -276,12 +276,8 @@ class WardrobeView(tk.Frame):
         self._choose()
 
     def _choose(self) -> None:
-        self._refresh_selection()
-        for item_id, badge in self.new_badges.items():
-            item = ACCESSORY_BY_ID[item_id]
-            if self.slots[item.slot].get() == item_id:
-                self._new_ids.discard(item_id)
-                badge.pack_forget()
+        self._new_ids.difference_update(variable.get() for variable in self.slots.values())
+        self._refresh_status()
         self.on_change()
 
     def mix_it_up(self) -> None:
