@@ -367,6 +367,8 @@ class SettingsWindow:
         self._save_feedback_after_id: str | None = None
         self._after_id: str | None = None
         self._preview_hydration_after_id: str | None = None
+        self._preview_attempts: dict[tuple[str, str], int] = {}
+        self._preview_errors: set[tuple[str, str]] = set()
         self._shelves_after_id: str | None = None
         self._startup_fit_remaining = 6
         self._startup_hydration_started = False
@@ -929,12 +931,48 @@ class SettingsWindow:
 
     def _hydrate_preview_step(self) -> None:
         self._preview_hydration_after_id = None
-        if self._preview_queue:
-            variant, pose = self._preview_queue.pop(0)
+        if not self._preview_queue:
+            return
+        item = self._preview_queue.pop(0)
+        variant, pose = item
+        try:
             self._load_preview_frames(self._preview_icon_path, (variant,), (pose,))
             self._display_preview()
+        except Exception:
+            # Parser, rasterizer, Pillow, and Tk failures use different error
+            # types. Keep this optional rendering boundary recoverable.
+            self._preview_errors.add(item)
+            attempts = self._preview_attempts.get(item, 0) + 1
+            self._preview_attempts[item] = attempts
+            # One automatic retry, behind other poses, keeps a failed renderer
+            # from monopolizing Tk's idle queue. Further retries are explicit.
+            if attempts < 2:
+                self._preview_queue.append(item)
+        else:
+            self._preview_errors.discard(item)
+            self._preview_attempts.pop(item, None)
+        finally:
+            self._refresh_preview_error()
             if self._preview_queue:
                 self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
+
+    def _refresh_preview_error(self) -> None:
+        if self._preview_errors:
+            self.preview_error_text.set("Some cat previews couldn't load.")
+            self.preview_error_surface.grid(
+                row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0),
+            )
+        else:
+            self.preview_error_text.set("")
+            self.preview_error_surface.grid_remove()
+
+    def _retry_preview_hydration(self) -> None:
+        for item in sorted(self._preview_errors):
+            self._preview_attempts.pop(item, None)
+            if item not in self._preview_queue:
+                self._preview_queue.append(item)
+        if self._preview_queue and self._preview_hydration_after_id is None:
+            self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
 
     def _build_page_switcher(self, parent: tk.Frame) -> None:
         self.page_switcher = RoundedPanel(
@@ -1047,6 +1085,20 @@ class SettingsWindow:
             )
             button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button
+        self.preview_error_surface = tk.Frame(tabs, background=self.CARD)
+        self.preview_error_text = tk.StringVar(master=self.window, value="")
+        tk.Label(
+            self.preview_error_surface, textvariable=self.preview_error_text,
+            background=self.CARD, foreground=self.INK,
+            font=self.fonts["small"], wraplength=rail_content_width,
+            justify="left", anchor="w",
+        ).pack(fill="x", pady=(0, 6))
+        self.preview_retry_button = RoundedAction(
+            self.preview_error_surface, text="Retry previews",
+            command=self._retry_preview_hydration,
+            style=self.secondary_button_style, takefocus=True,
+        )
+        self.preview_retry_button.pack(anchor="w")
         self._refresh_page_buttons()
         self._refresh_achievement_indicator()
 
@@ -2825,6 +2877,9 @@ class SettingsWindow:
                 for slot, variable in self.outfit_vars.items()}
 
     def _refresh_outfit_preview(self) -> None:
+        self._preview_errors.clear()
+        self._preview_attempts.clear()
+        self._refresh_preview_error()
         self._preview_frames.clear()
         self._rail_preview_frames.clear()
         selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")

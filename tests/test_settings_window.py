@@ -694,6 +694,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Range",
             "Ready to check.",
             "Retry",
+            "Retry previews",
             "Show my cat while I type",
             "Keep the companion visible as you work.",
             "Soft fade",

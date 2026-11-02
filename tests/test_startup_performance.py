@@ -192,3 +192,84 @@ class StartupReviewRegressionTests(unittest.TestCase):
         self.view._preview_step = 0
         wardrobe = self.view._ensure_page('Wardrobe')
         self.assertIsNotNone(wardrobe._preview_frame)
+
+class PreviewRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.root.update()
+        self.view = SettingsWindow(self.root, AppSettings(cat_style='white'), lambda value: None)
+        self.addCleanup(self.root.destroy)
+        self.addCleanup(self.view.close)
+
+    def test_transient_render_failure_recovers_and_keeps_other_poses_loading(self):
+        real_render = settings_window.load_frame
+        failed = False
+        def render(*args, **kwargs):
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise OSError('temporary renderer failure')
+            return real_render(*args, **kwargs)
+        errors = []
+        self.root.report_callback_exception = lambda *info: errors.append(info)
+        with patch.object(settings_window, 'load_frame', side_effect=render) as load:
+            self.root.update()
+        self.assertEqual(errors, [])
+        self.assertEqual(load.call_count, 25)
+        self.assertEqual(sum(len(frames) for frames in self.view._preview_frames.values()), 24)
+        self.assertFalse(self.view.preview_error_surface.winfo_manager())
+        self.assertIsNone(self.view._preview_hydration_after_id)
+
+    def test_persistent_photo_failure_is_bounded_visible_and_user_retry_recovers(self):
+        errors = []
+        self.root.report_callback_exception = lambda *info: errors.append(info)
+        real_photo = settings_window.ImageTk.PhotoImage
+        failed_photos = []
+        def photo(*args, **kwargs):
+            if kwargs.get('master') is self.view.window:
+                failed_photos.append(True)
+                raise tk.TclError('renderer unavailable')
+            return real_photo(*args, **kwargs)
+        with patch.object(settings_window.ImageTk, 'PhotoImage', side_effect=photo):
+            self.root.update()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(failed_photos), 48)
+        self.assertIsNone(self.view._preview_hydration_after_id)
+        self.assertTrue(self.view.preview_error_surface.winfo_ismapped())
+        self.assertIn('preview', self.view.preview_error_text.get().lower())
+        self.view.page_buttons['Metrics'].invoke()
+        self.assertEqual(self.view.active_page.get(), 'Metrics')
+        self.view.preview_retry_button.invoke()
+        self.assertIsNotNone(self.view._preview_hydration_after_id)
+        self.root.update()
+        self.assertEqual(sum(len(frames) for frames in self.view._preview_frames.values()), 24)
+        self.assertFalse(self.view.preview_error_surface.winfo_manager())
+
+    def test_close_cancels_queued_manual_retry(self):
+        with patch.object(settings_window, 'load_frame', side_effect=OSError('unavailable')):
+            self.root.update()
+        self.view.preview_retry_button.invoke()
+        pending = self.view._preview_hydration_after_id
+        self.assertIsNotNone(pending)
+        self.view.close()
+        self.assertNotIn(pending, self.root.tk.call('after', 'info'))
+        self.root.update()
+
+    def test_svg_parser_failure_uses_the_same_bounded_recovery(self):
+        from xml.etree.ElementTree import ParseError
+        errors = []
+        self.root.report_callback_exception = lambda *info: errors.append(info)
+        real_render = settings_window.load_frame
+        attempts = 0
+        def render(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise ParseError('temporary invalid SVG')
+            return real_render(*args, **kwargs)
+        with patch.object(settings_window, 'load_frame', side_effect=render):
+            self.root.update()
+        self.assertEqual(errors, [])
+        self.assertEqual(attempts, 25)
+        self.assertFalse(self.view.preview_error_surface.winfo_manager())
