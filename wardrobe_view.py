@@ -11,7 +11,8 @@ from PIL import ImageTk
 
 from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, SLOT_LABELS, Accessory, visible_accessories
 from cat_artwork import load_frame
-from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel, RoundedBadge
+from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel, RoundedBadge, PaginationControls
+from pagination import page_window, page_slice
 
 
 class WardrobeView(tk.Frame):
@@ -27,6 +28,9 @@ class WardrobeView(tk.Frame):
         self.assets_root = assets_root
         self.fonts = fonts
         self.on_achievement = on_achievement
+        self._visible_items: tuple[Accessory, ...] = ()
+        self._page_index = 0
+        self._page_size = 4
         self._visible_ids: tuple[str, ...] = ()
         self.unlocked = set(unlocked)
         self.on_change = on_change
@@ -92,6 +96,14 @@ class WardrobeView(tk.Frame):
         ).pack(side="right")
         self.choices_area = tk.Frame(tray_content, background=palette["card"])
         self.choices_area.pack(fill="x", padx=20, pady=(0, 19))
+        self.pagination_controls = PaginationControls(
+            tray_content, on_previous=lambda: self.show_page(self._page_index - 1),
+            on_next=lambda: self.show_page(self._page_index + 1),
+            palette={**palette, "background": palette["card"]},
+            fonts={**fonts, "button": fonts["small"]},
+        )
+        self.pagination_controls.pack(anchor="center", pady=(0, 12))
+        self.choices_area.bind("<Configure>", self._resize_choices)
         self.update_unlocks(unlocked)
 
     def _build_choices(self, visible: tuple[Accessory, ...]) -> None:
@@ -188,9 +200,12 @@ class WardrobeView(tk.Frame):
                 self.status_text[item.id] = value
                 status_row = tk.Frame(copy, background=palette["card"])
                 status_row.pack(fill="x", pady=(5, 2))
-                tk.Label(status_row, textvariable=value, font=fonts["small"],
+                status_label = tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=145).pack(side="left")
+                         wraplength=1, justify="left")
+                status_label.pack(side="left")
+                copy.bind("<Configure>", lambda event, label=status_label:
+                          label.configure(wraplength=max(1, event.width - 52)))
                 badge = RoundedBadge(
                     status_row,
                     text="NEW",
@@ -204,6 +219,54 @@ class WardrobeView(tk.Frame):
                 )
                 link.grid(row=2, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
                 self.achievement_links[item.id] = link
+
+    def _resize_choices(self, event: tk.Event) -> None:
+        size = 4 if event.width >= 520 else 2
+        if size == self._page_size:
+            return
+        start = self._page_index * self._page_size
+        self._page_size = size
+        self.show_page(start // size)
+
+    def page_for_item(self, item_id: str) -> int:
+        for index, item in enumerate(self._visible_items):
+            if item.id == item_id:
+                return index // self._page_size
+        raise KeyError(item_id)
+
+    def focus_item(self, item_id: str) -> tk.Widget:
+        self.show_page(self.page_for_item(item_id))
+        self.update_idletasks()
+        # Geometry can change page size while idle tasks settle.
+        page = self.page_for_item(item_id)
+        if page != self._page_index:
+            self.show_page(page)
+            self.update_idletasks()
+        action = self.buttons[item_id]
+        action.focus_set()
+        return action
+
+    def show_page(self, page_index: int) -> None:
+        window = page_window(len(self._visible_items), page_index, self._page_size)
+        self._page_index = window.index
+        items = page_slice(self._visible_items, window.index, self._page_size)
+        if set(self.buttons) != {item.id for item in items}:
+            self._build_choices(items)
+        self.pagination_controls.set_state(window)
+        self.tray_count.set(f"{window.start + 1 if window.end else 0}-{window.end} of {len(self._visible_items)}")
+        self._refresh_status()
+
+    def _refresh_status(self) -> None:
+        for item_id, button in self.buttons.items():
+            earned = item_id in self.unlocked
+            button.configure(state="normal" if earned else "disabled")
+            self.status_text[item_id].set("Unlocked" if earned else "Locked")
+            badge = self.new_badges[item_id]
+            if item_id in self._new_ids:
+                badge.pack(side="right")
+            else:
+                badge.pack_forget()
+        self._refresh_selection()
 
     def _choose_item(self, item_id: str) -> None:
         item = ACCESSORY_BY_ID[item_id]
@@ -258,23 +321,9 @@ class WardrobeView(tk.Frame):
     ) -> None:
         self.unlocked = set(unlocked)
         visible = visible_accessories(self.unlocked)
-        unlocked_count = sum(item.id in self.unlocked for item in visible)
-        self.tray_count.set(f"{unlocked_count} of {len(visible)} unlocked")
-        visible_ids = tuple(item.id for item in visible)
-        if visible_ids != self._visible_ids:
-            self._build_choices(visible)
-            self._visible_ids = visible_ids
-        for item in visible:
-            earned = item.id in self.unlocked
-            self.buttons[item.id].configure(state="normal" if earned else "disabled")
-            value = "Unlocked" if earned else "Locked"
-            if self.status_text[item.id].get() != value:
-                self.status_text[item.id].set(value)
+        self._visible_items = visible
+        self._visible_ids = tuple(item.id for item in visible)
         if newly_unlocked:
             self._new_ids.update(item.id for item in newly_unlocked)
-            for item in newly_unlocked:
-                badge = self.new_badges.get(item.id)
-                if badge is not None:
-                    badge.pack(side="right")
             self.notice.set("Unlocked: " + ", ".join(item.name for item in newly_unlocked))
-        self._refresh_selection()
+        self.show_page(self._page_index)

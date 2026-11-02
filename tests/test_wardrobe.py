@@ -17,6 +17,48 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_pages_mount_only_the_slice_and_preserve_outfit(self):
+        from cat_accessories import visible_accessories
+        ids = {item.id for item in visible_accessories(set())}
+        window = self.window(ids)
+        view = window.wardrobe
+        self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[:view._page_size]})
+        self.assertLessEqual(len(view.buttons), 4)
+        view.focus_item("round-glasses").invoke()
+        view.show_page(view._page_index + 1)
+        self.assertEqual(window.glasses.get(), "round-glasses")
+        start = view._page_index * view._page_size
+        self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[start:start + view._page_size]})
+
+    def test_resize_preserves_first_item_and_off_page_unlock_badge(self):
+        from types import SimpleNamespace
+        window = self.window()
+        view = window.wardrobe
+        view.show_page(2)
+        first = next(iter(view.buttons))
+        view._resize_choices(SimpleNamespace(width=400))
+        self.assertEqual(view._page_size, 2)
+        self.assertIn(first, view.buttons)
+        view.update_unlocks({"angel-wings"}, (ACCESSORY_BY_ID["angel-wings"],))
+        view.focus_item("angel-wings")
+        self.assertEqual(view.status_text["angel-wings"].get(), "Unlocked")
+        self.assertEqual(view.new_badges["angel-wings"].winfo_manager(), "pack")
+        view.buttons["angel-wings"].invoke()
+        view.show_page(0)
+        view.focus_item("angel-wings")
+        self.assertEqual(view.new_badges["angel-wings"].winfo_manager(), "")
+
+    def test_shrinking_model_clamps_page_and_focus_navigates(self):
+        window = self.window({"angel-wings", "beta-bandana"})
+        view = window.wardrobe
+        view.show_page(999)
+        view.update_unlocks(set())
+        self.assertLess(view._page_index * view._page_size, len(view._visible_items))
+        action = view.focus_item("round-glasses")
+        self.assertEqual(view._page_index, view.page_for_item("round-glasses"))
+        self.assertIs(action, view.buttons["round-glasses"])
+        self.assertEqual(window.window.focus_get(), action)
+
     def test_wardrobe_and_achievements_omit_repeated_purpose_copy(self):
         window = self.window()
 
@@ -46,6 +88,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertIn('0 of 22', window.achievements.summary.get())
         self.assertIn('ears', window.wardrobe.none_buttons)
         self.assertEqual(window.wardrobe.buttons['ribbon-clip'].cget('state'), 'disabled')
+        window.wardrobe.focus_item('bow-tie')
         self.assertIn('bow-tie', window.wardrobe.buttons)
 
     def test_wardrobe_and_achievement_surfaces_use_shared_soft_shelves(self):
@@ -180,8 +223,8 @@ class WardrobeTests(unittest.TestCase):
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'crown', 'round-glasses'})
-        window.wardrobe.buttons['crown'].invoke()
-        window.wardrobe.buttons['round-glasses'].invoke()
+        window.wardrobe.focus_item('crown').invoke()
+        window.wardrobe.focus_item('round-glasses').invoke()
         new_ids = {'beta-bandana', 'angel-wings', 'sunflower-clip'}
         window.update_achievements({'crown', 'round-glasses'} | new_ids,
                                    tuple(ACCESSORY_BY_ID[item] for item in sorted(new_ids)))
@@ -190,7 +233,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertIn('5 of 25', window.achievements.summary.get())
         for item_id in new_ids:
             self.assertIn(item_id, window.achievements.cards)
-            window.wardrobe.buttons[item_id].invoke()
+            window.wardrobe.focus_item(item_id).invoke()
         plain = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
         window.page_buttons['Achievements'].invoke()
         window.page_buttons['Wardrobe'].invoke()
@@ -203,6 +246,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'beta-bandana', 'angel-wings', 'sunflower-clip'},
                              neck='beta-bandana', back='angel-wings', ears='sunflower-clip')
+        window.wardrobe.focus_item('beta-bandana')
         window.wardrobe.none_buttons['neck'].invoke()
         self.assertEqual((window.neck.get(), window.back.get(), window.ears.get()), ('none', 'angel-wings', 'sunflower-clip'))
         window.close()
@@ -234,6 +278,7 @@ class WardrobeTests(unittest.TestCase):
         window = self.window()
         self.assertIn('Achievements', window.page_buttons)
         wardrobe = window.wardrobe
+        wardrobe.focus_item('round-glasses')
         self.assertEqual(wardrobe.buttons['round-glasses'].cget('state'), 'disabled')
         self.assertEqual(wardrobe.status_text['round-glasses'].get(), 'Locked')
         wardrobe.buttons['round-glasses'].invoke()
@@ -252,6 +297,7 @@ class WardrobeTests(unittest.TestCase):
         window.window.minsize(1, 1)
         window.window.geometry('620x500')
         window.window.update()
+        window.wardrobe.focus_item('crown')
         window.wardrobe.achievement_links['crown'].invoke()
         window.window.update()
         card = window.achievements.cards['crown']
@@ -263,8 +309,8 @@ class WardrobeTests(unittest.TestCase):
     def test_shared_outfit_updates_real_preview_and_is_saved(self):
         window = self.window({'round-glasses', 'crown'})
         plain = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
-        window.wardrobe.buttons['round-glasses'].invoke()
-        window.wardrobe.buttons['crown'].invoke()
+        window.wardrobe.focus_item('round-glasses').invoke()
+        window.wardrobe.focus_item('crown').invoke()
         self.assertIn('Achievements', window.page_buttons)
         window.page_buttons['Achievements'].invoke()
         window.page_buttons['Wardrobe'].invoke()
@@ -277,6 +323,7 @@ class WardrobeTests(unittest.TestCase):
 
     def test_none_removes_one_slot_and_close_keeps_changes(self):
         window = self.window({'round-glasses', 'crown'}, hat='crown', glasses='round-glasses')
+        window.wardrobe.focus_item('crown')
         window.wardrobe.none_buttons['hat'].invoke()
         self.assertEqual((window.hat.get(), window.glasses.get()), ('none', 'round-glasses'))
         self.assertIn('Achievements', window.page_buttons)
@@ -295,12 +342,13 @@ class WardrobeTests(unittest.TestCase):
         window.update_usage_metrics(UsageMetrics(total_keystrokes=1000))
         window.update_achievements({'round-glasses'}, (ACCESSORY_BY_ID['round-glasses'],))
         self.assertEqual(window.achievements.progress_text['round-glasses'].get(), 'Unlocked')
+        window.wardrobe.focus_item('round-glasses')
         self.assertEqual(window.wardrobe.buttons['round-glasses'].cget('state'), 'normal')
         self.assertEqual(window.wardrobe.status_text['round-glasses'].get(), 'Unlocked')
         self.assertEqual(window.glasses.get(), 'none')
         self.assertIn('Round glasses', window.wardrobe.notice.get())
         window.page_buttons['Wardrobe'].invoke()
-        window.wardrobe.buttons['round-glasses'].invoke()
+        window.wardrobe.focus_item('round-glasses').invoke()
         self.assertEqual(window.glasses.get(), 'round-glasses')
         window.window.update_idletasks()
 
