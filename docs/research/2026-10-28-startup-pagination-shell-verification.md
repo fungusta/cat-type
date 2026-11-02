@@ -6,7 +6,7 @@ Verification date: 2026-11-02 (Asia/Singapore). Latest verified implementation: 
 
 This report covers Task 6 of the 2026-10-28 startup/pagination/shell plan. Local execution uses Windows and Python 3.11.0, rather than the plan's proposed Python 3.12. Tests use real Tk. This is source execution, not a packaged Release build. The original focused and full suites at `42b55a6` ran concurrently; their elapsed durations are regression evidence under shared load, not performance benchmarks. Timing samples ran only after both original suites finished. A fresh serial full-suite run covers subsequent commits `4781bb6` (enlarged-text wrapping), `7539cb7` (deferred preview error recovery), and `5e0d2da` (enlarged-text new-badge containment), with no concurrent GUI tests.
 
-The custom client-drawn frame is Windows-only. macOS/Linux retain their native decoration without duplicate custom controls. This preserves a supported window-manager path but does not meet the original cross-platform custom-title-bar visual goal. No macOS/Linux GUI execution or remote GitHub Actions matrix is claimed here.
+The user explicitly approved a fully themed custom title bar on Windows and retention of native title bars on macOS and Linux for this delivery, preserving existing platform behavior. The custom client-drawn frame is Windows-only; macOS/Linux retain their native decoration without duplicate custom controls. No macOS/Linux GUI execution or remote GitHub Actions matrix is claimed here, so their behavior was not verified in this run.
 
 ## Regression commands
 

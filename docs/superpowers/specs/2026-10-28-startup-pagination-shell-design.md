@@ -20,8 +20,10 @@ scrollbar styling do not express the approved Butter Sun toybox theme.
 - Add local pagination to Wardrobe and Achievements while preserving their toy
   shelf grouping and global selection state.
 - Let card heights grow with their content and prevent text clipping.
-- Replace the native Settings window frame with a cross-platform themed title
-  bar that preserves window behavior and accessibility.
+- Replace the native Settings window frame on Windows with a fully themed
+  custom title bar that preserves window behavior and accessibility. Retain
+  native title bars on macOS and Linux, preserving their existing platform
+  behavior in this delivery.
 - Bring the scrollbar into the same neutral-surface, Butter Sun, and ink-focus
   visual language.
 - Keep the outer scrollbar as an accessibility and extreme-size fallback.
@@ -56,7 +58,9 @@ the collections can contain more than ten items.
 
 ### Themed window shell
 
-Settings uses a custom title bar inside a frameless window.
+On Windows, Settings uses a fully themed custom title bar inside a frameless
+window. The user explicitly approved retaining native title bars on macOS and
+Linux for this delivery, preserving their existing platform behavior.
 
 - Height is approximately 36–40 px and uses the Butter Sun accent with neutral
   surfaces and ink text.
@@ -68,8 +72,9 @@ Settings uses a custom title bar inside a frameless window.
   window close action use the same path.
 - Controls expose accessible names, keyboard focus, hover, pressed, disabled,
   and high-contrast states.
-- The shell preserves minimize, maximize, restore, DPI scaling, and native
-  window positioning on Windows, macOS, and Linux.
+- The Windows shell preserves minimize, maximize, restore, DPI scaling, and
+  native window positioning. macOS and Linux retain their native window
+  controls and positioning behavior.
 - Title text contracts before controls become unreachable at narrow widths.
 
 The scrollbar is a themed control with a neutral trough, a Butter Sun active
@@ -166,8 +171,8 @@ preserves the selected page when it remains valid and clamps it otherwise.
   the existing inline error/retry surface.
 - If a page cannot render a thumbnail, its card keeps its text and action area
   and uses the existing empty/fallback visual treatment.
-- If a custom title-bar command is unavailable on a platform, the control uses
-  the platform's supported fallback without removing close or keyboard access.
+- If a Windows custom title-bar command is unavailable, the control uses a
+  supported fallback without removing close or keyboard access.
 - If the window is too small for a page, the outer scrollbar appears and page
   controls remain outside the scrollable card list.
 
@@ -184,7 +189,7 @@ Add deterministic timing and construction-count checks for:
 
 Extend real-Tk tests for:
 
-- title-bar drag and window command accessibility metadata;
+- Windows custom title-bar drag and window command accessibility metadata;
 - themed scrollbar states and hidden/visible transitions;
 - card text wrapping without clipped action controls;
 - Wardrobe page counts, state preservation, clamping, and off-page focus;
