@@ -907,7 +907,8 @@ class SettingsWindow:
             self.page_host, assets_root=self._assets_root,
             slots=self.outfit_vars, unlocked=self.unlocked_accessories,
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
-            palette=self._reward_palette(), fonts=self.fonts)
+            palette=self._reward_palette(), fonts=self.fonts,
+            responsive_width=self._stable_scroll_layout_width)
         self.wardrobe.update_unlocks(self.unlocked_accessories, tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_wardrobe_new_ids))
         self._pending_wardrobe_new_ids.clear()
@@ -923,6 +924,13 @@ class SettingsWindow:
             ACCESSORY_BY_ID[item] for item in self._pending_achievement_new_ids))
         self._pending_achievement_new_ids.clear()
         return self.achievements
+
+    def _stable_scroll_layout_width(self, width: int) -> int:
+        # Reserve the scrollbar's width for responsive breakpoints even when
+        # it is hidden. Otherwise changing visibility can switch card modes
+        # or page size, reverse overflow, and toggle the bar indefinitely.
+        gutter = 0 if self.scrollbar.winfo_manager() else self.scrollbar.winfo_reqwidth()
+        return max(1, width - gutter)
 
     def _ensure_page(self, label: str) -> tk.Misc:
         if label not in self._page_views:
