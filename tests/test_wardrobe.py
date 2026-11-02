@@ -12,12 +12,84 @@ from cat_accessories import ACCESSORY_BY_ID
 from wardrobe_view import WardrobeView
 from ui_surfaces import RoundedAction, RoundedPanel, RoundedChoice
 import inspect
+import _tkinter
+from collections import Counter, deque
+import time
+import traceback
 
 
 ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def _trace_bounded_idle_layout(self, window):
+        """Temporary CI diagnostic: retain geometry evidence before a Tk hang."""
+        events = deque(maxlen=40)
+        counts = Counter()
+        images = Counter()
+        original_image_init = ImageTk.PhotoImage.__init__
+
+        def trace_image(image_self, image=None, *args, **kwargs):
+            images[str(getattr(image, "size", None))] += 1
+            original_image_init(image_self, image, *args, **kwargs)
+
+        image_patch = patch.object(ImageTk.PhotoImage, "__init__", trace_image)
+        image_patch.start()
+        self.addCleanup(image_patch.stop)
+
+        def record(event):
+            widget = event.widget
+            if not isinstance(widget, tk.Misc):
+                return
+            try:
+                path = str(widget)
+                counts[path] += 1
+                details = {
+                    "widget": path, "actual": (event.width, event.height),
+                    "requested": (widget.winfo_reqwidth(), widget.winfo_reqheight()),
+                    "parent_width": widget.master.winfo_width() if widget.master else None,
+                }
+                if isinstance(widget, tk.Label):
+                    details["wrap"] = str(widget.cget("wraplength"))
+                    details["text"] = str(widget.cget("text"))
+                if widget.winfo_manager() == "grid":
+                    grid = widget.grid_info()
+                    details["grid"] = tuple(grid.get(key) for key in
+                                             ("row", "column", "rowspan", "columnspan"))
+                events.append(details)
+            except tk.TclError:
+                pass
+
+        self.root.bind_all("<Configure>", record, add="+")
+        self.addCleanup(lambda: self.root.unbind_all("<Configure>"))
+
+        def bounded_idle(widget):
+            started = time.monotonic()
+            iterations = 0
+            # Tcl's update idletasks drains this same class of events. Drain
+            # one batch at a time so a self-sustaining queue can fail the test.
+            while widget.tk.dooneevent(_tkinter.IDLE_EVENTS | _tkinter.DONT_WAIT):
+                iterations += 1
+                if iterations >= 2000 or time.monotonic() - started > 15:
+                    print("WARDROBE GEOMETRY DIAGNOSTIC", flush=True)
+                    print("idle batches:", iterations, "configure counts:", counts.most_common(12), flush=True)
+                    print("PhotoImage sizes/counts:", images.most_common(12),
+                          "live images:", len(widget.tk.call("image", "names")), flush=True)
+                    for event in events:
+                        print(event, flush=True)
+                    view = window.wardrobe
+                    for item_id, tile in view.choice_tiles.items():
+                        print("CARD", item_id, "content", tile.content.winfo_width(),
+                              "choose", view.buttons[item_id].grid_info(),
+                              "badge", view.new_badges[item_id].winfo_width(),
+                              "badge_request", view.new_badges[item_id].winfo_reqwidth(), flush=True)
+                    traceback.print_stack(limit=12)
+                    self.fail("Tk idle layout did not settle; see WARDROBE GEOMETRY DIAGNOSTIC")
+
+        idle_patch = patch.object(tk.Misc, "update_idletasks", bounded_idle)
+        idle_patch.start()
+        self.addCleanup(idle_patch.stop)
+
     def test_height_only_configure_does_not_restart_card_geometry(self):
         original_scaling = self.root.tk.call("tk", "scaling")
         self.root.tk.call("tk", "scaling", 2.5)
@@ -25,6 +97,7 @@ class WardrobeTests(unittest.TestCase):
         window = self.window()
         window.window.minsize(1, 1)
         window.window.geometry("620x700")
+        self._trace_bounded_idle_layout(window)
         view = window.wardrobe
         view.focus_item("round-glasses")
         window.window.update()
