@@ -116,7 +116,14 @@ class AchievementsView(tk.Frame):
             heading.pack(fill="x")
             title = tk.Label(heading, text=item.achievement, font=fonts["control"], anchor="w",
                              justify="left", wraplength=180, bg=palette["card"], fg=palette["ink"])
-            title.pack(side="left", fill="x", expand=True)
+            heading.grid_columnconfigure(0, weight=1)
+            title.grid(row=0, column=0, sticky="ew")
+            title.bind(
+                "<Configure>",
+                lambda event, label=title, reward_card=card:
+                    self._fit_reward_copy(event, (label,), reward_card),
+                add="+",
+            )
             badge = RoundedBadge(
                 heading,
                 text="NEW",
@@ -158,7 +165,7 @@ class AchievementsView(tk.Frame):
             progress_label.pack(fill="x", pady=(2, 0))
             copy.bind(
                 "<Configure>",
-                lambda event, labels=(title, reward_label, requirement_label, progress_label),
+                lambda event, labels=(reward_label, requirement_label, progress_label),
                     reward_card=card: self._fit_reward_copy(event, labels, reward_card),
                 add="+",
             )
@@ -311,9 +318,9 @@ class AchievementsView(tk.Frame):
     def _refresh_badges(self) -> None:
         for item_id, badge in self.new_badges.items():
             if item_id in self._new_ids:
-                badge.pack(side="right", padx=(8, 0))
+                badge.grid(row=0, column=1, padx=(8, 0), sticky="ne")
             else:
-                badge.pack_forget()
+                badge.grid_remove()
             earned = item_id in self._unlocked
             self.status_badges[item_id].configure(
                 text="Unlocked" if earned else "Locked",
@@ -329,7 +336,7 @@ class AchievementsView(tk.Frame):
             self.update_idletasks()
         card = self.cards[accessory_id]
         self._new_ids.discard(accessory_id)
-        self.new_badges[accessory_id].pack_forget()
+        self.new_badges[accessory_id].grid_remove()
         card.focus_set()
         return card
 
@@ -338,4 +345,4 @@ class AchievementsView(tk.Frame):
         for item in newly_unlocked:
             badge = self.new_badges.get(item.id)
             if badge is not None:
-                badge.pack(side="right", padx=(8, 0))
+                badge.grid(row=0, column=1, padx=(8, 0), sticky="ne")

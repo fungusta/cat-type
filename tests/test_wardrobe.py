@@ -231,6 +231,26 @@ class WardrobeTests(unittest.TestCase):
             for label in labels:
                 self.assertEqual(int(label.cget('wraplength')), max(1, copy.winfo_width() - 4))
 
+    def test_long_achievement_heading_reserves_new_badge_space(self):
+        window = self.window()
+        window.page_buttons['Achievements'].invoke()
+        window.window.geometry('620x500')
+        view = window.achievements
+        window.window.update()
+        item_id = next(iter(view.cards))
+        badge = view.new_badges[item_id]
+        heading = badge.master
+        title = next(child for child in heading.winfo_children() if isinstance(child, tk.Label))
+        title.configure(text='A very long achievement title with many words for compact layouts')
+        view.mark_new((ACCESSORY_BY_ID[item_id],))
+        window.window.update()
+        self.assertEqual(title.winfo_manager(), 'grid')
+        self.assertEqual(badge.winfo_manager(), 'grid')
+        self.assertTrue(badge.winfo_ismapped())
+        self.assertLessEqual(title.winfo_x() + title.winfo_width(), badge.winfo_x())
+        self.assertLessEqual(badge.winfo_x() + badge.winfo_width(), heading.winfo_width())
+        self.assertEqual(int(title.cget('wraplength')), max(1, title.winfo_width() - 4))
+
     def test_achievement_pages_preserve_progress_new_flags_and_focus(self):
         window = self.window()
         view = window.achievements
@@ -244,8 +264,13 @@ class WardrobeTests(unittest.TestCase):
         view.show_page(0)
         self.assertIn('crown', view._new_ids)
         view.show_page(view.page_for_item('crown'))
-        self.assertEqual(view.new_badges['crown'].winfo_manager(), 'pack')
+        self.assertTrue(view.new_badges['crown'].winfo_manager())
+        window.page_buttons['Achievements'].invoke()
+        view.show_page(0 if view.page_for_item('crown') else 1)
+        self.assertNotIn('crown', view.cards)
         card = view.focus_reward('crown')
+        window.window.update()
+        self.assertIs(window.window.focus_get(), card)
         self.assertIs(card, view.cards['crown'])
         self.assertEqual(view._page_index, view.page_for_item('crown'))
         self.assertNotIn('crown', view._new_ids)
