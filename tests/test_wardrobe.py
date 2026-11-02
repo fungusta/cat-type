@@ -30,6 +30,41 @@ class WardrobeTests(unittest.TestCase):
         start = view._page_index * view._page_size
         self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[start:start + view._page_size]})
 
+    def test_high_scaling_narrow_cards_wrap_all_copy_and_keep_actions_inside(self):
+        original_scaling = self.root.tk.call("tk", "scaling")
+        self.root.tk.call("tk", "scaling", 2.5)
+        self.addCleanup(lambda: self.root.tk.call("tk", "scaling", original_scaling))
+        window = self.window({"round-glasses"})
+        window.window.minsize(1, 1)
+        window.window.geometry("620x700")
+        view = window.wardrobe
+        for item_id in ("round-glasses", "ribbon-clip"):
+            view.focus_item(item_id)
+            window.window.update()
+            tile = view.choice_tiles[item_id]
+            pending = list(tile.content.winfo_children())
+            while pending:
+                child = pending.pop()
+                pending.extend(child.winfo_children())
+                if not child.winfo_ismapped():
+                    continue
+                self.assertGreaterEqual(child.winfo_rootx(), tile.winfo_rootx())
+                self.assertLessEqual(child.winfo_rootx() + child.winfo_width(),
+                                     tile.winfo_rootx() + tile.winfo_width())
+                self.assertLessEqual(child.winfo_rooty() + child.winfo_height(),
+                                     tile.winfo_rooty() + tile.winfo_height())
+                if isinstance(child, tk.Label) and child.cget("text"):
+                    self.assertGreater(int(str(child.cget("wraplength"))), 0)
+                    self.assertLessEqual(child.winfo_reqwidth(), child.winfo_width())
+            pager = view.pagination_controls
+            shelf = view.tray_shelf
+            self.assertTrue(pager.winfo_ismapped())
+            self.assertLessEqual(pager.winfo_rooty() + pager.winfo_height(),
+                                 shelf.winfo_rooty() + shelf.winfo_height())
+            bounds = window.scroll_canvas.bbox("all")
+            self.assertLessEqual(shelf.winfo_rooty() - window.scroll_canvas.winfo_rooty()
+                                 + window.scroll_canvas.canvasy(0) + shelf.winfo_height(), bounds[3])
+
     def test_cards_and_pagination_fit_content_driven_shelf(self):
         window = self.window()
         view = window.wardrobe

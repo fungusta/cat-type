@@ -170,22 +170,26 @@ class WardrobeView(tk.Frame):
                 )
                 copy = tk.Frame(tile_content, background=palette["card"])
                 copy.grid(row=0, column=1, sticky="ew", pady=(4, 0))
-                tk.Label(
+                name_label = tk.Label(
                     copy,
+                    wraplength=1, justify="left",
                     text=item.name,
                     font=fonts["control"],
                     anchor="w",
                     bg=palette["card"],
                     fg=palette["ink"],
-                ).pack(anchor="w")
-                tk.Label(
+                )
+                name_label.pack(anchor="w", fill="x")
+                achievement_label = tk.Label(
                     copy,
+                    wraplength=1, justify="left",
                     text=item.achievement,
                     font=fonts["small"],
                     anchor="w",
                     bg=palette["card"],
                     fg=palette["muted"],
-                ).pack(anchor="w", pady=(2, 0))
+                )
+                achievement_label.pack(anchor="w", fill="x", pady=(2, 0))
                 button = RoundedAction(
                     tile_content,
                     text="Choose",
@@ -204,8 +208,12 @@ class WardrobeView(tk.Frame):
                          bg=palette["card"], fg=palette["accent_dark"],
                          wraplength=1, justify="left")
                 status_label.pack(side="left")
-                copy.bind("<Configure>", lambda event, label=status_label:
-                          label.configure(wraplength=max(1, event.width - 52)))
+                def wrap_copy(event, labels=(name_label, achievement_label)):
+                    for label in labels:
+                        label.configure(wraplength=max(1, event.width - 4))
+                copy.bind("<Configure>", wrap_copy)
+                status_row.bind("<Configure>", lambda event, label=status_label:
+                                label.configure(wraplength=max(1, event.width - 4)))
                 badge = RoundedBadge(
                     status_row,
                     text="NEW",
@@ -219,6 +227,15 @@ class WardrobeView(tk.Frame):
                 )
                 link.grid(row=2, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
                 self.achievement_links[item.id] = link
+                def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label):
+                    compact = event.width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
+                    copy.grid_configure(columnspan=2 if compact else 1)
+                    button.grid_configure(row=1 if compact else 0,
+                                          column=1 if compact else 2,
+                                          rowspan=1 if compact else 2,
+                                          sticky="w" if compact else "",
+                                          padx=(0, 4) if compact else (14, 4))
+                tile_content.bind("<Configure>", arrange, add="+")
 
     def _resize_choices(self, event: tk.Event) -> None:
         size = 4 if event.width >= 520 else 2
