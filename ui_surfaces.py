@@ -530,7 +530,10 @@ class RoundedPanel(tk.Canvas):
             else max(1, current_width - self._padding * 2)
         )
         height = max(1, self.content.winfo_reqheight())
-        self.itemconfigure(self._content_id, width=width, height=height)
+        # Leave the embedded frame's height driven by its children. Pinning
+        # it to an earlier request suppresses Configure events when nested
+        # shelves grow, so the outer canvas can retain a clipped old height.
+        self.itemconfigure(self._content_id, width=width, height=0)
         if current_width <= 1:
             self.configure(width=width + self._padding * 2)
         self.configure(height=height + self._padding * 2)

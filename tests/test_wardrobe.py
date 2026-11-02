@@ -30,6 +30,39 @@ class WardrobeTests(unittest.TestCase):
         start = view._page_index * view._page_size
         self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[start:start + view._page_size]})
 
+    def test_cards_and_pagination_fit_content_driven_shelf(self):
+        window = self.window()
+        view = window.wardrobe
+        window.window.minsize(1, 1)
+        for geometry in ("920x1360", "620x500"):
+            window.window.geometry(geometry)
+            window.window.update()
+            for page in (0, 1):
+                view.show_page(page)
+                window.window.update()
+                shelf = view.tray_shelf
+                self.assertGreaterEqual(shelf.winfo_height(), shelf.content.winfo_reqheight() + 20)
+                widgets = [view.pagination_controls, *view.choice_tiles.values(),
+                           *view.buttons.values(), *view.achievement_links.values()]
+                for widget in widgets:
+                    self.assertTrue(widget.winfo_ismapped(), (geometry, str(widget)))
+                    self.assertGreaterEqual(widget.winfo_rooty(), shelf.winfo_rooty())
+                    self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(),
+                                         shelf.winfo_rooty() + shelf.winfo_height())
+                for tile in view.choice_tiles.values():
+                    self.assertGreaterEqual(tile.winfo_height(), tile.content.winfo_reqheight() + 12)
+                    pending = list(tile.content.winfo_children())
+                    while pending:
+                        child = pending.pop()
+                        pending.extend(child.winfo_children())
+                        if child.winfo_ismapped():
+                            self.assertLessEqual(child.winfo_rooty() + child.winfo_height(),
+                                                 tile.winfo_rooty() + tile.winfo_height())
+                bounds = window.scroll_canvas.bbox("all")
+                shelf_bottom = (shelf.winfo_rooty() - window.scroll_canvas.winfo_rooty()
+                                + window.scroll_canvas.canvasy(0) + shelf.winfo_height())
+                self.assertLessEqual(shelf_bottom, bounds[3])
+
     def test_mix_it_up_clears_new_badge_for_off_page_equipped_item(self):
         window = self.window()
         view = window.wardrobe
@@ -74,6 +107,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_wardrobe_and_achievements_omit_repeated_purpose_copy(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
 
         def label_texts(widget):
             texts = []
@@ -94,6 +130,9 @@ class WardrobeTests(unittest.TestCase):
     def test_secrets_and_their_items_are_absent_from_both_tabs_and_totals(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         hidden = {'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf',
                   'beta-bandana', 'shooting-star-clip', 'sunrise-scarf', 'butterfly-wings'}
         self.assertFalse(hidden & window.wardrobe.buttons.keys())
@@ -106,6 +145,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_wardrobe_and_achievement_surfaces_use_shared_soft_shelves(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
 
         self.assertIsInstance(window.wardrobe.preview_card, RoundedPanel)
         self.assertEqual(window.wardrobe.preview_card._radius, 18)
@@ -155,6 +197,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_achievements_group_rewards_in_one_album_shelf(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
 
         self.assertIsInstance(window.achievements.album_shelf, RoundedPanel)
         self.assertEqual(window.achievements.album_shelf._radius, 18)
@@ -190,12 +235,18 @@ class WardrobeTests(unittest.TestCase):
 
     def test_achievements_cards_are_focusable_rounded_shelves(self) -> None:
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         for card in window.achievements.cards.values():
             self.assertTrue(bool(int(card.cget("takefocus"))))
             self.assertEqual(card._radius, 16)
 
     def test_empty_new_badges_are_hidden_until_a_reward_is_new(self) -> None:
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         self.assertTrue(
             all(not badge.winfo_ismapped() for badge in window.wardrobe.new_badges.values())
         )
@@ -205,6 +256,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_achievements_reward_album_reflows_between_grid_columns(self) -> None:
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         window.page_buttons["Achievements"].invoke()
         window.window.geometry("920x800")
         window.window.update()
@@ -233,6 +287,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_long_achievement_heading_reserves_new_badge_space(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         window.page_buttons['Achievements'].invoke()
         window.window.geometry('620x500')
         view = window.achievements
@@ -253,6 +310,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_achievement_pages_preserve_progress_new_flags_and_focus(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         view = window.achievements
         self.assertEqual(len(view._visible_items), 22)
         self.assertLessEqual(len(view.cards), 4)
@@ -280,6 +340,9 @@ class WardrobeTests(unittest.TestCase):
     def test_achievement_card_focus_draws_a_visible_focus_ring(self) -> None:
         window = self.window()
         window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
+        window.page_buttons["Achievements"].invoke()
         window.window.update()
         card = next(iter(window.achievements.cards.values()))
         before = card._shelf_image
@@ -291,6 +354,9 @@ class WardrobeTests(unittest.TestCase):
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
         window = self.window({'crown', 'round-glasses'})
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         window.wardrobe.focus_item('crown').invoke()
         window.wardrobe.focus_item('round-glasses').invoke()
         new_ids = {'beta-bandana', 'angel-wings', 'sunflower-clip'}
@@ -344,6 +410,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_locked_items_link_to_separate_achievement_and_cannot_be_equipped(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         self.assertIn('Achievements', window.page_buttons)
         wardrobe = window.wardrobe
         wardrobe.focus_item('round-glasses')
@@ -361,6 +430,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_achievement_link_reveals_reward_below_fold(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         self.assertIn('Achievements', window.page_buttons)
         window.window.minsize(1, 1)
         window.window.geometry('620x500')
@@ -402,6 +474,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_live_unlock_enables_reward_without_equipping_or_reopening(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         self.assertIn('Achievements', window.page_buttons)
         window.page_buttons['Achievements'].invoke()
         from cat_accessories import ACCESSORY_BY_ID
@@ -428,6 +503,9 @@ class WardrobeTests(unittest.TestCase):
 
     def test_wardrobe_fits_narrow_width_and_switches_pages(self):
         window = self.window()
+        window.page_buttons["Achievements"].invoke()
+        window.page_buttons["Wardrobe"].invoke()
+        window.window.update()
         window.window.minsize(1, 1)
         window.window.geometry('620x500')
         window.window.update()
