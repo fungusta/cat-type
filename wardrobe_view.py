@@ -209,11 +209,17 @@ class WardrobeView(tk.Frame):
                          wraplength=1, justify="left")
                 status_label.pack(anchor="w", fill="x")
                 def wrap_copy(event, labels=(name_label, achievement_label)):
+                    width = max(1, event.width - 4)
                     for label in labels:
-                        label.configure(wraplength=max(1, event.width - 4))
+                        # Wrapping changes height, which emits Configure too.
+                        # Reapplying the same width can keep Tk's geometry
+                        # queue alive indefinitely on macOS.
+                        if int(str(label.cget("wraplength"))) != width:
+                            label.configure(wraplength=width)
                 copy.bind("<Configure>", wrap_copy)
-                status_row.bind("<Configure>", lambda event, label=status_label:
-                                label.configure(wraplength=max(1, event.width - 4)))
+                status_row.bind("<Configure>",
+                                lambda event, wrap=wrap_copy, label=status_label:
+                                wrap(event, labels=(label,)))
                 badge = RoundedBadge(
                     status_row,
                     text="NEW",
@@ -228,7 +234,7 @@ class WardrobeView(tk.Frame):
                 link.grid(row=2, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
                 self.achievement_links[item.id] = link
                 def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label,
-                            badge=badge, link=link):
+                            badge=badge, link=link, previous_mode=[None]):
                     compact = event.width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
                     # The two-column compact layout still needs room beside
                     # the thumbnail for unwrappable badges and actions. Font
@@ -238,6 +244,10 @@ class WardrobeView(tk.Frame):
                         badge.winfo_reqwidth(), button.winfo_reqwidth() + 4,
                         link.winfo_reqwidth() + 4,
                     )
+                    mode = "stacked" if stacked else ("compact" if compact else "wide")
+                    if previous_mode[0] == mode:
+                        return
+                    previous_mode[0] = mode
                     thumbnail.grid_configure(rowspan=1 if stacked else 2)
                     copy.grid_configure(row=1 if stacked else 0,
                                         column=0 if stacked else 1,

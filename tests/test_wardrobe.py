@@ -1,5 +1,6 @@
 import tkinter as tk
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from PIL import ImageTk
@@ -17,6 +18,38 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_height_only_configure_does_not_restart_card_geometry(self):
+        original_scaling = self.root.tk.call("tk", "scaling")
+        self.root.tk.call("tk", "scaling", 2.5)
+        self.addCleanup(lambda: self.root.tk.call("tk", "scaling", original_scaling))
+        window = self.window()
+        window.window.minsize(1, 1)
+        window.window.geometry("620x700")
+        view = window.wardrobe
+        view.focus_item("round-glasses")
+        window.window.update()
+        badge = view.new_badges["round-glasses"]
+        status_row = badge.master
+        copy = status_row.master
+        labels = [child for child in copy.winfo_children() if isinstance(child, tk.Label)]
+        status = next(child for child in status_row.winfo_children() if isinstance(child, tk.Label))
+        # Wrapping changes height and emits Configure again. Replaying those
+        # notifications must not request another geometry calculation.
+        with patch.object(labels[0], "configure", wraps=labels[0].configure) as name_configure, \
+             patch.object(status, "configure", wraps=status.configure) as status_configure, \
+             patch.object(copy, "grid_configure", wraps=copy.grid_configure) as copy_grid:
+            for _ in range(5):
+                for widget in (copy, status_row, copy.master):
+                    widget.event_generate("<Configure>", width=widget.winfo_width(),
+                                          height=widget.winfo_height() + 1)
+            name_configure.assert_not_called()
+            status_configure.assert_not_called()
+            copy_grid.assert_not_called()
+        idle_ran = []
+        window.window.after_idle(lambda: idle_ran.append(True))
+        window.window.update_idletasks()
+        self.assertEqual(idle_ran, [True])
+
     def test_pages_mount_only_the_slice_and_preserve_outfit(self):
         from cat_accessories import visible_accessories
         ids = {item.id for item in visible_accessories(set())}
