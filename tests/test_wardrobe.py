@@ -18,6 +18,29 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_responsive_page_rebuilds_do_not_release_scrollbar_latch(self):
+        from types import SimpleNamespace
+        window = self.window()
+        wardrobe = window.wardrobe
+        with patch.object(wardrobe, "_on_content_change") as changed:
+            wardrobe._page_size = 4
+            wardrobe._resize_choices(SimpleNamespace(width=400))
+            changed.assert_not_called()
+            wardrobe.show_page(1)
+            changed.assert_called_once_with()
+
+        window.page_buttons["Achievements"].invoke()
+        album = window.achievements
+        window.window.update()
+        with patch.object(album, "_on_content_change") as changed:
+            album._page_size = 4
+            with patch.object(album.cards_area, "winfo_width", return_value=400):
+                album._layout_cards()
+            changed.assert_not_called()
+            album.show_page(1)
+            changed.assert_called_once_with()
+        window.window.update_idletasks()
+
     def test_scrollbar_gutter_does_not_change_card_layout_or_page_size(self):
         from types import SimpleNamespace
         window = self.window()

@@ -362,6 +362,7 @@ class SettingsWindowScrollingTests(unittest.TestCase):
         shelf.winfo_children.return_value = []
         hidden_shelf = Mock()
         hidden_shelf.winfo_ismapped.return_value = False
+        hidden_shelf.winfo_manager.return_value = ""
         hidden_shelf.winfo_reqheight.return_value = 2000
         content.winfo_children.return_value = [shelf, hidden_shelf]
         settings_window.scroll_content = content
@@ -432,6 +433,23 @@ class SettingsWindowScrollingTests(unittest.TestCase):
 
 
 class SettingsWindowUpdateCardTests(unittest.TestCase):
+    def test_preview_error_visibility_changes_release_scrollbar_latch(self):
+        view = SettingsWindow.__new__(SettingsWindow)
+        view._preview_errors = {("white", "idle")}
+        view.preview_error_text = Mock()
+        view.preview_error_surface = Mock()
+        view._invalidate_scrollbar_reflow = Mock()
+        view.preview_error_surface.winfo_manager.return_value = ""
+        view._refresh_preview_error()
+        view._invalidate_scrollbar_reflow.assert_called_once_with()
+        view._invalidate_scrollbar_reflow.reset_mock()
+        view.preview_error_surface.winfo_manager.return_value = "grid"
+        view._refresh_preview_error()
+        view._invalidate_scrollbar_reflow.assert_not_called()
+        view._preview_errors.clear()
+        view._refresh_preview_error()
+        view._invalidate_scrollbar_reflow.assert_called_once_with()
+
     def test_one_pixel_wraplength_jitter_does_not_reconfigure_label(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         label = Mock()
@@ -567,16 +585,97 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertFalse(view.scrollbar.winfo_ismapped())
 
         shelf.configure(height=500)
+        view._invalidate_scrollbar_reflow()
         self.assertLess(view.scroll_canvas.bbox("all")[3], view.scroll_canvas.winfo_height())
         view._sync_scrollbar_visibility()
         shell.update()
         self.assertTrue(view.scrollbar.winfo_ismapped())
 
         shelf.configure(height=100)
+        view._invalidate_scrollbar_reflow()
         shell.update()
         view._sync_scrollbar_visibility()
         shell.update()
         self.assertFalse(view.scrollbar.winfo_ismapped())
+
+    def test_scrollbar_reflow_cycle_latches_and_releases_for_real_changes(self):
+        import _tkinter
+        shell = tk.Toplevel(self.root)
+        self.addCleanup(shell.destroy)
+        shell.geometry("400x200")
+        view = SettingsWindow.__new__(SettingsWindow)
+        view.window = shell
+        view.scrollbar = tk.Scrollbar(shell)
+        view.scrollbar.pack(side="right", fill="y")
+        view.scroll_canvas = tk.Canvas(shell, highlightthickness=0)
+        view.scroll_canvas.pack(side="left", fill="both", expand=True)
+        view.scroll_content = tk.Frame(view.scroll_canvas)
+        content_id = view.scroll_canvas.create_window((0, 0), anchor="nw", window=view.scroll_content)
+        responsive = tk.Frame(view.scroll_content, width=100, height=50)
+        responsive.pack_propagate(False)
+        responsive.pack()
+        label = tk.Label(responsive, text="Responsive content\nMore details")
+        label.pack()
+        shell.update()
+        expanded = True
+
+        def reflow(event):
+            view.scroll_canvas.itemconfigure(content_id, width=event.width)
+            responsive.configure(height=300 if expanded and event.width >= 395 else 50)
+            view._sync_scrollbar_visibility()
+
+        view.scroll_canvas.bind("<Configure>", reflow)
+        view.scroll_content.bind("<Configure>", lambda event: view._sync_scrollbar_visibility())
+
+        def settle():
+            for _ in range(1000):
+                if not shell.tk.dooneevent(_tkinter.ALL_EVENTS | _tkinter.DONT_WAIT):
+                    return
+            self.fail("Scrollbar visibility did not settle after responsive reflow")
+
+        view._sync_scrollbar_visibility()
+        settle()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+
+        shell.geometry("400x400")
+        settle()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
+        shell.geometry("400x200")
+        settle()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+        shell.geometry("380x200")
+        settle()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
+        shell.geometry("400x200")
+        settle()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+
+        expanded = False
+        view._invalidate_scrollbar_reflow()
+        label.configure(text="Short content")
+        responsive.configure(height=50)
+        settle()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
+
+        expanded = True
+        view._invalidate_scrollbar_reflow()
+        label.configure(text="Responsive content\nMore details")
+        responsive.configure(height=300)
+        settle()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+        label.destroy()
+        expanded = False
+        view._invalidate_scrollbar_reflow()
+        responsive.configure(height=50)
+        label = tk.Label(responsive, text="Another page")
+        label.pack()
+        settle()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
+
+        label.configure(text="\n".join(["Overflowing content"] * 30))
+        view._invalidate_scrollbar_reflow()
+        settle()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
 
     def test_scrollbar_keyboard_moves_canvas_and_clamps_at_bounds(self):
         view = self.settings_window

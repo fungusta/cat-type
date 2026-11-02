@@ -22,6 +22,7 @@ class WardrobeView(tk.Frame):
         on_change: Callable[[], None], on_achievement: Callable[[str], None],
         palette: dict[str, str], fonts: dict,
         responsive_width: Callable[[int], int] | None = None,
+        on_content_change: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent, background=palette["background"])
         self.palette = palette
@@ -29,6 +30,7 @@ class WardrobeView(tk.Frame):
         self.assets_root = assets_root
         self.fonts = fonts
         self._responsive_width = responsive_width or (lambda width: width)
+        self._on_content_change = on_content_change or (lambda: None)
         self.on_achievement = on_achievement
         self._visible_items: tuple[Accessory, ...] = ()
         self._page_index = 0
@@ -271,7 +273,7 @@ class WardrobeView(tk.Frame):
             return
         start = self._page_index * self._page_size
         self._page_size = size
-        self.show_page(start // size)
+        self.show_page(start // size, reflow=True)
 
     def page_for_item(self, item_id: str) -> int:
         for index, item in enumerate(self._visible_items):
@@ -285,13 +287,15 @@ class WardrobeView(tk.Frame):
         # Geometry can change page size while idle tasks settle.
         page = self.page_for_item(item_id)
         if page != self._page_index:
-            self.show_page(page)
+            self.show_page(page, reflow=True)
             self.update_idletasks()
         action = self.buttons[item_id]
         action.focus_set()
         return action
 
-    def show_page(self, page_index: int) -> None:
+    def show_page(self, page_index: int, *, reflow: bool = False) -> None:
+        if not reflow:
+            self._on_content_change()
         window = page_window(len(self._visible_items), page_index, self._page_size)
         self._page_index = window.index
         items = page_slice(self._visible_items, window.index, self._page_size)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from pathlib import Path
+from typing import Callable
 
 from PIL import ImageTk
 
@@ -19,10 +20,12 @@ class AchievementsView(tk.Frame):
     def __init__(
         self, parent: tk.Misc, *, assets_root: Path, metrics: UsageMetrics,
         unlocked: set[str], palette: dict[str, str], fonts: dict,
+        on_content_change: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent, background=palette["background"])
         self.palette = palette
         self.fonts = fonts
+        self._on_content_change = on_content_change or (lambda: None)
         self.assets_root = assets_root
         self._visible_ids: tuple[str, ...] = ()
         self._visible_items: tuple[Accessory, ...] = ()
@@ -226,7 +229,7 @@ class AchievementsView(tk.Frame):
         if size != self._page_size:
             start = self._page_index * self._page_size
             self._page_size = size
-            self.show_page(start // size)
+            self.show_page(start // size, reflow=True)
             return
         # Keep two cards at high Tk scaling when the rail grows for its
         # longer unread label; the narrow 620 px layout remains one column.
@@ -284,7 +287,9 @@ class AchievementsView(tk.Frame):
                 return index // self._page_size
         raise KeyError(accessory_id)
 
-    def show_page(self, page_index: int) -> None:
+    def show_page(self, page_index: int, *, reflow: bool = False) -> None:
+        if not reflow:
+            self._on_content_change()
         window = page_window(len(self._visible_items), page_index, self._page_size)
         self._page_index = window.index
         items = page_slice(self._visible_items, window.index, self._page_size)
@@ -332,7 +337,7 @@ class AchievementsView(tk.Frame):
         self.show_page(self.page_for_item(accessory_id))
         self.update_idletasks()
         if self.page_for_item(accessory_id) != self._page_index:
-            self.show_page(self.page_for_item(accessory_id))
+            self.show_page(self.page_for_item(accessory_id), reflow=True)
             self.update_idletasks()
         card = self.cards[accessory_id]
         self._new_ids.discard(accessory_id)
@@ -341,6 +346,7 @@ class AchievementsView(tk.Frame):
         return card
 
     def mark_new(self, newly_unlocked: tuple[Accessory, ...]) -> None:
+        self._on_content_change()
         self._new_ids.update(item.id for item in newly_unlocked)
         for item in newly_unlocked:
             badge = self.new_badges.get(item.id)
