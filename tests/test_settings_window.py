@@ -2123,6 +2123,18 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.assertEqual(controls.previous_button.cget("state"), "disabled")
             self.assertEqual(controls.next_button.cget("state"), "disabled")
             self.assertEqual(controls.page_label.cget("text"), "Page 0 of 0")
+            for total in (0, 3):
+                with self.subTest(focus_after_total=total):
+                    controls.set_state(page_window(22, 5, 4))
+                    controls.previous_button.focus_force()
+                    self.settings_window.window.update()
+                    self.assertEqual(controls.focus_get(), controls.previous_button)
+                    controls.set_state(page_window(total, 0, 4))
+                    target = controls.focus_get()
+                    self.assertNotIn(target, (controls.previous_button, controls.next_button))
+                    self.assertEqual(target, controls.previous_button.tk_focusNext())
+                    self.assertNotEqual(str(target.cget("state")), "disabled")
+                    self.assertTrue(target.winfo_viewable())
         finally:
             controls.destroy()
 

@@ -389,6 +389,14 @@ class PaginationControls(tk.Frame):
                 if enabled:
                     button.focus_set()
                     break
+            else:
+                # Both actions can disappear from traversal when data shrinks.
+                # Follow the surrounding window's normal tab order instead of
+                # leaving focus on a disabled canvas.
+                target = focused.tk_focusNext()
+                if target in (self.previous_button, self.next_button):
+                    target = self.master
+                target.focus_set()
 
 
 class RoundedBadge(tk.Canvas):
