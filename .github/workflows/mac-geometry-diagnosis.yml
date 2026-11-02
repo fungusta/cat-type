@@ -1,0 +1,24 @@
+name: Intel wardrobe geometry diagnosis
+
+on:
+  push:
+    branches: [codex/mac-geometry-diagnosis]
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: macos-15-intel
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Trace bounded wardrobe layout
+        timeout-minutes: 3
+        run: >-
+          python -u -X faulthandler -m unittest
+          tests.test_wardrobe.WardrobeTests.test_height_only_configure_does_not_restart_card_geometry -v

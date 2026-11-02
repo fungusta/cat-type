@@ -63,6 +63,40 @@ class WardrobeTests(unittest.TestCase):
         self.root.bind_all("<Configure>", record, add="+")
         self.addCleanup(lambda: self.root.unbind_all("<Configure>"))
 
+        scroll_transitions = deque(maxlen=30)
+        sync_calls = Counter()
+        original_sync = window._sync_scrollbar_visibility
+
+        def trace_scroll(*args, **kwargs):
+            before = bool(window.scrollbar.winfo_manager())
+            canvas = window.scroll_canvas
+            content = window.scroll_content
+            bounds = canvas.bbox("all")
+            original_sync(*args, **kwargs)
+            after = bool(window.scrollbar.winfo_manager())
+            sync_calls[(before, after)] += 1
+            if before != after:
+                origin = content.winfo_rooty()
+                pending = list(content.winfo_children())
+                extents = []
+                while pending:
+                    child = pending.pop()
+                    if child.winfo_ismapped():
+                        extents.append((child.winfo_rooty() - origin + child.winfo_reqheight(), str(child)))
+                        pending.extend(child.winfo_children())
+                scroll_transitions.append({
+                    "visible": (before, after), "bbox": bounds,
+                    "viewport": args[0] if args else canvas.winfo_height(),
+                    "canvas": (canvas.winfo_width(), canvas.winfo_height()),
+                    "content": (content.winfo_width(), content.winfo_height(), content.winfo_reqheight()),
+                    "largest_requested_bottoms": sorted(extents, reverse=True)[:3],
+                    "caller": traceback.extract_stack(limit=3)[-2].name,
+                })
+
+        sync_patch = patch.object(window, "_sync_scrollbar_visibility", trace_scroll)
+        sync_patch.start()
+        self.addCleanup(sync_patch.stop)
+
         def bounded_idle(widget):
             started = time.monotonic()
             iterations = 0
@@ -75,6 +109,9 @@ class WardrobeTests(unittest.TestCase):
                     print("idle batches:", iterations, "configure counts:", counts.most_common(12), flush=True)
                     print("PhotoImage sizes/counts:", images.most_common(12),
                           "live images:", len(widget.tk.call("image", "names")), flush=True)
+                    print("SCROLL SYNC COUNTS", sync_calls, flush=True)
+                    for transition in scroll_transitions:
+                        print("SCROLL TRANSITION", transition, flush=True)
                     for event in events:
                         print(event, flush=True)
                     view = window.wardrobe
