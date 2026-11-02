@@ -368,6 +368,7 @@ class SettingsWindow:
         self._preview_hydration_after_id: str | None = None
         self._shelves_after_id: str | None = None
         self._startup_fit_remaining = 6
+        self._startup_hydration_started = False
         self._scroll_sync_after_id: str | None = None
         self._pending_wardrobe_new_ids = {item.id for item in newly_unlocked}
         self._pending_achievement_new_ids = {item.id for item in newly_unlocked}
@@ -430,6 +431,7 @@ class SettingsWindow:
         self._metrics_exact_labels: list[str] = []
         self._metrics_partial_index: int | None = None
         self._metrics_plot_bounds = (0, 0, 0, 0)
+        self._update_checking = False
         self.update_status_text = tk.StringVar(value=update_status)
         self.input_monitoring_status_text = tk.StringVar(value="")
         self.save_status = tk.StringVar(value="")
@@ -443,12 +445,10 @@ class SettingsWindow:
         self._center_shell()
         self.window.lift()
         self.window.focus_force()
-        self._shelves_after_id = self.window.after_idle(self._build_settings_shelves)
         self._preview_icon_path = str(self._assets_root / "cat-type.png")
         selected = next((variant for label, variant in CAT_STYLE_LABELS.items() if label == self.cat_style.get()), CAT_VARIANTS[0])
         ordered = (selected,) + tuple(variant for variant in CAT_VARIANTS if variant != selected) if selected in CAT_VARIANTS else CAT_VARIANTS
         self._preview_queue = [(variant, pose) for variant in ordered for pose in ("idle", "tap-left", "tap-right", "excited")]
-        self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
         self._animate_preview()
         self._last_saved_settings = self._settings_from_controls()
         for variable in (
@@ -804,6 +804,13 @@ class SettingsWindow:
         self._refresh_page_heading_actions()
         self._refresh_usage_metrics()
 
+    def _start_hydration(self, _event: tk.Event[tk.Misc]) -> None:
+        if self._startup_hydration_started:
+            return
+        self._startup_hydration_started = True
+        self._shelves_after_id = self.window.after_idle(self._build_settings_shelves)
+        self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
+
     def _build_settings_shelves(self) -> None:
         self._shelves_after_id = None
         if self.active_page.get() != "Settings":
@@ -849,6 +856,7 @@ class SettingsWindow:
         self.wardrobe.update_unlocks(self.unlocked_accessories, tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_wardrobe_new_ids))
         self._pending_wardrobe_new_ids.clear()
+        self._display_preview()
         return self.wardrobe
 
     def _create_achievements_page(self) -> tk.Misc:
@@ -904,6 +912,15 @@ class SettingsWindow:
             sticky="nw",
         )
         self._rail_preview_image = self.rail_preview.create_image(28, 27)
+        # A text placeholder identifies the current cat before vector rendering.
+        placeholder = self.cat_style.get()
+        if CAT_STYLE_LABELS.get(placeholder) == "alternate":
+            placeholder = self._label_for(CAT_STYLE_LABELS, self._preview_variant)
+        self._rail_preview_placeholder = self.rail_preview.create_text(
+            28, 27, text=placeholder, width=52,
+            fill=self.MUTED, font=self.fonts["small"], justify="center",
+        )
+        self.rail_preview.bind("<Map>", self._start_hydration, add="+")
         self.rail_brand_title = tk.Label(
             tabs,
             text="Cat Type",
@@ -1008,7 +1025,8 @@ class SettingsWindow:
         selected = self.active_page.get()
         if selected != "Settings":
             self._startup_fit_remaining = 0
-        elif self._shelves_after_id is None and not hasattr(self, "check_for_updates_button"):
+        elif (self._startup_hydration_started and self._shelves_after_id is None
+              and not hasattr(self, "check_for_updates_button")):
             self._shelves_after_id = self.window.after_idle(self._build_settings_shelves)
         if hasattr(self, "page_heading_text"):
             self.page_heading_text.set(selected)
@@ -2436,6 +2454,7 @@ class SettingsWindow:
             takefocus=True,
         )
         self.check_for_updates_button.pack(side="left")
+        self.set_update_status(self.update_status_text.get(), self._update_checking)
         self.open_release_page_button = RoundedAction(
             update_actions,
             text="Open release page",
@@ -2752,37 +2771,47 @@ class SettingsWindow:
     def _refresh_outfit_preview(self) -> None:
         self._preview_frames.clear()
         self._rail_preview_frames.clear()
-        self._preview_queue = [(variant, pose) for variant in CAT_VARIANTS for pose in ("idle", "tap-left", "tap-right", "excited")]
+        selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
+        if selected in CAT_VARIANTS:
+            self._preview_variant = selected
+        poses = ("idle", "tap-left", "tap-right", "excited")
+        self._load_preview_frames(self._preview_icon_path, (self._preview_variant,), poses)
+        self._preview_queue = [
+            (variant, pose) for variant in CAT_VARIANTS
+            if variant != self._preview_variant for pose in poses
+        ]
         if self._preview_hydration_after_id is None:
             self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
-        self._load_preview_frames(str(self._assets_root / "cat-type.png"), (self._preview_variant,))
         self._display_preview()
 
     def _display_preview(self) -> None:
         sequence = ("idle", "tap-left", "idle", "tap-right", "excited", "idle")
-        if self._preview_frames and hasattr(self, "preview_canvas"):
-            selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
-            if selected in CAT_VARIANTS:
-                self._preview_variant = selected
-            elif self._preview_step % len(sequence) == 0:
-                variant_index = CAT_VARIANTS.index(self._preview_variant)
-                self._preview_variant = CAT_VARIANTS[
-                    (variant_index + 1) % len(CAT_VARIANTS)
-                ]
-            frames = self._preview_frames.get(self._preview_variant, {})
-            frame = frames.get(sequence[self._preview_step % len(sequence)])
-            if frame is not None:
+        if not self._preview_frames:
+            return
+        selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
+        if selected in CAT_VARIANTS:
+            self._preview_variant = selected
+        elif self._preview_step % len(sequence) == 0:
+            variant_index = CAT_VARIANTS.index(self._preview_variant)
+            self._preview_variant = CAT_VARIANTS[
+                (variant_index + 1) % len(CAT_VARIANTS)
+            ]
+        pose = sequence[self._preview_step % len(sequence)]
+        frames = self._preview_frames.get(self._preview_variant, {})
+        if not frames and selected not in CAT_VARIANTS:
+            self._preview_variant = next(iter(self._preview_frames))
+            frames = self._preview_frames[self._preview_variant]
+        frame = frames.get(pose, frames.get("idle"))
+        if frame is not None:
+            if hasattr(self, "preview_canvas"):
                 self.preview_canvas.itemconfigure(self._preview_image, image=frame)
-                rail_frame = self._rail_preview_frames.get(self._preview_variant, {}).get(
-                    sequence[self._preview_step % len(sequence)]
-                )
-                if rail_frame is not None:
-                    self.rail_preview.itemconfigure(
-                        self._rail_preview_image,
-                        image=rail_frame,
-                    )
-                if hasattr(self, "wardrobe"):
-                    self.wardrobe.set_preview(frame)
+            if hasattr(self, "wardrobe"):
+                self.wardrobe.set_preview(frame)
+        rail_frames = self._rail_preview_frames.get(self._preview_variant, {})
+        rail_frame = rail_frames.get(pose, rail_frames.get("idle"))
+        if rail_frame is not None:
+            self.rail_preview.itemconfigure(self._rail_preview_image, image=rail_frame)
+            self.rail_preview.itemconfigure(self._rail_preview_placeholder, state="hidden")
 
     def _animate_preview(self) -> None:
         self._display_preview()
@@ -3076,6 +3105,7 @@ class SettingsWindow:
 
     def set_update_status(self, text: str, checking: bool = False) -> None:
         self.update_status_text.set(text)
+        self._update_checking = checking
         if not hasattr(self, "check_for_updates_button"):
             return
         state = (

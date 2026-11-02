@@ -108,7 +108,8 @@ class OverlayFrameStagingTests(unittest.TestCase):
         root.update()
         try:
             view = SettingsWindow(root, AppSettings(cat_style='white'), lambda value: None)
-            view.window.after_cancel(view._preview_hydration_after_id)
+            if view._preview_hydration_after_id is not None:
+                view.window.after_cancel(view._preview_hydration_after_id)
             with patch.object(settings_window, 'load_frame', wraps=settings_window.load_frame) as render:
                 view._hydrate_preview_step()
             self.assertEqual(render.call_count, 1)
@@ -118,3 +119,76 @@ class OverlayFrameStagingTests(unittest.TestCase):
         finally:
             root.update_idletasks()
             root.destroy()
+
+class StartupReviewRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.root.update()
+        self.view = SettingsWindow(self.root, AppSettings(cat_style='white'), lambda value: None,
+                                   on_check_for_updates=lambda: None)
+        self.addCleanup(self.root.destroy)
+        self.addCleanup(self.view.close)
+
+    def test_early_wardrobe_navigation_has_preview_without_appearance(self):
+        self.view.active_page.set('Wardrobe')
+        self.view._switch_page()
+        self.root.update()
+        self.assertFalse(hasattr(self.view, 'preview_canvas'))
+        self.assertTrue(self.view.rail_preview.itemcget(self.view._rail_preview_image, 'image'))
+        self.assertIsNotNone(self.view.wardrobe._preview_frame)
+
+    def test_new_wardrobe_receives_already_hydrated_preview(self):
+        self.view.active_page.set('Metrics')
+        self.view._switch_page()
+        self.root.update()
+        wardrobe = self.view._ensure_page('Wardrobe')
+        self.assertIsNotNone(wardrobe._preview_frame)
+
+    def test_update_checking_state_survives_deferred_controls(self):
+        self.view.set_update_status('Checking...', checking=True)
+        self.root.update()
+        self.assertEqual(self.view.check_for_updates_button.cget('state'), 'disabled')
+        self.view.set_update_status('Ready', checking=False)
+        self.assertEqual(self.view.check_for_updates_button.cget('state'), 'normal')
+
+    def test_outfit_refresh_renders_each_variant_pose_only_once(self):
+        self.root.update()
+        with patch.object(settings_window, 'load_frame', wraps=settings_window.load_frame) as render:
+            self.view._refresh_outfit_preview()
+            self.root.update()
+        keys = [(call.args[1], call.args[2]) for call in render.call_args_list]
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertEqual(len(keys), 24)
+
+    def test_first_mapped_frame_has_current_cat_placeholder_and_live_navigation(self):
+        observed = []
+        def first_map(event):
+            if event.widget is self.view.rail_preview:
+                canvas = self.view.rail_preview
+                texts = [canvas.itemcget(item, 'text') for item in canvas.find_all()
+                         if canvas.type(item) == 'text' and canvas.itemcget(item, 'state') != 'hidden']
+                observed.append((self.view.window.winfo_ismapped(), texts, render.call_count, canvas.winfo_ismapped()))
+                self.view.page_buttons['Metrics'].invoke()
+        self.view.rail_preview.bind('<Map>', first_map, add='+')
+        with patch.object(settings_window, 'load_frame', wraps=settings_window.load_frame) as render:
+            self.root.update()
+        self.assertTrue(observed)
+        self.assertTrue(observed[0][0])
+        self.assertEqual(observed[0][2], 0)
+        self.assertTrue(observed[0][3])
+        self.assertTrue(any('White' in text for text in observed[0][1]))
+        self.assertEqual(self.view.active_page.get(), 'Metrics')
+        self.assertFalse(hasattr(self.view, 'preview_canvas'))
+
+    def test_alternate_wardrobe_uses_available_pose_during_partial_hydration(self):
+        self.view.active_page.set('Metrics')
+        self.view._switch_page()
+        self.root.update()
+        self.view.cat_style.set('Mix it up')
+        self.view._preview_frames = {'gray': self.view._preview_frames['gray']}
+        self.view._rail_preview_frames = {'gray': self.view._rail_preview_frames['gray']}
+        self.view._preview_variant = 'gray'
+        self.view._preview_step = 0
+        wardrobe = self.view._ensure_page('Wardrobe')
+        self.assertIsNotNone(wardrobe._preview_frame)
