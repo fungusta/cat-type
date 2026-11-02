@@ -207,7 +207,7 @@ class WardrobeView(tk.Frame):
                 status_label = tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
                          wraplength=1, justify="left")
-                status_label.pack(side="left")
+                status_label.pack(anchor="w", fill="x")
                 def wrap_copy(event, labels=(name_label, achievement_label)):
                     for label in labels:
                         label.configure(wraplength=max(1, event.width - 4))
@@ -280,7 +280,7 @@ class WardrobeView(tk.Frame):
             self.status_text[item_id].set("Unlocked" if earned else "Locked")
             badge = self.new_badges[item_id]
             if item_id in self._new_ids:
-                badge.pack(side="right")
+                badge.pack(anchor="w", pady=(2, 0))
             else:
                 badge.pack_forget()
         self._refresh_selection()

@@ -30,6 +30,34 @@ class WardrobeTests(unittest.TestCase):
         start = view._page_index * view._page_size
         self.assertEqual(set(view.buttons), {item.id for item in view._visible_items[start:start + view._page_size]})
 
+    def test_high_scaling_new_badge_is_visible_without_status_overlap(self):
+        original_scaling = self.root.tk.call("tk", "scaling")
+        self.root.tk.call("tk", "scaling", 2.5)
+        self.addCleanup(lambda: self.root.tk.call("tk", "scaling", original_scaling))
+        window = self.window()
+        window.window.minsize(1, 1)
+        window.window.geometry("620x700")
+        view = window.wardrobe
+        view.update_unlocks({"round-glasses"}, (ACCESSORY_BY_ID["round-glasses"],))
+        for _ in range(2):
+            view.focus_item("round-glasses")
+            window.window.update()
+            badge = view.new_badges["round-glasses"]
+            self.assertTrue(badge.winfo_ismapped())
+            self.assertGreaterEqual(badge.winfo_width(), badge.winfo_reqwidth())
+            status = next(child for child in badge.master.winfo_children() if isinstance(child, tk.Label))
+            self.assertTrue(status.winfo_ismapped())
+            self.assertLessEqual(status.winfo_reqwidth(), status.winfo_width())
+            self.assertLessEqual(badge.winfo_rootx() + badge.winfo_width(),
+                                 badge.master.winfo_rootx() + badge.master.winfo_width())
+            self.assertTrue(status.winfo_rooty() + status.winfo_height() <= badge.winfo_rooty()
+                            or badge.winfo_rooty() + badge.winfo_height() <= status.winfo_rooty()
+                            or status.winfo_rootx() + status.winfo_width() <= badge.winfo_rootx()
+                            or badge.winfo_rootx() + badge.winfo_width() <= status.winfo_rootx())
+            view.show_page(view._page_index + 1)
+        self.assertIn("round-glasses", view._new_ids)
+        self.assertEqual(window.glasses.get(), "none")
+
     def test_high_scaling_narrow_cards_wrap_all_copy_and_keep_actions_inside(self):
         original_scaling = self.root.tk.call("tk", "scaling")
         self.root.tk.call("tk", "scaling", 2.5)
