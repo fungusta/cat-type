@@ -2437,8 +2437,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window._save_feedback_after_id = "stale-success"
         with patch.object(self.settings_window.window, "after_cancel") as cancel:
             self.settings_window.enabled.set(not self.settings_window.enabled.get())
-            self.settings_window._save()
-        cancel.assert_called_with("stale-success")
+            self.assertFalse(self.settings_window._save())
+        # Updating the status also cancels pending scrollbar synchronization.
+        cancel.assert_any_call("stale-success")
+        self.assertIsNone(self.settings_window._save_feedback_after_id)
+        self.assertTrue(self.settings_window._save_failed)
         self.assertEqual(
             self.settings_window.save_status.get(),
             "Couldn't save this change. Try again.",
