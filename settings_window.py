@@ -2801,10 +2801,25 @@ class SettingsWindow:
             if viewport_height is None
             else viewport_height
         )
-        overflows = bool(
-            bounds
-            and bounds[3] - bounds[1] > available_height
-        )
+        content_height = bounds[3] - bounds[1] if bounds else 0
+        if hasattr(self, "scroll_content"):
+            origin_y = self.scroll_content.winfo_rooty()
+            content_height = max(content_height, self.scroll_content.winfo_reqheight())
+            pending = list(self.scroll_content.winfo_children())
+            while pending:
+                child = pending.pop()
+                if not child.winfo_ismapped():
+                    continue
+                # A nested shelf can have requested more height before that
+                # request reaches the outer canvas window. Using only bbox
+                # here can hide the scrollbar prematurely, widen the cards,
+                # and restart the narrow/wide geometry cycle indefinitely.
+                content_height = max(
+                    content_height,
+                    child.winfo_rooty() - origin_y + child.winfo_reqheight(),
+                )
+                pending.extend(child.winfo_children())
+        overflows = content_height > available_height
         is_visible = bool(self.scrollbar.winfo_manager())
         if overflows and not is_visible:
             self.scrollbar.pack(

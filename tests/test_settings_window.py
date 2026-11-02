@@ -344,6 +344,53 @@ class SettingsWindowScrollingTests(unittest.TestCase):
         scrollbar.pack_forget.assert_called_once_with()
         canvas.yview_moveto.assert_called_once_with(0)
 
+    def test_scrollbar_waits_for_nested_height_requests_before_hiding(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 601, 580)
+        canvas.winfo_height.return_value = 596
+        scrollbar = Mock()
+        scrollbar.winfo_manager.return_value = "pack"
+        content = Mock()
+        content.winfo_rooty.return_value = 0
+        content.winfo_reqheight.return_value = 580
+        shelf = Mock()
+        shelf.winfo_ismapped.return_value = True
+        shelf.winfo_rooty.return_value = 90
+        shelf.winfo_height.return_value = 490
+        shelf.winfo_reqheight.return_value = 558
+        shelf.winfo_children.return_value = []
+        hidden_shelf = Mock()
+        hidden_shelf.winfo_ismapped.return_value = False
+        hidden_shelf.winfo_reqheight.return_value = 2000
+        content.winfo_children.return_value = [shelf, hidden_shelf]
+        settings_window.scroll_content = content
+        settings_window.scroll_canvas = canvas
+        settings_window.scrollbar = scrollbar
+
+        # The canvas bbox still fits while a nested shelf's pending request
+        # already overflows. Hiding now would reverse the width change before
+        # that request has propagated through the parents.
+        for origin in (0, 250, -200):
+            with self.subTest(content_origin=origin):
+                content.winfo_rooty.return_value = origin
+                shelf.winfo_rooty.return_value = origin + 90
+                settings_window._sync_scrollbar_visibility()
+                scrollbar.pack_forget.assert_not_called()
+
+        # Once the real content shrinks, the bar must still disappear.
+        shelf.winfo_reqheight.return_value = 490
+        settings_window._sync_scrollbar_visibility()
+        scrollbar.pack_forget.assert_called_once_with()
+        hidden_shelf.winfo_reqheight.assert_not_called()
+
+        # Further content growth restores access immediately, even before
+        # the outer canvas window has adopted the new requested height.
+        scrollbar.winfo_manager.return_value = ""
+        shelf.winfo_reqheight.return_value = 558
+        settings_window._sync_scrollbar_visibility()
+        scrollbar.pack.assert_called_once_with(side="right", fill="y", before=canvas)
+
     def test_scrollbar_uses_deterministic_viewport_during_opening(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         canvas = Mock()
@@ -500,6 +547,36 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertTrue(view.scrollbar.winfo_ismapped())
         view.scrollbar.focus_force()
         self.assertEqual(view.window.focus_get(), view.scrollbar)
+
+    def test_scrollbar_tracks_nested_growth_before_canvas_bbox_updates(self):
+        shell = tk.Toplevel(self.root)
+        self.addCleanup(shell.destroy)
+        shell.geometry("400x300")
+        view = SettingsWindow.__new__(SettingsWindow)
+        view.scrollbar = tk.Scrollbar(shell)
+        view.scrollbar.pack(side="right", fill="y")
+        view.scroll_canvas = tk.Canvas(shell, highlightthickness=0)
+        view.scroll_canvas.pack(side="left", fill="both", expand=True)
+        view.scroll_content = tk.Frame(view.scroll_canvas)
+        view.scroll_canvas.create_window((0, 0), anchor="nw", window=view.scroll_content)
+        shelf = tk.Frame(view.scroll_content, width=100, height=100)
+        shelf.pack()
+        shell.update()
+        view._sync_scrollbar_visibility()
+        shell.update()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
+
+        shelf.configure(height=500)
+        self.assertLess(view.scroll_canvas.bbox("all")[3], view.scroll_canvas.winfo_height())
+        view._sync_scrollbar_visibility()
+        shell.update()
+        self.assertTrue(view.scrollbar.winfo_ismapped())
+
+        shelf.configure(height=100)
+        shell.update()
+        view._sync_scrollbar_visibility()
+        shell.update()
+        self.assertFalse(view.scrollbar.winfo_ismapped())
 
     def test_scrollbar_keyboard_moves_canvas_and_clamps_at_bounds(self):
         view = self.settings_window
