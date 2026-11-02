@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Callable, Mapping
+
+from pagination import PageWindow, page_label, page_window
 from tkinter import font as tkfont
 from PIL import Image, ImageDraw, ImageTk
 
@@ -337,6 +340,55 @@ class RoundedAction(tk.Canvas):
         if key == "accessible_state":
             return self._state
         return super().cget(key)
+
+
+class PaginationControls(tk.Frame):
+    """Shared pill actions with a plain page label and native tab traversal."""
+
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        on_previous: Callable[[], None],
+        on_next: Callable[[], None],
+        palette: Mapping[str, str],
+        fonts: Mapping[str, object],
+    ) -> None:
+        super().__init__(parent, background=palette["background"], takefocus=False)
+        self.previous_button = RoundedAction(
+            self, text="Previous page", command=on_previous, font=fonts["button"],
+        )
+        self.previous_button.title = "Previous page"
+        self.previous_button.pack(side="left")
+        self.page_label = tk.Label(
+            self, background=palette["background"], foreground=palette["ink"],
+            font=fonts["small"], takefocus=False,
+        )
+        self.page_label.pack(side="left", padx=12)
+        self.next_button = RoundedAction(
+            self, text="Next page", command=on_next, font=fonts["button"],
+        )
+        self.next_button.title = "Next page"
+        self.next_button.pack(side="left")
+        self.set_state(page_window(0, 0, 1))
+
+    def set_state(self, window: PageWindow) -> None:
+        focused = self.focus_get()
+        label = page_label(window)
+        self.page_label.configure(text=label)
+        self.page_label.title = label
+        self.page_label.accessible_name = label
+        states = (
+            (self.previous_button, window.page_count > 0 and window.index > 0),
+            (self.next_button, window.index + 1 < window.page_count),
+        )
+        for button, enabled in states:
+            button.configure(state="normal" if enabled else "disabled", takefocus=enabled)
+        if any(focused == button and not enabled for button, enabled in states):
+            for button, enabled in states:
+                if enabled:
+                    button.focus_set()
+                    break
 
 
 class RoundedBadge(tk.Canvas):

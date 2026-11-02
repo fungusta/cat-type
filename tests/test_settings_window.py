@@ -2078,6 +2078,54 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             scaled_root.destroy()
 
     def test_custom_actions_expose_button_accessibility_metadata(self) -> None:
+        from pagination import page_window
+        from ui_surfaces import PaginationControls
+
+        calls = []
+        controls = PaginationControls(
+            self.settings_window.window,
+            on_previous=lambda: calls.append("previous"),
+            on_next=lambda: calls.append("next"),
+            palette={"background": "#FFF8EC", "ink": "#302A33"},
+            fonts=self.settings_window.fonts,
+        )
+        controls.place(x=0, y=0)
+        self.settings_window.window.update()
+        try:
+            for button, name in ((controls.previous_button, "Previous page"),
+                                 (controls.next_button, "Next page")):
+                self.assertIsInstance(button, RoundedAction)
+                self.assertEqual(button.cget("accessible_name"), name)
+                self.assertEqual(button.cget("accessible_role"), "button")
+                self.assertEqual(button.title, name)
+                self.assertEqual(button._fill, "#FFFFFF")
+                self.assertTrue(button._pill_image)
+            controls.set_state(page_window(22, 0, 4))
+            self.assertEqual(controls.page_label.cget("text"), "Page 1 of 6")
+            self.assertEqual(controls.page_label.title, "Page 1 of 6")
+            self.assertEqual(controls.previous_button.cget("state"), "disabled")
+            self.assertEqual(str(controls.previous_button.cget("takefocus")), "0")
+            self.assertEqual(str(controls.next_button.cget("takefocus")), "1")
+            controls.previous_button.invoke()
+            controls.next_button.invoke()
+            self.assertEqual(calls, ["next"])
+            self.assertEqual(controls.previous_button.tk_focusNext(), controls.next_button)
+            controls.next_button.focus_force()
+            self.settings_window.window.update()
+            controls.set_state(page_window(22, 5, 4))
+            self.assertEqual(controls.focus_get(), controls.previous_button)
+            self.assertEqual(controls.next_button.cget("accessible_state"), "disabled")
+            self.assertEqual(str(controls.next_button.cget("takefocus")), "0")
+            self.assertEqual(str(controls.previous_button.cget("takefocus")), "1")
+            controls.previous_button.invoke()
+            self.assertEqual(calls, ["next", "previous"])
+            controls.set_state(page_window(0, 0, 4))
+            self.assertEqual(controls.previous_button.cget("state"), "disabled")
+            self.assertEqual(controls.next_button.cget("state"), "disabled")
+            self.assertEqual(controls.page_label.cget("text"), "Page 0 of 0")
+        finally:
+            controls.destroy()
+
         button = self.settings_window.check_for_updates_button
         self.assertEqual(button.cget("accessible_role"), "button")
         self.assertEqual(button.cget("accessible_name"), "Check for updates")
