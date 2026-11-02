@@ -684,6 +684,17 @@ class SettingsWindow:
             self._preview_frames[variant] = vector_frames
             self._rail_preview_frames[variant] = rail_frames
 
+    def _scroll_from_keyboard(self, event) -> str:
+        commands = {"Up": (-1, "units"), "Down": (1, "units"),
+                    "Prior": (-1, "pages"), "Next": (1, "pages")}
+        if event.keysym in commands:
+            self.scroll_canvas.yview_scroll(*commands[event.keysym])
+        elif event.keysym == "Home":
+            self.scroll_canvas.yview_moveto(0.0)
+        elif event.keysym == "End":
+            self.scroll_canvas.yview_moveto(1.0)
+        return "break"
+
     def _close_from_chrome(self) -> None:
         self.close()
 
@@ -750,6 +761,8 @@ class SettingsWindow:
         )
         self.scroll_canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.configure(command=self.scroll_canvas.yview)
+        for key in ("Up", "Down", "Prior", "Next", "Home", "End"):
+            self.scrollbar.bind(f"<KeyPress-{key}>", self._scroll_from_keyboard)
 
         self.scroll_content = tk.Frame(
             self.scroll_canvas,

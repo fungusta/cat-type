@@ -501,6 +501,48 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         view.scrollbar.focus_force()
         self.assertEqual(view.window.focus_get(), view.scrollbar)
 
+    def test_scrollbar_keyboard_moves_canvas_and_clamps_at_bounds(self):
+        view = self.settings_window
+        view.window.geometry("700x480")
+        view.window.update()
+        view.scrollbar.focus_force()
+        view.window.update()
+        def press(key):
+            view.scrollbar.event_generate(f"<KeyPress-{key}>")
+            view.window.update()
+            return view.scroll_canvas.yview()[0]
+        self.assertEqual(press("Home"), 0.0)
+        down = press("Down")
+        self.assertGreater(down, 0.0)
+        self.assertLess(press("Up"), down)
+        page = press("Next")
+        self.assertGreater(page, down)
+        self.assertLess(press("Prior"), page)
+        end = press("End")
+        self.assertGreater(end, page)
+        self.assertEqual(view.scroll_canvas.yview()[1], 1.0)
+        self.assertEqual(press("Down"), end)
+        self.assertEqual(press("Home"), 0.0)
+        self.assertEqual(press("Up"), 0.0)
+
+    def test_native_close_retries_pending_save_and_preserves_window_on_failure(self):
+        import sys
+        if sys.platform != "win32":
+            self.skipTest("Windows system close command")
+        view = self.settings_window
+        view.size_percent.set(view.size_percent.get() + 1)
+        self.on_save.side_effect = OSError("test save failure")
+        chrome = view._window_chrome
+        chrome.user.SendMessageW(chrome.hwnd, 0x112, 0xF060, 0)
+        view.window.update()
+        self.assertTrue(view.window.winfo_exists())
+        self.assertTrue(view._save_failed)
+        self.on_save.side_effect = None
+        chrome.user.SendMessageW(chrome.hwnd, 0x112, 0xF060, 0)
+        self.root.update()
+        self.assertFalse(view.window.winfo_exists())
+        self.assertGreaterEqual(self.on_save.call_count, 2)
+
     def test_settings_uses_companion_and_behavior_shelves(self) -> None:
         texts = self._widget_texts(self.settings_window.columns)
         self.assertIn("Companion", texts)

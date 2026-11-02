@@ -51,6 +51,22 @@ class TitleBarTests(unittest.TestCase):
             self.assertTrue(control.winfo_viewable())
             self.assertLessEqual(control.winfo_rootx() + control.winfo_width(), self.root.winfo_rootx() + self.root.winfo_width())
 
+    def test_high_scaling_narrow_controls_remain_visible(self):
+        original = float(self.root.tk.call('tk', 'scaling'))
+        self.root.tk.call('tk', 'scaling', 2.5)
+        self.bar.destroy()
+        self.bar = ThemedTitleBar(self.root, on_minimize=lambda: None,
+            on_toggle_maximize=lambda: None, on_close=lambda: None)
+        self.bar.pack(fill='x')
+        self.root.geometry('600x260')
+        self.root.update()
+        for control in self.bar.controls:
+            self.assertTrue(control.winfo_viewable())
+            self.assertGreaterEqual(control.winfo_rootx(), self.root.winfo_rootx())
+            self.assertLessEqual(control.winfo_rootx() + control.winfo_width(),
+                                 self.root.winfo_rootx() + self.root.winfo_width())
+        self.root.tk.call('tk', 'scaling', original)
+
     @unittest.skipUnless(sys.platform == 'win32', 'Windows native frame')
     def test_native_frame_resize_minimize_restore_and_close(self):
         chrome = NativeWindowChrome(self.root)
