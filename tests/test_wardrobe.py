@@ -18,6 +18,49 @@ ASSETS = Path(__file__).resolve().parents[1] / 'assets'
 
 
 class WardrobeTests(unittest.TestCase):
+    def test_scrollbar_gutter_does_not_change_card_layout_or_page_size(self):
+        from types import SimpleNamespace
+        window = self.window()
+        view = window.wardrobe
+        view.focus_item("round-glasses")
+        tile = view.choice_tiles["round-glasses"]
+        action = view.buttons["round-glasses"]
+        thumbnail = next(child for child in tile.content.winfo_children()
+                         if isinstance(child, tk.Label))
+        wide_breakpoint = thumbnail.winfo_reqwidth() + action.winfo_reqwidth() + 178
+        stacked_breakpoint = thumbnail.winfo_reqwidth() + 18 + max(
+            view.new_badges["round-glasses"].winfo_reqwidth(),
+            action.winfo_reqwidth() + 4,
+            view.achievement_links["round-glasses"].winfo_reqwidth() + 4,
+        )
+        gutter = window.scrollbar.winfo_reqwidth()
+        tile.grid_remove()
+        with patch.object(window, "_sync_scrollbar_visibility"):
+            for breakpoint, action_row in ((wide_breakpoint, 1), (stacked_breakpoint, 2)):
+                for visible in (False, True, False):
+                    with self.subTest(breakpoint=breakpoint, scrollbar_visible=visible):
+                        if visible:
+                            window.scrollbar.pack(side="right", fill="y", before=window.scroll_canvas)
+                        else:
+                            window.scrollbar.pack_forget()
+                        # The same outer width straddles the card breakpoint only
+                        # because the scrollbar takes a gutter from the canvas.
+                        width = breakpoint + gutter - 1 - (gutter if visible else 0)
+                        tile.place(x=0, y=0, width=width + 12)
+                        window.window.update()
+                        self.assertEqual(int(action.grid_info()["row"]), action_row)
+
+            tile.place_configure(width=wide_breakpoint + gutter + 40 + 12)
+            window.window.update()
+            self.assertEqual(int(action.grid_info()["row"]), 0)
+            for visible in (False, True, False):
+                with patch.object(window.scrollbar, "winfo_manager", return_value="pack" if visible else ""):
+                    view._resize_choices(SimpleNamespace(width=520 + gutter - 1 - (gutter if visible else 0)))
+                    self.assertEqual(view._page_size, 2)
+            view._resize_choices(SimpleNamespace(width=520 + gutter + 40))
+            self.assertEqual(view._page_size, 4)
+            window.window.update_idletasks()
+
     def test_height_only_configure_does_not_restart_card_geometry(self):
         original_scaling = self.root.tk.call("tk", "scaling")
         self.root.tk.call("tk", "scaling", 2.5)

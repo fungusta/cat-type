@@ -21,12 +21,14 @@ class WardrobeView(tk.Frame):
         slots: dict[str, tk.StringVar], unlocked: set[str],
         on_change: Callable[[], None], on_achievement: Callable[[str], None],
         palette: dict[str, str], fonts: dict,
+        responsive_width: Callable[[int], int] | None = None,
     ) -> None:
         super().__init__(parent, background=palette["background"])
         self.palette = palette
         self.slots = slots
         self.assets_root = assets_root
         self.fonts = fonts
+        self._responsive_width = responsive_width or (lambda width: width)
         self.on_achievement = on_achievement
         self._visible_items: tuple[Accessory, ...] = ()
         self._page_index = 0
@@ -235,12 +237,13 @@ class WardrobeView(tk.Frame):
                 self.achievement_links[item.id] = link
                 def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label,
                             badge=badge, link=link, previous_mode=[None]):
-                    compact = event.width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
+                    width = self._responsive_width(event.width)
+                    compact = width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
                     # The two-column compact layout still needs room beside
                     # the thumbnail for unwrappable badges and actions. Font
                     # metrics vary by platform; stack everything when that
                     # measured minimum no longer fits.
-                    stacked = event.width < thumbnail.winfo_reqwidth() + 18 + max(
+                    stacked = width < thumbnail.winfo_reqwidth() + 18 + max(
                         badge.winfo_reqwidth(), button.winfo_reqwidth() + 4,
                         link.winfo_reqwidth() + 4,
                     )
@@ -263,7 +266,7 @@ class WardrobeView(tk.Frame):
                 tile_content.bind("<Configure>", arrange, add="+")
 
     def _resize_choices(self, event: tk.Event) -> None:
-        size = 4 if event.width >= 520 else 2
+        size = 4 if self._responsive_width(event.width) >= 520 else 2
         if size == self._page_size:
             return
         start = self._page_index * self._page_size
