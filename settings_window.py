@@ -1014,6 +1014,8 @@ class SettingsWindow:
         self.achievements.refresh_layout()
         self.window.update_idletasks()
         card = self.achievements.focus_reward(accessory_id)
+        self.achievements.refresh_layout()
+        self.window.update_idletasks()
         # Scroll in canvas coordinates so nested shelves remain visible after
         # the album wrapper changes the page's requested height.
         viewport_top = self.scroll_canvas.canvasy(0)

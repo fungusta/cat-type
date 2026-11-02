@@ -11,7 +11,8 @@ from achievements import progress, requirement
 from cat_accessories import Accessory, visible_accessories
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
-from ui_surfaces import RoundedBadge, RoundedPanel
+from ui_surfaces import RoundedBadge, RoundedPanel, PaginationControls
+from pagination import page_window, page_slice
 
 
 class AchievementsView(tk.Frame):
@@ -24,6 +25,9 @@ class AchievementsView(tk.Frame):
         self.fonts = fonts
         self.assets_root = assets_root
         self._visible_ids: tuple[str, ...] = ()
+        self._visible_items: tuple[Accessory, ...] = ()
+        self._page_index = 0
+        self._page_size = 4
         self.cards: dict[str, RoundedPanel] = {}
         self.new_badges: dict[str, RoundedBadge] = {}
         self.status_badges: dict[str, RoundedBadge] = {}
@@ -68,6 +72,13 @@ class AchievementsView(tk.Frame):
             add="+",
         )
 
+        self.pagination_controls = PaginationControls(
+            album_content, on_previous=lambda: self.show_page(self._page_index - 1),
+            on_next=lambda: self.show_page(self._page_index + 1),
+            palette={**palette, "background": palette["card"]},
+            fonts={**fonts, "button": fonts["small"]},
+        )
+        self.pagination_controls.pack(anchor="center", pady=(0, 12))
         self.update_progress(metrics, unlocked)
 
     def _build_cards(self, visible: tuple[Accessory, ...]) -> None:
@@ -76,7 +87,6 @@ class AchievementsView(tk.Frame):
         self.cards.clear()
         self.new_badges.clear()
         self.status_badges.clear()
-        self.progress_text.clear()
         self._thumbnails.clear()
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
         for item in visible:
@@ -104,8 +114,9 @@ class AchievementsView(tk.Frame):
             copy.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=(4, 2))
             heading = tk.Frame(copy, background=palette["card"])
             heading.pack(fill="x")
-            tk.Label(heading, text=item.achievement, font=fonts["control"], anchor="w",
-                     bg=palette["card"], fg=palette["ink"]).pack(side="left")
+            title = tk.Label(heading, text=item.achievement, font=fonts["control"], anchor="w",
+                             justify="left", wraplength=180, bg=palette["card"], fg=palette["ink"])
+            title.pack(side="left", fill="x", expand=True)
             badge = RoundedBadge(
                 heading,
                 text="NEW",
@@ -133,8 +144,7 @@ class AchievementsView(tk.Frame):
                 fg=palette["muted"],
             )
             requirement_label.pack(fill="x", pady=(4, 0))
-            value = tk.StringVar(master=self)
-            self.progress_text[item.id] = value
+            value = self.progress_text[item.id]
             progress_label = tk.Label(
                 copy,
                 textvariable=value,
@@ -148,7 +158,7 @@ class AchievementsView(tk.Frame):
             progress_label.pack(fill="x", pady=(2, 0))
             copy.bind(
                 "<Configure>",
-                lambda event, labels=(reward_label, requirement_label, progress_label),
+                lambda event, labels=(title, reward_label, requirement_label, progress_label),
                     reward_card=card: self._fit_reward_copy(event, labels, reward_card),
                 add="+",
             )
@@ -174,7 +184,7 @@ class AchievementsView(tk.Frame):
         labels: tuple[tk.Label, ...],
         card: RoundedPanel,
     ) -> None:
-        wraplength = max(110, int(event.width) - 4)
+        wraplength = max(1, int(event.width) - 4)
         changed = False
         for label in labels:
             if int(label.cget("wraplength")) != wraplength:
@@ -204,6 +214,12 @@ class AchievementsView(tk.Frame):
     def _layout_cards(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         width = self.cards_area.winfo_width()
         if width <= 1:
+            return
+        size = 4 if width >= 520 else 2
+        if size != self._page_size:
+            start = self._page_index * self._page_size
+            self._page_size = size
+            self.show_page(start // size)
             return
         # Keep two cards at high Tk scaling when the rail grows for its
         # longer unread label; the narrow 620 px layout remains one column.
@@ -255,42 +271,62 @@ class AchievementsView(tk.Frame):
             self._album_layout_after_id = None
         super().destroy()
 
+    def page_for_item(self, accessory_id: str) -> int:
+        for index, item in enumerate(self._visible_items):
+            if item.id == accessory_id:
+                return index // self._page_size
+        raise KeyError(accessory_id)
+
+    def show_page(self, page_index: int) -> None:
+        window = page_window(len(self._visible_items), page_index, self._page_size)
+        self._page_index = window.index
+        items = page_slice(self._visible_items, window.index, self._page_size)
+        if tuple(self.cards) != tuple(item.id for item in items):
+            self._build_cards(items)
+        self.pagination_controls.set_state(window)
+        self._refresh_badges()
+        self._layout_cards()
+        self._sync_album_size()
+        self._schedule_album_layout()
+
     def update_progress(self, metrics: UsageMetrics, unlocked: set[str]) -> None:
-        visible = visible_accessories(unlocked)
-        visible_ids = tuple(item.id for item in visible)
-        if visible_ids != self._visible_ids:
-            self._build_cards(visible)
-            self._visible_ids = visible_ids
-        earned_count = sum(item.id in unlocked for item in visible)
-        summary = f"{earned_count} of {len(visible)} achievements unlocked"
-        if self.summary.get() != summary:
-            self.summary.set(summary)
-        for item in visible:
-            badge = self.new_badges[item.id]
-            if item.id in self._new_ids:
-                badge.pack(side="right", padx=(8, 0))
-            else:
-                badge.pack_forget()
+        self._visible_items = visible_accessories(unlocked)
+        self._visible_ids = tuple(item.id for item in self._visible_items)
+        self._unlocked = set(unlocked)
+        earned_count = sum(item.id in unlocked for item in self._visible_items)
+        self.summary.set(f"{earned_count} of {len(self._visible_items)} achievements unlocked")
+        for item in self._visible_items:
+            if item.id not in self.progress_text:
+                self.progress_text[item.id] = tk.StringVar(master=self)
             if item.id in unlocked:
                 value = "Unlocked"
-                self.status_badges[item.id].configure(
-                    text="Unlocked",
-                    fill=self.palette["accent"],
-                    foreground=self.palette["ink"],
-                )
             else:
                 current = progress(item, metrics)
                 unit = " days" if item.metric == "days" else ""
                 value = f"{current:,} / {item.target:,}{unit} · Locked"
-                self.status_badges[item.id].configure(
-                    text="Locked",
-                    fill=self.palette["card"],
-                    foreground=self.palette["muted"],
-                )
             if self.progress_text[item.id].get() != value:
                 self.progress_text[item.id].set(value)
+        self.show_page(self._page_index)
+
+    def _refresh_badges(self) -> None:
+        for item_id, badge in self.new_badges.items():
+            if item_id in self._new_ids:
+                badge.pack(side="right", padx=(8, 0))
+            else:
+                badge.pack_forget()
+            earned = item_id in self._unlocked
+            self.status_badges[item_id].configure(
+                text="Unlocked" if earned else "Locked",
+                fill=self.palette["accent"] if earned else self.palette["card"],
+                foreground=self.palette["ink"] if earned else self.palette["muted"],
+            )
 
     def focus_reward(self, accessory_id: str) -> tk.Frame:
+        self.show_page(self.page_for_item(accessory_id))
+        self.update_idletasks()
+        if self.page_for_item(accessory_id) != self._page_index:
+            self.show_page(self.page_for_item(accessory_id))
+            self.update_idletasks()
         card = self.cards[accessory_id]
         self._new_ids.discard(accessory_id)
         self.new_badges[accessory_id].pack_forget()

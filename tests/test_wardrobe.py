@@ -213,6 +213,7 @@ class WardrobeTests(unittest.TestCase):
             for card in window.achievements.cards.values()
         }
         self.assertIn(1, wide_columns)
+        self.assertEqual(len(window.achievements.cards), 4)
 
         window.window.geometry("620x500")
         window.window.update()
@@ -221,6 +222,35 @@ class WardrobeTests(unittest.TestCase):
             for card in window.achievements.cards.values()
         }
         self.assertEqual(narrow_columns, {0})
+        self.assertEqual(len(window.achievements.cards), 2)
+        for card in window.achievements.cards.values():
+            copy = next(child for child in card.content.winfo_children()
+                        if isinstance(child, tk.Frame))
+            labels = [child for child in copy.winfo_children() if isinstance(child, tk.Label)]
+            self.assertTrue(labels)
+            for label in labels:
+                self.assertEqual(int(label.cget('wraplength')), max(1, copy.winfo_width() - 4))
+
+    def test_achievement_pages_preserve_progress_new_flags_and_focus(self):
+        window = self.window()
+        view = window.achievements
+        self.assertEqual(len(view._visible_items), 22)
+        self.assertLessEqual(len(view.cards), 4)
+        view.mark_new((ACCESSORY_BY_ID['crown'],))
+        view.show_page(999)
+        self.assertEqual(view._page_index, (22 - 1) // view._page_size)
+        view.update_progress(UsageMetrics(total_keystrokes=900), set())
+        self.assertIn('900 / 1,000', view.progress_text['round-glasses'].get())
+        view.show_page(0)
+        self.assertIn('crown', view._new_ids)
+        view.show_page(view.page_for_item('crown'))
+        self.assertEqual(view.new_badges['crown'].winfo_manager(), 'pack')
+        card = view.focus_reward('crown')
+        self.assertIs(card, view.cards['crown'])
+        self.assertEqual(view._page_index, view.page_for_item('crown'))
+        self.assertNotIn('crown', view._new_ids)
+        with self.assertRaises(KeyError):
+            view.page_for_item('missing')
 
     def test_achievement_card_focus_draws_a_visible_focus_ring(self) -> None:
         window = self.window()
@@ -245,7 +275,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
         self.assertIn('5 of 25', window.achievements.summary.get())
         for item_id in new_ids:
-            self.assertIn(item_id, window.achievements.cards)
+            self.assertIn(item_id, window.achievements._visible_ids)
             window.wardrobe.focus_item(item_id).invoke()
         plain = ImageTk.getimage(window._preview_frames['white']['idle']).tobytes()
         window.page_buttons['Achievements'].invoke()
