@@ -859,7 +859,17 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             view.metrics_chart.itemcget(item, "text")
             for item in view.metrics_chart.find_withtag("metric-y-label")
         }
-        self.assertEqual(axis_texts, {"0", "5e9", "1e10", "1.5e10"})
+        # Full labels are used whenever they fit the gutter. Platforms scale
+        # Tk fonts differently, so derive which form each tick must take from
+        # the same measured limit instead of assuming Windows font metrics.
+        canvas = view.metrics_chart
+        axis_font = view.fonts["tiny"]
+        gutter_limit = (canvas.winfo_width() - min(14, canvas.winfo_width() // 8)) // 2 - 12
+        expected = {"0"}
+        for full, compact in (("5,000,000k", "5e9"), ("10,000,000k", "1e10"),
+                              ("15,000,000k", "1.5e10")):
+            expected.add(compact if axis_font.measure(full) > gutter_limit else full)
+        self.assertEqual(axis_texts, expected)
 
     def test_wardrobe_heading_owns_the_mix_action(self) -> None:
         self.assertFalse(self.settings_window.mix_it_up_button.winfo_ismapped())
@@ -909,8 +919,13 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
                         self.assertGreaterEqual(top, 0)
                         self.assertLessEqual(right, button.winfo_width())
                         self.assertLessEqual(bottom, button.winfo_height())
-                        self.assertGreaterEqual(button.winfo_rooty(),
-                                                view.page_heading_label.winfo_rooty() + view.page_heading_label.winfo_height())
+                        # Narrow fonts may keep the action beside the title;
+                        # wider ones stack it underneath. Either way the two
+                        # must not overlap.
+                        label = view.page_heading_label
+                        below = button.winfo_rooty() >= label.winfo_rooty() + label.winfo_height()
+                        beside = button.winfo_rootx() >= label.winfo_rootx() + label.winfo_width()
+                        self.assertTrue(below or beside)
 
     def test_settings_rows_keep_controls_on_the_right(self) -> None:
         self.settings_window.active_page.set("Settings")

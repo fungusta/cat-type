@@ -44,15 +44,19 @@ def render_soft_pill(
     offset = 2 if pressed else 0
     shadow = "#E5DDD5" if disabled else BUTTON_SHADOW
     face = "#ECE7E0" if disabled else fill
+    # Tk reports 1px widths during the first layout passes. Keep the right
+    # edge from crossing the left one, which Pillow rejects.
+    face_right = max(6, image_width - 7)
+    focus_right = max(3, image_width - 10)
     shadow_top = min(height - 1, 3 + offset)
     draw.rounded_rectangle(
-        (6, shadow_top * scale, image_width - 7, image_height - scale),
+        (6, shadow_top * scale, face_right, image_height - scale),
         radius=soft_pill_radius(height) * scale,
         fill=shadow,
     )
     face_bottom = min(height - 3 + offset, height - 1)
     draw.rounded_rectangle(
-        (6, offset * scale, image_width - 7, face_bottom * scale),
+        (6, offset * scale, face_right, face_bottom * scale),
         radius=soft_pill_radius(height) * scale,
         fill=face,
         outline=BUTTON_BORDER,
@@ -60,7 +64,7 @@ def render_soft_pill(
     )
     if focused and not disabled:
         draw.rounded_rectangle(
-            (3, max(0, offset - 1) * scale, image_width - 10,
+            (3, max(0, offset - 1) * scale, focus_right,
              min(height - 1, height - 2 + offset) * scale),
             radius=soft_pill_radius(height) * scale,
             outline=BUTTON_ACCENT,

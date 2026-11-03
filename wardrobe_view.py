@@ -138,8 +138,11 @@ class WardrobeView(tk.Frame):
             width = header.winfo_width()
             if width <= 1:
                 return
+            # Native radiobuttons add platform-specific chrome around their
+            # image, so budget the larger of the face and what Tk requests.
             trailing_width = (
-                trailing._natural_size[0] if isinstance(trailing, RoundedChoice)
+                max(trailing._natural_size[0], trailing.winfo_reqwidth())
+                if isinstance(trailing, RoundedChoice)
                 else trailing_font.measure(str(trailing.cget("text"))) + 4
             )
             stacked = self._responsive_width(width) < title_width + trailing_width + 16

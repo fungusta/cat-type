@@ -29,6 +29,7 @@ TEST_MODULES = (
     "tests.test_wardrobe_integration",
     "tests.test_cat_comparison",
     "tests.test_vector_platform_surfaces",
+    "tests.test_ui_surfaces",
     "tests.test_overlay_rendering",
     "tests.test_usage_metrics",
     "tests.test_settings_window",
