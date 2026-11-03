@@ -130,13 +130,27 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          # Stapling looks the ticket up through Apple's CloudKit service,
+          # which intermittently drops connections (stapler Error 68).
+          retry() {
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+              if [[ $attempt -lt 5 ]]; then
+                echo "::warning::'$*' failed (attempt $attempt of 5); retrying"
+                sleep $((attempt * 20))
+              fi
+            done
+            return 1
+          }
           xcrun notarytool submit "${{ matrix.source }}" \
             --key "$ASC_PRIVATE_KEY_PATH" \
             --key-id "$ASC_KEY_ID" \
             --issuer "$ASC_ISSUER_ID" \
             --wait
-          xcrun stapler staple "${{ matrix.source }}"
-          xcrun stapler validate "${{ matrix.source }}"
+          retry xcrun stapler staple "${{ matrix.source }}"
+          retry xcrun stapler validate "${{ matrix.source }}"
           spctl --assess \
             --type open \
             --context context:primary-signature \
