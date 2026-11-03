@@ -8,11 +8,13 @@ from __future__ import annotations
 import sys
 import tkinter as tk
 from pathlib import Path
+from tkinter import font as tkfont
 from PIL import Image, ImageTk
-from ui_surfaces import RoundedAction, BUTTON_ACCENT, BUTTON_INK
+from ui_surfaces import RoundedAction, BUTTON_ACCENT, BUTTON_INK, blend
 
 
 TITLEBAR_BACKGROUND = '#FFF9F3'
+WINDOW_EDGE = '#E2D9D0'
 
 
 class TitleBarAction(RoundedAction):
@@ -37,10 +39,12 @@ class TitleBarAction(RoundedAction):
         self.delete('all')
         width, height = self._button_width, self._button_height
         scale = self._scale
-        if self._hovered or self._focused or self._pressed:
+        hover = self._hover.value
+        if hover or self._focused or self._pressed:
             inset = max(1, round(scale))
+            amount = 1.0 if self._focused or self._pressed else hover
             self.create_round_rect(inset, inset, width - inset, height - inset,
-                radius=round(7 * scale), fill=BUTTON_ACCENT,
+                radius=round(7 * scale), fill=blend(TITLEBAR_BACKGROUND, BUTTON_ACCENT, amount),
                 outline=BUTTON_INK if self._focused else '',
                 width=max(1, round(scale)))
         x, y = width / 2, height / 2
@@ -81,9 +85,12 @@ class ThemedTitleBar(tk.Frame):
             control = TitleBarAction(actions, label=label, command=callback, scale=scale)
             control.pack(side='left', padx=round(scale))
             self.controls.append(control)
+        families = set(tkfont.families(self))
+        family = next((name for name in ('Segoe UI Variable Text Semibold', 'Segoe UI Semibold')
+                       if name in families), None)
         self.title = tk.Label(self, text='Cat Type Settings', anchor='w',
                               background=TITLEBAR_BACKGROUND, foreground=BUTTON_INK,
-                              font=('TkDefaultFont', 9, 'bold'))
+                              font=(family, 9) if family else ('TkDefaultFont', 9, 'bold'))
         try:
             with Image.open(Path(__file__).resolve().parent / 'assets' / 'cat-type.png') as mark:
                 mark_size = round(22 * scale)
@@ -219,7 +226,27 @@ class NativeWindowChrome:
         self.user.SetWindowLongW(hwnd, -20,
             (self.user.GetWindowLongW(hwnd, -20) | 0x40000) & ~0x80)
         self.user.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x27)
+        self._apply_rounded_frame(hwnd)
         return True
+
+    @staticmethod
+    def _apply_rounded_frame(hwnd):
+        """Ask Windows 11 DWM for rounded corners and a warm hairline edge.
+
+        Earlier Windows versions reject these attributes; the square frame
+        remains fully functional there.
+        """
+        import ctypes as c
+        try:
+            dwm = c.WinDLL('dwmapi')
+        except OSError:
+            return
+        red, green, blue = (int(WINDOW_EDGE[i:i + 2], 16) for i in (1, 3, 5))
+        for attribute, value in ((33, 2),  # DWMWA_WINDOW_CORNER_PREFERENCE: round
+                                 (34, red | green << 8 | blue << 16)):  # DWMWA_BORDER_COLOR
+            setting = c.c_uint(value)
+            dwm.DwmSetWindowAttribute(c.c_void_p(hwnd), attribute,
+                                      c.byref(setting), c.sizeof(setting))
 
     def minimize(self):
         if self.hwnd:

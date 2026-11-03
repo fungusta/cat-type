@@ -589,7 +589,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         from tkinter import ttk
         view = self.settings_window
         style = ttk.Style(view.window)
-        self.assertEqual(style.lookup(view.scrollbar_style, "background"), view.ACCENT)
+        # A quiet neutral thumb leaves Butter Sun for active states.
+        self.assertEqual(style.lookup(view.scrollbar_style, "background"), view.SCROLL_THUMB)
         self.assertEqual(style.lookup(view.scrollbar_style, "background", ("pressed",)), view.INK)
         self.assertEqual(style.lookup(view.scrollbar_style, "troughcolor"), view.BACKGROUND)
         self.assertEqual(str(view.scrollbar.cget("takefocus")), "1")
@@ -1218,7 +1219,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(texts, expected_texts)
         self.assertIs(
             self.settings_window.scroll_content.winfo_children()[0],
-            self.settings_window.page_switcher,
+            self.settings_window.page_host,
+        )
+        self.assertIs(
+            self.settings_window.page_switcher.master,
+            self.settings_window.scroll_host,
         )
         self.assertIs(
             self.settings_window.preview_canvas.master,
@@ -1232,11 +1237,38 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(self.settings_window.rail_brand_title.cget("text"), "Cat Type")
         self.assertFalse(hasattr(self.settings_window, "companion_header"))
 
-    def test_rail_preview_matches_the_compact_prototype_brand(self) -> None:
-        self.settings_window.window.update_idletasks()
-        self.assertLessEqual(int(self.settings_window.rail_preview.cget("width")), 64)
-        self.assertLessEqual(int(self.settings_window.rail_preview.cget("height")), 64)
-        self.assertEqual(self.settings_window.rail_brand_title.grid_info()["column"], 1)
+    def test_rail_preview_is_a_large_square_stage_above_the_brand(self) -> None:
+        self.settings_window.window.geometry("920x800")
+        self.settings_window.window.update()
+        preview = self.settings_window.rail_preview
+        width, height = int(preview.cget("width")), int(preview.cget("height"))
+        self.assertEqual(width, height)
+        self.assertGreaterEqual(width, 160)
+        self.assertGreater(
+            int(self.settings_window.rail_brand_title.grid_info()["row"]),
+            int(preview.grid_info()["row"]),
+        )
+
+    def test_rail_preview_stays_in_view_while_the_page_scrolls(self) -> None:
+        self.settings_window.window.geometry("920x600")
+        self.settings_window.window.update()
+        preview = self.settings_window.rail_preview
+        before = preview.winfo_rooty()
+        self.settings_window.scroll_canvas.yview_moveto(1.0)
+        self.settings_window.window.update()
+        self.assertEqual(preview.winfo_rooty(), before)
+
+    def test_short_window_shrinks_the_stage_to_keep_navigation_visible(self) -> None:
+        view = self.settings_window
+        view.window.geometry("700x480")
+        view.window.update()
+        view.window.update()
+        self.assertLess(int(view.rail_preview.cget("width")), view._rail_stage_max)
+        last_tab = view.page_buttons["Achievements"]
+        self.assertLessEqual(
+            last_tab.winfo_rooty() + last_tab.winfo_height(),
+            view.scroll_host.winfo_rooty() + view.scroll_host.winfo_height(),
+        )
 
     def test_navigation_pills_share_one_face_width(self) -> None:
         widths = {button._size[0] for button in self.settings_window.page_buttons.values()}

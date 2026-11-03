@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
 
+from ui_surfaces import MOTION_FAST_MS
 from window_chrome import ThemedTitleBar, NativeWindowChrome
 
 
@@ -43,6 +44,9 @@ class TitleBarTests(unittest.TestCase):
     def test_icon_control_hover_focus_and_restore(self):
         control = self.bar.controls[1]
         control.event_generate('<Enter>')
+        self.root.update()
+        # Hover eases in; let the short animation settle before inspecting.
+        self.root.after(MOTION_FAST_MS + 40)
         self.root.update()
         self.assertIn('#f2d66b', [control.itemcget(item, 'fill').lower()
                                  for item in control.find_all() if control.type(item) != 'image'])

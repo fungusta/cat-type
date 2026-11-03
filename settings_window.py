@@ -18,7 +18,15 @@ from cat_settings import CAT_VARIANTS, AppSettings
 from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
-from ui_surfaces import RoundedPanel, RoundedChoice, RoundedAction, RoundedBadge
+from ui_surfaces import (
+    MOTION_NORMAL_MS,
+    RoundedPanel,
+    RoundedChoice,
+    RoundedAction,
+    RoundedBadge,
+    Tween,
+    blend,
+)
 from window_chrome import ThemedTitleBar, NativeWindowChrome
 
 
@@ -60,9 +68,7 @@ class Toggle(tk.Frame):
             background=background,
             cursor="hand2",
             takefocus=True,
-            highlightthickness=1,
-            highlightbackground=background,
-            highlightcolor=accent,
+            highlightthickness=0,
         )
         self.variable = variable
         self.accent = accent
@@ -93,10 +99,17 @@ class Toggle(tk.Frame):
             )
             description_label.pack(anchor="w", pady=(2, 0))
 
+        self._focused = False
+        self._motion = Tween(
+            self,
+            lambda _value: self._draw(),
+            duration_ms=MOTION_NORMAL_MS,
+            value=1.0 if variable.get() else 0.0,
+        )
         self.switch = tk.Canvas(
             self,
-            width=52,
-            height=30,
+            width=58,
+            height=34,
             background=background,
             highlightthickness=0,
             cursor="hand2",
@@ -118,42 +131,52 @@ class Toggle(tk.Frame):
             self.bind(sequence, self._toggle)
         self.bind("<FocusIn>", lambda _event: self._set_focus(True))
         self.bind("<FocusOut>", lambda _event: self._set_focus(False))
-        self.variable.trace_add("write", lambda *_args: self._draw())
+        self.variable.trace_add(
+            "write",
+            lambda *_args: self._motion.to(1.0 if self.variable.get() else 0.0),
+        )
         self._draw()
 
     def _set_focus(self, focused: bool) -> None:
-        self.configure(
-            highlightthickness=2,
-            highlightbackground=self.focus_ring if focused else self["background"],
-            highlightcolor=self.accent,
-        )
+        self._focused = focused
+        self._draw()
 
     def _toggle(self, _event: tk.Event[tk.Misc]) -> None:
         self.variable.set(not self.variable.get())
 
     def _draw(self) -> None:
-        on = self.variable.get()
-        track = self.accent if on else "#D9D1C8"
+        # ``position`` eases between off (0) and on (1) so the knob glides.
+        position = self._motion.value
+        track = blend("#D9D1C8", self.accent, position)
         scale = 4
-        width = 52
-        height = 30
+        width = 58
+        height = 34
         image = Image.new(
             "RGBA",
             (width * scale, height * scale),
             (0, 0, 0, 0),
         )
         draw = ImageDraw.Draw(image)
+        if self._focused:
+            draw.rounded_rectangle(
+                (1 * scale, 1 * scale, 57 * scale, 33 * scale),
+                radius=16 * scale,
+                outline=self.accent,
+                width=2 * scale,
+            )
         draw.rounded_rectangle(
-            (1 * scale, 2 * scale, 51 * scale, 28 * scale),
+            (4 * scale, 4 * scale, 54 * scale, 30 * scale),
             radius=13 * scale,
             fill=track,
+            outline=self.focus_ring if self._focused else blend(track, "#7A5C2E", 0.12),
+            width=scale,
         )
-        knob_left = 27 if on else 4
+        knob_left = 7 + (24 * position)
         knob_box = (
             knob_left * scale,
-            4 * scale,
-            (knob_left + 22) * scale,
-            26 * scale,
+            7 * scale,
+            (knob_left + 20) * scale,
+            27 * scale,
         )
         shadow_box = (
             knob_box[0],
@@ -161,12 +184,10 @@ class Toggle(tk.Frame):
             knob_box[2],
             knob_box[3] + scale,
         )
-        draw.ellipse(shadow_box, fill=(78, 55, 48, 35))
+        draw.ellipse(shadow_box, fill=(74, 52, 40, 40))
         draw.ellipse(
             knob_box,
             fill="#FFFFFF",
-            outline=(235, 225, 219, 255),
-            width=scale,
         )
         image = image.resize(
             (width, height),
@@ -236,52 +257,50 @@ class CatScale(tk.Canvas):
         if not self.winfo_exists():
             return
         self.delete("all")
+        width = max(1, self.winfo_width())
+        height = 24
         left = 10
-        right = max(left, self.winfo_width() - 10)
+        right = max(left, width - 10)
         y = 12
         knob_x = left + ((right - left) * self._fraction())
-        self.create_line(
-            left,
-            y,
-            right,
-            y,
+        focused = self.focus_get() is self
+        # Canvas primitives are not anti-aliased; rasterize at 4x instead.
+        s = 4
+        image = Image.new("RGBA", (width * s, height * s), self.cget("background"))
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle(
+            ((left - 2) * s, (y - 2) * s, (right + 2) * s, (y + 2) * s),
+            radius=2 * s,
             fill=self.trough,
-            width=6,
-            capstyle="round",
         )
         if knob_x > left:
-            self.create_line(
-                left,
-                y,
-                knob_x,
-                y,
+            draw.rounded_rectangle(
+                ((left - 2) * s, (y - 2) * s, knob_x * s, (y + 2) * s),
+                radius=2 * s,
                 fill=self.accent,
-                width=6,
-                capstyle="round",
             )
-        outline = (
-            self.accent_dark
-            if self.focus_get() is self
-            else self.accent
-        )
-        if self.focus_get() is self:
-            self.create_oval(
-                knob_x - 11,
-                y - 11,
-                knob_x + 11,
-                y + 11,
+        if focused:
+            draw.ellipse(
+                ((knob_x - 11.5) * s, (y - 11.5) * s,
+                 (knob_x + 11.5) * s, (y + 11.5) * s),
                 outline=self.accent,
-                width=2,
+                width=2 * s,
             )
-        self.create_oval(
-            knob_x - 8,
-            y - 8,
-            knob_x + 8,
-            y + 8,
-            fill="#FFFFFF",
-            outline=outline,
-            width=2,
+        draw.ellipse(
+            ((knob_x - 8) * s, (y - 7) * s, (knob_x + 8) * s, (y + 9) * s),
+            fill=(74, 52, 40, 36),
         )
+        draw.ellipse(
+            ((knob_x - 8) * s, (y - 8) * s, (knob_x + 8) * s, (y + 8) * s),
+            fill="#FFFFFF",
+            outline=self.accent_dark if focused else "#DDD3C9",
+            width=s,
+        )
+        self._image = ImageTk.PhotoImage(
+            image.resize((width, height), Image.Resampling.LANCZOS),
+            master=self,
+        )
+        self.create_image(0, 0, anchor="nw", image=self._image)
 
     def _set_value(self, value: float) -> None:
         clamped = min(self.maximum, max(self.minimum, value))
@@ -322,15 +341,21 @@ class SettingsWindow:
     ACCENT_DARK = "#5C4A1F"
     PEACH = "#FFF1B8"
     BLUSH = "#FAF7F2"
-    BORDER = "#E3DDD7"
+    BORDER = "#E8E1DA"
     FOCUS = "#302A33"
+    SCROLL_THUMB = "#D8CFC6"
+    TRACK = "#ECE5DE"
+    CHIP = "#F5F0EA"
     PREFERRED_WIDTH = 920
     PREFERRED_HEIGHT = 800
     MIN_WIDTH = 700
     MIN_HEIGHT = 480
     SCREEN_HORIZONTAL_MARGIN = 40
     SCREEN_VERTICAL_MARGIN = 80
-    TWO_COLUMN_BREAKPOINT = 840
+    # Measured on the page area only; the pinned rail sits outside it.
+    TWO_COLUMN_BREAKPOINT = 600
+    RAIL_STAGE_MIN = 64
+    RAIL_STAGE_INSET = 12
     CONTENT_LAYOUT_SETTLE_PASSES = 2
     CONTENT_FIT_SETTLE_PASSES = 8
     FOOTER_VERTICAL_PADDING: tuple[int, int] = (12, 14)
@@ -391,6 +416,7 @@ class SettingsWindow:
         self._preview_variant = "gray"
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
         self._rail_preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
+        self._rail_preview_sources: dict[str, dict[str, Image.Image]] = {}
         self._layout_mode: str | None = None
         self.usage_metrics = (usage_metrics or UsageMetrics()).normalized()
         if keystroke_count > self.usage_metrics.total_keystrokes:
@@ -488,37 +514,56 @@ class SettingsWindow:
                 "TkDefaultFont",
             )
 
-        heading = pick(
-            "Arial Rounded MT Bold",
-            "Avenir Next",
-            "Segoe UI",
-            "TkDefaultFont",
+        # Humanist system faces: Segoe UI Variable on Windows 11, Avenir Next
+        # on macOS, then common Linux UI families. Optical-size families carry
+        # their own semibold weight; older fallbacks synthesize it with bold.
+        display = pick(
+            "Segoe UI Variable Display Semib",
+            "Avenir Next Demi Bold",
+            "Segoe UI Semibold",
+        )
+        strong = pick(
+            "Segoe UI Variable Text Semibold",
+            "Avenir Next Medium",
+            "Segoe UI Semibold",
         )
         body = pick(
-            "Trebuchet MS",
+            "Segoe UI Variable Text",
             "Avenir Next",
+            "Inter",
+            "Cantarell",
+            "Noto Sans",
             "Helvetica Neue",
             "Segoe UI",
             "Arial",
             "TkDefaultFont",
         )
+
+        def weighted(family: str) -> tuple[str, str]:
+            if family == "TkDefaultFont":
+                return body, "bold"
+            return family, "normal"
+
+        display, display_weight = weighted(display)
+        strong, strong_weight = weighted(strong)
         self.fonts = {
             "display_compact": tkfont.Font(
                 self.window,
-                family=body,
+                family=display,
                 size=22,
-                weight="bold",
+                weight=display_weight,
             ),
             "section": tkfont.Font(
                 self.window,
-                family=heading,
+                family=display,
                 size=12,
+                weight=display_weight,
             ),
             "control": tkfont.Font(
                 self.window,
-                family=body,
+                family=strong,
                 size=10,
-                weight="bold",
+                weight=strong_weight,
             ),
             "body": tkfont.Font(
                 self.window,
@@ -537,9 +582,9 @@ class SettingsWindow:
             ),
             "button": tkfont.Font(
                 self.window,
-                family=body,
+                family=strong,
                 size=10,
-                weight="bold",
+                weight=strong_weight,
             ),
             "symbol": tkfont.Font(
                 self.window,
@@ -619,13 +664,21 @@ class SettingsWindow:
             sliderrelief="flat",
             gripcount=0,
         )
+        # A slim, arrowless thumb in a quiet neutral; it darkens to ink only
+        # while hovered, dragged, or keyboard focused.
+        style.layout(self.scrollbar_style, [(
+            "Vertical.Scrollbar.trough",
+            {"sticky": "ns", "children": [
+                ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"}),
+            ]},
+        )])
         style.configure(
-            self.scrollbar_style, background=self.ACCENT, troughcolor=self.BACKGROUND,
-            bordercolor=self.BACKGROUND, lightcolor=self.ACCENT, darkcolor=self.ACCENT,
-            arrowcolor=self.INK, width=18, arrowsize=18)
-        style.map(self.scrollbar_style,
-                  background=[("pressed", self.INK), ("active", self.INK), ("focus", self.INK)],
-                  arrowcolor=[("pressed", self.CARD), ("active", self.CARD), ("focus", self.CARD)])
+            self.scrollbar_style, background=self.SCROLL_THUMB, troughcolor=self.BACKGROUND,
+            bordercolor=self.BACKGROUND, lightcolor=self.SCROLL_THUMB,
+            darkcolor=self.SCROLL_THUMB, gripcount=0, arrowsize=10, relief="flat")
+        hovered = [("pressed", self.INK), ("active", self.MUTED), ("focus", self.INK)]
+        style.map(self.scrollbar_style, background=hovered, lightcolor=hovered,
+                  darkcolor=hovered)
         style.configure(
             "Cat.TButton",
             background=self.CARD,
@@ -679,24 +732,38 @@ class SettingsWindow:
         if not icon_path:
             return
         assets_root = Path(icon_path).parent
+        # One render per pose serves both the 148px shelf preview and the
+        # rail stage, which can be larger at high DPI and shrinks on short windows.
+        render_size = max(148, self._rail_stage_max - self.RAIL_STAGE_INSET * 2)
         for variant in (variants or CAT_VARIANTS):
             vector_frames = self._preview_frames.setdefault(variant, {})
             rail_frames = self._rail_preview_frames.setdefault(variant, {})
+            sources = self._rail_preview_sources.setdefault(variant, {})
             for name in (poses or ("idle", "tap-left", "tap-right", "excited")):
                 image = load_frame(
-                    assets_root, variant, name, 148,
+                    assets_root, variant, name, render_size,
                     **self._selected_outfit(),
                 )
+                sources[name] = image
                 vector_frames[name] = ImageTk.PhotoImage(
-                    image,
+                    self._resized_art(image, 148),
                     master=self.window,
                 )
                 rail_frames[name] = ImageTk.PhotoImage(
-                    image.resize((52, 52), getattr(Image, "Resampling", Image).LANCZOS),
+                    self._resized_art(image, self._rail_art_size()),
                     master=self.window,
                 )
             self._preview_frames[variant] = vector_frames
             self._rail_preview_frames[variant] = rail_frames
+
+    @staticmethod
+    def _resized_art(image: Image.Image, size: int) -> Image.Image:
+        if image.size == (size, size):
+            return image
+        return image.resize((size, size), getattr(Image, "Resampling", Image).LANCZOS)
+
+    def _rail_art_size(self) -> int:
+        return max(1, self._rail_stage_size - self.RAIL_STAGE_INSET * 2)
 
     def _scroll_from_keyboard(self, event) -> str:
         commands = {"Up": (-1, "units"), "Down": (1, "units"),
@@ -811,10 +878,11 @@ class SettingsWindow:
             add="+",
         )
 
-        self._build_page_switcher(self.scroll_content)
-        self.scroll_content.grid_columnconfigure(0, weight=0)
-        self.scroll_content.grid_columnconfigure(1, weight=1)
+        self._build_page_switcher(self.scroll_host, self.scroll_content)
+        self.scroll_content.grid_columnconfigure(0, weight=1)
         self.scroll_content.grid_rowconfigure(0, weight=1)
+        self.scroll_host.bind("<Configure>", self._fit_rail_stage, add="+")
+        self.page_switcher.content.bind("<Configure>", self._fit_rail_stage, add="+")
 
         self.columns = tk.Frame(self.page_host, background=self.BACKGROUND)
         self.page_heading = tk.Frame(self.page_host, background=self.BACKGROUND)
@@ -993,7 +1061,7 @@ class SettingsWindow:
         if self._preview_errors:
             self.preview_error_text.set("Some cat previews couldn't load.")
             self.preview_error_surface.grid(
-                row=3, column=0, columnspan=2, sticky="ew", pady=(12, 0),
+                row=4, column=0, sticky="ew", pady=(12, 0),
             )
         else:
             self.preview_error_text.set("")
@@ -1007,74 +1075,7 @@ class SettingsWindow:
         if self._preview_queue and self._preview_hydration_after_id is None:
             self._preview_hydration_after_id = self.window.after_idle(self._hydrate_preview_step)
 
-    def _build_page_switcher(self, parent: tk.Frame) -> None:
-        self.page_switcher = RoundedPanel(
-            parent,
-            background=self.BACKGROUND,
-            fill=self.CARD,
-            border=self.BORDER,
-            radius=20,
-            padding=10,
-        )
-        self.page_switcher.grid(row=0, column=0, sticky="nw", padx=(26, 18), pady=(24, 18))
-        tabs = self.page_switcher.content
-        tabs.configure(padx=4, pady=8)
-        tabs.grid_columnconfigure(1, weight=1)
-        self.rail_preview = tk.Canvas(
-            tabs,
-            width=56,
-            height=56,
-            background=self.CARD,
-            highlightthickness=0,
-        )
-        self.rail_preview.grid(
-            row=0,
-            column=0,
-            rowspan=2,
-            padx=(4, 8),
-            pady=(2, 10),
-            sticky="nw",
-        )
-        self._rail_preview_image = self.rail_preview.create_image(28, 27)
-        # A text placeholder identifies the current cat before vector rendering.
-        placeholder = self.cat_style.get()
-        if CAT_STYLE_LABELS.get(placeholder) == "alternate":
-            placeholder = self._label_for(CAT_STYLE_LABELS, self._preview_variant)
-        self._rail_preview_placeholder = self.rail_preview.create_text(
-            28, 27, text=placeholder, width=52,
-            fill=self.MUTED, font=self.fonts["small"], justify="center",
-        )
-        self.rail_preview.bind("<Map>", self._start_hydration, add="+")
-        self.rail_brand_title = tk.Label(
-            tabs,
-            text="Cat Type",
-            background=self.CARD,
-            foreground=self.INK,
-            font=self.fonts["section"],
-        )
-        self.rail_brand_title.grid(
-            row=0,
-            column=1,
-            sticky="sw",
-            padx=(0, 4),
-            pady=(4, 0),
-        )
-        self.rail_brand_subtitle = tk.Label(
-            tabs,
-            text="companion studio",
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["tiny"],
-        )
-        self.rail_brand_subtitle.grid(
-            row=1,
-            column=1,
-            sticky="nw",
-            padx=(0, 4),
-            pady=(0, 10),
-        )
-        nav = tk.Frame(tabs, background=self.CARD)
-        nav.grid(row=2, column=0, columnspan=2, sticky="ew")
+    def _build_page_switcher(self, rail_parent: tk.Frame, page_parent: tk.Frame) -> None:
         page_labels = ("Settings", "Metrics", "Wardrobe", "Achievements")
         choice_widths = {
             label: self.fonts["control"].measure(
@@ -1083,10 +1084,71 @@ class SettingsWindow:
             for label in page_labels
         }
         rail_content_width = max(134, max(choice_widths.values()) + 10)
+        # The stage is a square as wide as the nav pills, so the cat is the
+        # largest thing in the rail without taking width from the page.
+        dpi_scale = float(self.window.tk.call("tk", "scaling")) / (96 / 72)
+        self._rail_stage_max = rail_content_width - 8
+        self._rail_stage_min = min(self._rail_stage_max, round(self.RAIL_STAGE_MIN * dpi_scale))
+        self._rail_stage_size = self._rail_stage_max
+        self.page_switcher = RoundedPanel(
+            rail_parent,
+            background=self.BACKGROUND,
+            fill=self.CARD,
+            border=self.BORDER,
+            radius=20,
+            padding=10,
+        )
+        # Pinned outside the scrolling page so the cat is always in view.
+        self.page_switcher.pack(
+            side="left", anchor="n", padx=(26, 18), pady=(24, 18),
+            before=self.scroll_canvas,
+        )
+        tabs = self.page_switcher.content
+        tabs.configure(padx=4, pady=8)
+        tabs.grid_columnconfigure(0, weight=1)
+        stage = self._rail_stage_size
+        self.rail_preview = tk.Canvas(
+            tabs,
+            width=stage,
+            height=stage,
+            background=self.CARD,
+            highlightthickness=0,
+        )
+        self.rail_preview.grid(row=0, column=0, pady=(0, 10))
+        self._rail_stage_backdrop = self.rail_preview.create_image(0, 0, anchor="nw")
+        self._rail_preview_image = self.rail_preview.create_image(stage // 2, stage // 2)
+        # A text placeholder identifies the current cat before vector rendering.
+        placeholder = self.cat_style.get()
+        if CAT_STYLE_LABELS.get(placeholder) == "alternate":
+            placeholder = self._label_for(CAT_STYLE_LABELS, self._preview_variant)
+        self._rail_preview_placeholder = self.rail_preview.create_text(
+            stage // 2, stage // 2, text=placeholder, width=stage - 16,
+            fill=self.MUTED, font=self.fonts["small"], justify="center",
+        )
+        self._draw_rail_stage()
+        self.rail_preview.bind("<Map>", self._start_hydration, add="+")
+        self.rail_brand_title = tk.Label(
+            tabs,
+            text="Cat Type",
+            background=self.CARD,
+            foreground=self.INK,
+            font=self.fonts["section"],
+        )
+        self.rail_brand_title.grid(row=1, column=0)
+        self.rail_brand_subtitle = tk.Label(
+            tabs,
+            text="companion studio",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["tiny"],
+        )
+        self.rail_brand_subtitle.grid(row=2, column=0, pady=(0, 10))
+        nav = tk.Frame(tabs, background=self.CARD)
+        nav.grid(row=3, column=0, sticky="ew")
         self.page_switcher.configure(width=rail_content_width + 20)
         self.page_switcher.content.configure(width=rail_content_width)
-        self.page_host = tk.Frame(parent, background=self.BACKGROUND)
-        self.page_host.grid(row=0, column=1, sticky="nsew", padx=(0, 26), pady=(24, 18))
+        self.page_host = tk.Frame(page_parent, background=self.BACKGROUND)
+        self.page_host.grid(row=0, column=0, sticky="nsew", padx=(0, 26), pady=(24, 18))
         self.page_buttons: dict[str, tk.Radiobutton] = {}
         for index, label in enumerate(page_labels):
             text = tk.StringVar(master=self.window, value=label)
@@ -1115,6 +1177,7 @@ class SettingsWindow:
                 cursor="hand2",
                 takefocus=True,
                 min_width=max(60, rail_content_width - 8),
+                variant="ghost",
             )
             button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button
@@ -1134,6 +1197,49 @@ class SettingsWindow:
         self.preview_retry_button.pack(anchor="w")
         self._refresh_page_buttons()
         self._refresh_achievement_indicator()
+
+    def _draw_rail_stage(self) -> None:
+        size = self._rail_stage_size
+        scale = 4
+        tile = Image.new("RGB", (size * scale, size * scale), self.CARD)
+        ImageDraw.Draw(tile).rounded_rectangle(
+            (0, 0, size * scale - 1, size * scale - 1), radius=18 * scale,
+            fill=self.CHIP, outline=self.BORDER, width=scale,
+        )
+        self._rail_stage_image = ImageTk.PhotoImage(
+            tile.resize((size, size), getattr(Image, "Resampling", Image).LANCZOS),
+            master=self.window,
+        )
+        self.rail_preview.itemconfigure(self._rail_stage_backdrop, image=self._rail_stage_image)
+
+    def _fit_rail_stage(self, _event: tk.Event[tk.Misc] | None = None) -> None:
+        # Short windows trade stage size for keeping every nav item reachable.
+        content = self.page_switcher.content
+        host_height = self.scroll_host.winfo_height()
+        if content.winfo_reqheight() <= 1 or host_height <= 1:
+            return
+        other_height = content.winfo_reqheight() - self._rail_stage_size
+        chrome = 24 + 18 + self.page_switcher._padding * 2
+        available = host_height - chrome - other_height
+        target = max(self._rail_stage_min, min(self._rail_stage_max, available))
+        if target < self._rail_stage_max:
+            target -= target % 8
+        target = max(self._rail_stage_min, target)
+        if target == self._rail_stage_size:
+            return
+        self._rail_stage_size = target
+        self.rail_preview.configure(width=target, height=target)
+        for item in (self._rail_preview_image, self._rail_preview_placeholder):
+            self.rail_preview.coords(item, target // 2, target // 2)
+        self.rail_preview.itemconfigure(self._rail_preview_placeholder, width=target - 16)
+        self._draw_rail_stage()
+        art_size = self._rail_art_size()
+        for variant, sources in self._rail_preview_sources.items():
+            self._rail_preview_frames[variant] = {
+                name: ImageTk.PhotoImage(self._resized_art(image, art_size), master=self.window)
+                for name, image in sources.items()
+            }
+        self._display_preview()
 
     def _refresh_achievement_indicator(self) -> None:
         if not hasattr(self, "_achievements_tab_text"):
@@ -2532,6 +2638,10 @@ class SettingsWindow:
         self.cat_style_control = choices
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
         columns = 2
+        # Equal faces keep the style grid an even block instead of a ragged list.
+        choice_width = max(
+            self.fonts["control"].measure(label) for label in CAT_STYLE_LABELS
+        ) + (8 * 2) + 8
         for index, label in enumerate(CAT_STYLE_LABELS):
             button = RoundedChoice(
                 choices,
@@ -2553,6 +2663,7 @@ class SettingsWindow:
                 padx=8,
                 pady=8,
                 cursor="hand2",
+                min_width=choice_width,
             )
             button.grid(
                 row=index // columns,
@@ -2652,7 +2763,7 @@ class SettingsWindow:
             helper="Let the cat fade away gently.",
             shelf_row=True,
         )
-        self.cat_style_card.pack(fill="x")
+        self.cat_style_card.pack(fill="x", pady=(0, 14))
 
     def _build_behavior_card(self, parent: tk.Frame) -> None:
         card, content = self._card(parent, "Behavior")
@@ -3039,6 +3150,7 @@ class SettingsWindow:
             controls,
             text="",
             font=self.fonts["control"],
+            fill=self.CHIP,
         )
         value_label.pack(side="right")
         if not hasattr(self, "_slider_value_badges"):
@@ -3055,7 +3167,7 @@ class SettingsWindow:
             maximum=maximum,
             command=update,
             background=self.CARD,
-            trough="#E8D8D0",
+            trough=self.TRACK,
             accent=self.ACCENT,
             accent_dark=self.ACCENT_DARK,
         )
@@ -3193,8 +3305,9 @@ class SettingsWindow:
         self,
         widget: tk.Misc | None,
     ) -> bool:
+        rail = getattr(self, "page_switcher", None)
         while widget is not None:
-            if widget is self.scroll_canvas:
+            if widget is self.scroll_canvas or (rail is not None and widget is rail):
                 return True
             widget = getattr(widget, "master", None)
         return False
@@ -3234,6 +3347,7 @@ class SettingsWindow:
         self._refresh_preview_error()
         self._preview_frames.clear()
         self._rail_preview_frames.clear()
+        self._rail_preview_sources.clear()
         selected = CAT_STYLE_LABELS.get(self.cat_style.get(), "alternate")
         if selected in CAT_VARIANTS:
             self._preview_variant = selected
@@ -3450,7 +3564,14 @@ class SettingsWindow:
                 if self.scrollbar.winfo_manager()
                 else 0
             )
-            canvas_width = max(1, window_width - scrollbar_width)
+            rail = getattr(self, "page_switcher", None)
+            rail_width = 0
+            if rail is not None and rail.winfo_manager():
+                padx = rail.pack_info()["padx"]
+                rail_width = rail.winfo_reqwidth() + (
+                    sum(map(int, padx)) if isinstance(padx, tuple) else int(padx) * 2
+                )
+            canvas_width = max(1, window_width - scrollbar_width - rail_width)
             self.scroll_canvas.itemconfigure(
                 self._scroll_content_id,
                 width=canvas_width,

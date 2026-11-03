@@ -2,30 +2,144 @@
 
 from __future__ import annotations
 
+import functools
+import sys
+import time
 import tkinter as tk
 from collections.abc import Callable, Mapping
 
 from pagination import PageWindow, page_label, page_window
 from tkinter import font as tkfont
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageTk
 
 
-BUTTON_SHADOW = "#E7DED6"
-BUTTON_BORDER = "#D8CEC5"
-BUTTON_HOVER = "#FFF1B8"
+BUTTON_SHADOW = "#4A3428"
+BUTTON_BORDER = "#E2D9D0"
+BUTTON_HOVER = "#FFF5D1"
 BUTTON_ACCENT = "#F2D66B"
 BUTTON_INK = "#302A33"
 BUTTON_MUTED = "#655C66"
-SOFT_PILL_MAX_RADIUS = 12
+BUTTON_DISABLED = "#F3EFEA"
+BUTTON_DISABLED_EDGE = "#E8E1DA"
+SOFT_PILL_MAX_RADIUS = 14
+# Fluent motion timings: hover/press feedback is "fast", state changes "normal".
+MOTION_FAST_MS = 120
+MOTION_NORMAL_MS = 167
+MOTION_FRAME_MS = 16
+_SUPERSAMPLE = 4
 
 
 def soft_pill_radius(height: int) -> int:
     """Return a soft corner radius without turning short buttons into capsules."""
-    return min(SOFT_PILL_MAX_RADIUS, max(4, height // 3))
+    return min(SOFT_PILL_MAX_RADIUS, max(4, round(height / 2.6)))
 
 
-def render_soft_pill(
-    master: tk.Misc,
+def blend(start: str, end: str, amount: float) -> str:
+    """Mix two Tk colors, returning a hex color ``amount`` of the way to ``end``."""
+    amount = min(1.0, max(0.0, amount))
+    first = ImageColor.getrgb(start)[:3]
+    second = ImageColor.getrgb(end)[:3]
+    return "#{:02X}{:02X}{:02X}".format(
+        *(round(a + (b - a) * amount) for a, b in zip(first, second))
+    )
+
+
+def ease_out(progress: float) -> float:
+    """Decelerating curve: quick response that settles gently."""
+    return 1 - (1 - progress) ** 3
+
+
+@functools.lru_cache(maxsize=1)
+def prefers_reduced_motion() -> bool:
+    """Respect the platform's "show animations" accessibility preference."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            enabled = ctypes.c_int(1)
+            # SPI_GETCLIENTAREAANIMATION mirrors Settings > Accessibility >
+            # Visual effects > Animation effects.
+            if ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0):
+                return not enabled.value
+        except (AttributeError, OSError):
+            pass
+    return False
+
+
+class Tween:
+    """Ease a 0..1 value toward a target on the Tk event loop.
+
+    Frames are delivered through ``on_frame``. Unmapped widgets and reduced
+    motion jump straight to the target, so state never waits on animation.
+    """
+
+    def __init__(
+        self,
+        widget: tk.Misc,
+        on_frame: Callable[[float], None],
+        *,
+        duration_ms: int = MOTION_FAST_MS,
+        value: float = 0.0,
+    ) -> None:
+        self.widget = widget
+        self.on_frame = on_frame
+        self.duration_ms = duration_ms
+        self.value = value
+        self.target = value
+        self._after_id: str | None = None
+
+    def cancel(self) -> None:
+        if self._after_id is not None:
+            try:
+                self.widget.after_cancel(self._after_id)
+            except tk.TclError:
+                pass
+            self._after_id = None
+
+    def to(self, target: float) -> None:
+        target = float(target)
+        if target == self.target and (self._after_id is not None or target == self.value):
+            return
+        self.cancel()
+        self.target = target
+        start = self.value
+        try:
+            animate = bool(self.widget.winfo_ismapped()) and not prefers_reduced_motion()
+        except tk.TclError:
+            return
+        if not animate or start == target:
+            self.value = target
+            self.on_frame(target)
+            return
+        # A reversal part-way through only replays the distance it covers.
+        duration = max(MOTION_FRAME_MS, self.duration_ms * abs(target - start))
+        began = time.perf_counter()
+
+        def step() -> None:
+            self._after_id = None
+            progress = min(1.0, (time.perf_counter() - began) * 1000 / duration)
+            self.value = start + (target - start) * ease_out(progress)
+            if progress >= 1.0:
+                self.value = target
+            try:
+                self.on_frame(self.value)
+                if progress < 1.0:
+                    self._after_id = self.widget.after(MOTION_FRAME_MS, step)
+            except tk.TclError:
+                pass  # The widget closed mid-animation.
+
+        step()
+
+
+_pill_cache: dict[tuple[object, ...], Image.Image] = {}
+_PILL_CACHE_LIMIT = 384
+
+
+def _quantized(value: float) -> float:
+    return round(min(1.0, max(0.0, value)) * 8) / 8
+
+
+def soft_pill_image(
     surface: str,
     width: int,
     height: int,
@@ -34,61 +148,123 @@ def render_soft_pill(
     pressed: bool = False,
     focused: bool = False,
     disabled: bool = False,
-) -> ImageTk.PhotoImage:
-    """Render the one shared pill surface used by every settings control."""
-    scale = 4
-    image_width = width * scale
-    image_height = height * scale
-    image = Image.new("RGB", (image_width, image_height), surface)
-    draw = ImageDraw.Draw(image)
-    offset = 2 if pressed else 0
-    shadow = "#E5DDD5" if disabled else BUTTON_SHADOW
-    face = "#ECE7E0" if disabled else fill
-    # Tk reports 1px widths during the first layout passes. Keep the right
-    # edge from crossing the left one, which Pillow rejects.
-    face_right = max(6, image_width - 7)
-    focus_right = max(3, image_width - 10)
-    shadow_top = min(height - 1, 3 + offset)
-    draw.rounded_rectangle(
-        (6, shadow_top * scale, face_right, image_height - scale),
-        radius=soft_pill_radius(height) * scale,
-        fill=shadow,
-    )
-    face_bottom = min(height - 3 + offset, height - 1)
-    draw.rounded_rectangle(
-        (6, offset * scale, face_right, face_bottom * scale),
-        radius=soft_pill_radius(height) * scale,
-        fill=face,
-        outline=BUTTON_BORDER,
-        width=2 * scale,
-    )
+    lift: float = 0.0,
+    flat: bool = False,
+    border: str | None = None,
+) -> Image.Image:
+    """Rasterize a hairline pill with a soft ambient shadow.
+
+    ``lift`` (0..1) raises the shadow for hover; ``flat`` drops elevation for
+    chips and quiet navigation items. A Butter outer ring and ink hairline
+    mark keyboard focus.
+    """
+    width, height = max(1, int(width)), max(1, int(height))
+    lift = _quantized(lift)
+    if disabled:
+        fill, border = BUTTON_DISABLED, BUTTON_DISABLED_EDGE
+    elif border is None:
+        border = (
+            BUTTON_BORDER
+            if ImageColor.getrgb(fill)[:3] == (255, 255, 255)
+            else blend(fill, "#7A5C2E", 0.2)
+        )
     if focused and not disabled:
+        border = BUTTON_INK
+    key = (surface, width, height, fill, pressed, focused, disabled, lift, flat, border)
+    cached = _pill_cache.get(key)
+    if cached is not None:
+        return cached
+
+    pad_x, pad_top, pad_bottom = (1, 1, 1) if flat and not focused else (3, 3, 4)
+    press = 1 if pressed and not disabled else 0
+    left, right = pad_x, max(pad_x + 1, width - pad_x)
+    top = min(height - 1, pad_top + press)
+    bottom = max(top + 1, height - pad_bottom + press)
+    radius = soft_pill_radius(bottom - top)
+
+    image = Image.new("RGBA", (width, height), ImageColor.getrgb(surface)[:3] + (255,))
+    if not flat and not disabled:
+        if pressed:
+            offset, blur, alpha = 0.5, 1.0, 22
+        else:
+            offset, blur, alpha = 1 + lift * 1.5, 1.6 + lift * 1.4, 26 + round(lift * 20)
+        mask = Image.new("L", (width, height), 0)
+        ImageDraw.Draw(mask).rounded_rectangle(
+            (left, top + offset, right, bottom + offset), radius=radius, fill=alpha,
+        )
+        mask = mask.filter(ImageFilter.GaussianBlur(blur))
+        image.paste(BUTTON_SHADOW, (0, 0, width, height), mask)
+
+    scale = _SUPERSAMPLE
+    face = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(face)
+    if focused and not disabled:
+        ring = 2.5
         draw.rounded_rectangle(
-            (3, max(0, offset - 1) * scale, focus_right,
-             min(height - 1, height - 2 + offset) * scale),
-            radius=soft_pill_radius(height) * scale,
+            (max(0, left - ring) * scale, max(0, top - ring) * scale,
+             min(width, right + ring) * scale, min(height, bottom + ring) * scale),
+            radius=(radius + ring) * scale,
             outline=BUTTON_ACCENT,
             width=2 * scale,
         )
+    draw.rounded_rectangle(
+        (left * scale, top * scale, right * scale, bottom * scale),
+        radius=radius * scale,
+        fill=fill,
+        outline=border,
+        width=scale,
+    )
+    face = face.resize((width, height), Image.Resampling.LANCZOS)
+    image.alpha_composite(face)
+    image = image.convert("RGB")
+    if len(_pill_cache) >= _PILL_CACHE_LIMIT:
+        _pill_cache.pop(next(iter(_pill_cache)))
+    _pill_cache[key] = image
+    return image
+
+
+def render_soft_pill(
+    master: tk.Misc,
+    surface: str,
+    width: int,
+    height: int,
+    fill: str,
+    **options: object,
+) -> ImageTk.PhotoImage:
+    """Render the one shared pill surface used by every settings control."""
     return ImageTk.PhotoImage(
-        image.resize((width, height), Image.Resampling.LANCZOS),
+        soft_pill_image(_hex(master, surface), width, height, _hex(master, fill), **options),
         master=master,
     )
 
 
+def _hex(widget: tk.Misc, color: str) -> str:
+    """Resolve Tk-only names such as ``SystemButtonFace`` for Pillow."""
+    if color.startswith("#"):
+        return color
+    red, green, blue = (value >> 8 for value in widget.winfo_rgb(color))
+    return f"#{red:02X}{green:02X}{blue:02X}"
+
+
 class RoundedChoice(tk.Radiobutton):
-    """Native radio behavior with a softly rounded visual face."""
+    """Native radio behavior with a softly rounded visual face.
+
+    ``variant="ghost"`` keeps unselected items flush with their surface until
+    hovered, which suits navigation lists.
+    """
 
     def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
         self._surface = str(parent.cget("background"))
         self._face = str(kwargs.pop("background", self._surface))
         self._accent = str(kwargs.pop("selectcolor", self._face))
         self._edge = str(kwargs.pop("highlightbackground", self._face))
+        self._ghost = kwargs.pop("variant", "") == "ghost"
         self._hover_fill = BUTTON_HOVER
         self._shadow = BUTTON_SHADOW
         self._hovered = False
         self._pressed = False
         self._focused = False
+        self._hover = Tween(self, lambda _value: self._render())
         kwargs.pop("activebackground", None)
         kwargs.pop("highlightcolor", None)
         kwargs.pop("highlightthickness", None)
@@ -146,7 +322,7 @@ class RoundedChoice(tk.Radiobutton):
 
     def _set_hover(self, hovered: bool) -> None:
         self._hovered = hovered
-        self._render()
+        self._hover.to(1.0 if hovered else 0.0)
 
     def _set_pressed(self, pressed: bool) -> None:
         self._pressed = pressed
@@ -158,8 +334,13 @@ class RoundedChoice(tk.Radiobutton):
 
     def _render(self) -> None:
         width, height = self._size
-        normal_fill = self._hover_fill if self._hovered else self._face
-        selected_fill = self._accent
+        hover = self._hover.value
+        if self._ghost:
+            normal_fill = blend(self._surface, self._hover_fill, hover)
+            normal = dict(flat=True, border=normal_fill)
+        else:
+            normal_fill = blend(self._face, self._hover_fill, hover)
+            normal = dict(lift=hover)
         images = [
             render_soft_pill(
                 self,
@@ -169,15 +350,17 @@ class RoundedChoice(tk.Radiobutton):
                 normal_fill,
                 pressed=self._pressed,
                 focused=self._focused,
+                **normal,
             ),
             render_soft_pill(
                 self,
                 self._surface,
                 width,
                 height,
-                selected_fill,
+                self._accent,
                 pressed=self._pressed,
                 focused=self._focused,
+                lift=hover,
             ),
         ]
         self._images = images
@@ -235,6 +418,7 @@ class RoundedAction(tk.Canvas):
         self._pressed = False
         self._focused = False
         self._hovered = False
+        self._hover = Tween(self, lambda _value: self._draw())
         face = tkfont.Font(parent, font=self._font)
         self._width = max(68, face.measure(self._text) + 24)
         self._height = max(34, face.metrics("linespace") + 18)
@@ -267,7 +451,7 @@ class RoundedAction(tk.Canvas):
 
     def _set_hover(self, hovered: bool) -> None:
         self._hovered = hovered
-        self._draw()
+        self._hover.to(1.0 if hovered and self._state != "disabled" else 0.0)
 
     def _press(self, _event: tk.Event[tk.Misc]) -> None:
         if self._state != "disabled":
@@ -314,7 +498,9 @@ class RoundedAction(tk.Canvas):
     def _draw(self) -> None:
         self.delete("all")
         width, height = self._width, self._height
-        fill = BUTTON_HOVER if self._hovered and self._fill != self._accent else self._fill
+        hover = getattr(self, "_hover", None)
+        lift = hover.value if hover is not None else 0.0
+        fill = self._fill if self._fill == self._accent else blend(self._fill, BUTTON_HOVER, lift)
         self._pill_image = render_soft_pill(
             self,
             str(self.cget("background")),
@@ -324,11 +510,14 @@ class RoundedAction(tk.Canvas):
             pressed=self._pressed,
             focused=self._focused,
             disabled=self._state == "disabled",
+            lift=lift,
         )
         self.create_image(0, 0, anchor="nw", image=self._pill_image)
+        # The face sits 3px from the top and 4px from the bottom to leave
+        # room for its shadow; centre the label on the face, not the canvas.
         self.create_text(
             width // 2,
-            height // 2 + (1 if self._pressed else 0),
+            (height - 1) // 2 + (1 if self._pressed else 0),
             text=self._text,
             fill=self._ink if self._state != "disabled" else self._muted,
             font=self._font,
@@ -367,6 +556,9 @@ class RoundedAction(tk.Canvas):
             redraw = True
         if "state" in kwargs:
             self._state = str(kwargs.pop("state"))
+            if self._state == "disabled":
+                self._hover.cancel()
+                self._hover.value = self._hover.target = 0.0
             redraw = True
         if "style" in kwargs:
             style = str(kwargs.pop("style"))
@@ -528,6 +720,8 @@ class RoundedBadge(tk.Canvas):
             self._width,
             self._height,
             self._fill,
+            flat=True,
+            border=self._fill,
         )
         self._image = image
         self.create_image(0, 0, anchor="nw", image=image)
@@ -631,6 +825,67 @@ class RoundedPanel(tk.Canvas):
         if current_width > 1:
             self._draw()
 
+    def _paint_face(
+        self, width: int, height: int, box: tuple[int, int, int, int], radius: int,
+    ) -> Image.Image:
+        scale = _SUPERSAMPLE
+        left, top, right, bottom = box
+        face = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(face)
+        draw.rounded_rectangle(
+            (left * scale, top * scale, right * scale, bottom * scale),
+            radius=radius * scale,
+            fill=self._fill,
+            outline=BUTTON_ACCENT if self._focused else self._border,
+            width=(2 if self._focused else 1) * scale,
+        )
+        if self._focused:
+            draw.rounded_rectangle(
+                ((left + 2) * scale, (top + 2) * scale,
+                 max((left + 3) * scale, (right - 2) * scale),
+                 max((top + 3) * scale, (bottom - 2) * scale)),
+                radius=max(1, radius - 2) * scale,
+                outline=BUTTON_INK,
+                width=scale,
+            )
+        return face.resize((width, height), Image.Resampling.LANCZOS)
+
+    def _render_face(
+        self, width: int, height: int, box: tuple[int, int, int, int], radius: int,
+    ) -> Image.Image:
+        """Supersample only the corners, then stretch the straight edges.
+
+        A tall shelf at 4x is millions of pixels and made every height change
+        visibly stall; the edges between corners are uniform, so a one-pixel
+        strip stretched with NEAREST reproduces them exactly.
+        """
+        left, top, right, bottom = box
+        edge = radius + 4
+        small_width = left + edge * 2 + 1 + (width - right)
+        small_height = top + edge * 2 + 1 + (height - bottom)
+        if width <= small_width or height <= small_height:
+            return self._paint_face(width, height, box, radius)
+        small = self._paint_face(
+            small_width, small_height,
+            (left, top, small_width - (width - right), small_height - (height - bottom)),
+            radius,
+        )
+        source_x = (0, left + edge, left + edge + 1, small_width)
+        source_y = (0, top + edge, top + edge + 1, small_height)
+        target_x = (0, left + edge, width - (small_width - source_x[2]), width)
+        target_y = (0, top + edge, height - (small_height - source_y[2]), height)
+        face = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        for column in range(3):
+            for row in range(3):
+                piece = small.crop((source_x[column], source_y[row],
+                                    source_x[column + 1], source_y[row + 1]))
+                size = (target_x[column + 1] - target_x[column],
+                        target_y[row + 1] - target_y[row])
+                if piece.size != size:
+                    piece = piece.resize(size, Image.Resampling.NEAREST)
+                face.paste(piece, (target_x[column], target_y[row]))
+        return face
+
     def _draw(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         width = max(1, self.winfo_width())
         height = max(1, self.winfo_height())
@@ -648,29 +903,23 @@ class RoundedPanel(tk.Canvas):
         self._last_draw_key = key
         self.itemconfigure(self._content_id, width=max(1, width - self._padding * 2))
         self.delete("shelf")
-        scale = 4
         surface = self._raster_cache.get(key)
         if surface is None:
-            surface = Image.new("RGB", (width * scale, height * scale), self.cget("background"))
-            draw = ImageDraw.Draw(surface)
-            draw.rounded_rectangle(
-                (scale, scale, max(scale + 1, (width - 1) * scale),
-                 max(scale + 1, (height - 1) * scale)),
-                radius=min(self._radius, max(1, min(width, height) // 2)) * scale,
-                fill=self._fill,
-                outline=BUTTON_ACCENT if self._focused else self._border,
-                width=2 * scale,
+            # Face inset leaves a few pixels below for a soft ambient shadow,
+            # which is blurred at 1x: tall shelves would be costly at 4x.
+            left, top = 2, 1
+            right, bottom = max(left + 1, width - 2), max(top + 1, height - 4)
+            radius = min(self._radius, max(1, min(right - left, bottom - top) // 2))
+            surface = Image.new("RGBA", (width, height),
+                                ImageColor.getrgb(self.cget("background"))[:3] + (255,))
+            mask = Image.new("L", (width, height), 0)
+            ImageDraw.Draw(mask).rounded_rectangle(
+                (left, top + 2, right, bottom + 2), radius=radius, fill=20,
             )
-            if self._focused:
-                draw.rounded_rectangle(
-                    (3 * scale, 3 * scale,
-                     max(4 * scale, (width - 3) * scale),
-                     max(4 * scale, (height - 3) * scale)),
-                    radius=max(1, min(self._radius - 2, max(1, min(width, height) // 2 - 2))) * scale,
-                    outline=BUTTON_INK,
-                    width=scale,
-                )
-            surface = surface.resize((width, height), Image.Resampling.LANCZOS)
+            surface.paste(BUTTON_SHADOW, (0, 0, width, height),
+                          mask.filter(ImageFilter.GaussianBlur(3)))
+            surface.alpha_composite(self._render_face(width, height, (left, top, right, bottom), radius))
+            surface = surface.convert("RGB")
             if len(self._raster_cache) >= self._raster_cache_limit:
                 self._raster_cache.pop(next(iter(self._raster_cache)))
             self._raster_cache[key] = surface

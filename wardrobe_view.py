@@ -25,6 +25,20 @@ class _AccessoryRow(tk.Frame):
         self.content.pack(fill="x", padx=6, pady=6)
 
 
+class _TrayPage(tk.Frame):
+    """One page of accessory rows, kept alive so paging back is a swap."""
+
+    def __init__(self, parent: tk.Misc, *, background: str) -> None:
+        super().__init__(parent, background=background)
+        self.buttons: dict[str, RoundedAction] = {}
+        self.none_buttons: dict[str, tk.Radiobutton] = {}
+        self.choice_tiles: dict[str, _AccessoryRow] = {}
+        self.status_text: dict[str, tk.StringVar] = {}
+        self.new_badges: dict[str, RoundedBadge] = {}
+        self.achievement_links: dict[str, tk.Button] = {}
+        self.thumbnails: list[ImageTk.PhotoImage] = []
+
+
 class WardrobeView(tk.Frame):
     def __init__(
         self, parent: tk.Misc, *, assets_root: Path,
@@ -55,7 +69,13 @@ class WardrobeView(tk.Frame):
         self.new_badges: dict[str, RoundedBadge] = {}
         self._new_ids: set[str] = set()
         self.achievement_links: dict[str, tk.Button] = {}
-        self._thumbnails: list[ImageTk.PhotoImage] = []
+        self._pages: dict[tuple[str, ...], _TrayPage] = {}
+        self._current_page: _TrayPage | None = None
+        # Last measured copy width; new rows start wrapped near their final
+        # size instead of one character wide, which avoids reflow cascades.
+        self._copy_wrap = 1
+        self._prefetch_after_id: str | None = None
+        self.bind("<Destroy>", self._cancel_prefetch, add="+")
         self._preview_frame: ImageTk.PhotoImage | None = None
         self.notice = tk.StringVar(master=self, value="")
 
@@ -165,22 +185,84 @@ class WardrobeView(tk.Frame):
         header.bind("<Configure>", arrange)
         trailing.bind("<Configure>", arrange, add="+")
 
-    def _build_choices(self, visible: tuple[Accessory, ...]) -> None:
-        for child in self.choices_area.winfo_children():
-            child.destroy()
-        self.buttons.clear()
-        self.none_buttons.clear()
-        self.choice_tiles.clear()
-        self.status_text.clear()
-        self.new_badges.clear()
-        self.achievement_links.clear()
-        self._thumbnails.clear()
+    def _show_choices(self, visible: tuple[Accessory, ...]) -> None:
+        key = tuple(item.id for item in visible)
+        page = self._pages.get(key)
+        if page is None:
+            page = self._pages[key] = self._build_choices(visible)
+        if page is not self._current_page:
+            # Map the incoming page before unmapping the old one so the tray
+            # never collapses to empty between them.
+            page.pack(fill="x")
+            if self._current_page is not None:
+                self._current_page.pack_forget()
+            self._current_page = page
+        self.buttons = page.buttons
+        self.none_buttons = page.none_buttons
+        self.choice_tiles = page.choice_tiles
+        self.status_text = page.status_text
+        self.new_badges = page.new_badges
+        self.achievement_links = page.achievement_links
+
+    PREFETCH_DELAY_MS = 120
+
+    def _schedule_prefetch(self) -> None:
+        self._cancel_prefetch()
+        self._prefetch_after_id = self.after(self.PREFETCH_DELAY_MS, self._prefetch_neighbor)
+
+    def _cancel_prefetch(self, _event: tk.Event | None = None) -> None:
+        if _event is not None and _event.widget is not self:
+            return
+        if self._prefetch_after_id is not None:
+            self.after_cancel(self._prefetch_after_id)
+            self._prefetch_after_id = None
+
+    def _prefetch_neighbor(self) -> None:
+        """Build the next or previous page while the tray is idle.
+
+        Creating each row's native windows is most of a first page turn, so
+        that work happens here, one page per callback to keep pauses short.
+        """
+        self._prefetch_after_id = None
+        if not self.winfo_ismapped():
+            return
+        if self._copy_wrap <= 1:
+            # Rows built before any copy is measured would wrap one character
+            # wide and bounce the whole page's layout when first shown.
+            self._schedule_prefetch()
+            return
+        for index in (self._page_index + 1, self._page_index - 1):
+            window = page_window(len(self._visible_items), index, self._page_size)
+            if window.index != index:
+                continue
+            items = page_slice(self._visible_items, index, self._page_size)
+            key = tuple(item.id for item in items)
+            if key in self._pages:
+                continue
+            page = self._pages[key] = self._build_choices(items)
+            pending: list[tk.Misc] = [page]
+            while pending:
+                widget = pending.pop()
+                widget.winfo_id()
+                pending.extend(widget.winfo_children())
+            self._schedule_prefetch()
+            return
+
+    def _forget_hidden_pages(self) -> None:
+        """Drop cached pages whose item split no longer applies."""
+        for key, page in list(self._pages.items()):
+            if page is not self._current_page:
+                page.destroy()
+                del self._pages[key]
+
+    def _build_choices(self, visible: tuple[Accessory, ...]) -> _TrayPage:
         palette, fonts, assets_root = self.palette, self.fonts, self.assets_root
+        page = _TrayPage(self.choices_area, background=palette["card"])
         for slot in ACCESSORY_SLOTS:
             items = [item for item in visible if item.slot == slot]
             if not items:
                 continue
-            header = tk.Frame(self.choices_area, background=palette["card"])
+            header = tk.Frame(page, background=palette["card"])
             header.pack(fill="x", pady=(6, 8))
             slot_title = tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
                                   bg=palette["card"], fg=palette["ink"])
@@ -194,8 +276,8 @@ class WardrobeView(tk.Frame):
                 highlightbackground=palette["border"], takefocus=True,
             )
             self._bind_heading_layout(header, slot_title, none_button)
-            self.none_buttons[slot] = none_button
-            choices = tk.Frame(self.choices_area, background=palette["card"])
+            page.none_buttons[slot] = none_button
+            choices = tk.Frame(page, background=palette["card"])
             choices.pack(fill="x", pady=(0, 10))
             choices.grid_columnconfigure(0, weight=1)
             for index, item in enumerate(items):
@@ -205,11 +287,11 @@ class WardrobeView(tk.Frame):
                     )
                 tile = _AccessoryRow(choices, background=palette["card"])
                 tile.grid(row=index * 2, column=0, sticky="ew")
-                self.choice_tiles[item.id] = tile
+                page.choice_tiles[item.id] = tile
                 tile_content = tile.content
                 with load_frame(assets_root, "white", "idle", 58, **{slot: item.id}) as frame:
                     thumbnail = ImageTk.PhotoImage(frame, master=self)
-                self._thumbnails.append(thumbnail)
+                page.thumbnails.append(thumbnail)
                 tile_content.grid_columnconfigure(1, weight=1)
                 thumbnail_label = tk.Label(
                     tile_content,
@@ -227,7 +309,7 @@ class WardrobeView(tk.Frame):
                 copy.grid(row=0, column=1, rowspan=2, sticky="ew", pady=(4, 0))
                 name_label = tk.Label(
                     copy,
-                    wraplength=1, justify="left",
+                    wraplength=self._copy_wrap, justify="left",
                     text=item.name,
                     font=fonts["control"],
                     anchor="w",
@@ -237,7 +319,7 @@ class WardrobeView(tk.Frame):
                 name_label.pack(anchor="w", fill="x")
                 achievement_label = tk.Label(
                     copy,
-                    wraplength=1, justify="left",
+                    wraplength=self._copy_wrap, justify="left",
                     text=item.achievement,
                     font=fonts["small"],
                     anchor="w",
@@ -254,17 +336,18 @@ class WardrobeView(tk.Frame):
                     cursor="hand2",
                 )
                 button.grid(row=0, column=2, sticky="e", padx=(14, 4), pady=4)
-                self.buttons[item.id] = button
+                page.buttons[item.id] = button
                 value = tk.StringVar(master=self)
-                self.status_text[item.id] = value
+                page.status_text[item.id] = value
                 status_row = tk.Frame(copy, background=palette["card"])
                 status_row.pack(fill="x", pady=(5, 2))
                 status_label = tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=1, anchor="w", justify="left")
+                         wraplength=self._copy_wrap, anchor="w", justify="left")
                 status_label.pack(anchor="w", fill="x")
                 def wrap_copy(event, labels=(name_label, achievement_label)):
                     width = max(1, event.width - 4)
+                    self._copy_wrap = width
                     for label in labels:
                         # Wrapping changes height, which emits Configure too.
                         # Reapplying the same width can keep Tk's geometry
@@ -280,14 +363,14 @@ class WardrobeView(tk.Frame):
                     text="NEW",
                     font=fonts["small"],
                 )
-                self.new_badges[item.id] = badge
+                page.new_badges[item.id] = badge
                 link = RoundedAction(
                     tile_content, text="Progress →", font=fonts["small"],
                     command=lambda accessory_id=item.id: self.on_achievement(accessory_id),
                     cursor="hand2", takefocus=True,
                 )
                 link.grid(row=1, column=2, sticky="e", padx=(14, 4), pady=(0, 4))
-                self.achievement_links[item.id] = link
+                page.achievement_links[item.id] = link
                 def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label,
                             badge=badge, link=link, previous_mode=[None]):
                     for action in (button, link):
@@ -322,6 +405,7 @@ class WardrobeView(tk.Frame):
                                         sticky="w" if compact or stacked else "e",
                                         padx=(0, 4) if compact or stacked else (14, 4))
                 tile_content.bind("<Configure>", arrange, add="+")
+        return page
 
     def _resize_choices(self, event: tk.Event) -> None:
         size = 4 if self._responsive_width(event.width) >= 520 else 2
@@ -329,6 +413,7 @@ class WardrobeView(tk.Frame):
             return
         start = self._page_index * self._page_size
         self._page_size = size
+        self._forget_hidden_pages()
         self.show_page(start // size, reflow=True)
 
     def page_for_item(self, item_id: str) -> int:
@@ -355,11 +440,11 @@ class WardrobeView(tk.Frame):
         window = page_window(len(self._visible_items), page_index, self._page_size)
         self._page_index = window.index
         items = page_slice(self._visible_items, window.index, self._page_size)
-        if set(self.buttons) != {item.id for item in items}:
-            self._build_choices(items)
+        self._show_choices(items)
         self.pagination_controls.set_state(window)
         self.tray_count.set(f"{window.start + 1 if window.end else 0}-{window.end} of {len(self._visible_items)}")
         self._refresh_status()
+        self._schedule_prefetch()
 
     def _refresh_status(self) -> None:
         for item_id, button in self.buttons.items():
@@ -423,7 +508,10 @@ class WardrobeView(tk.Frame):
         self.unlocked = set(unlocked)
         visible = visible_accessories(self.unlocked)
         self._visible_items = visible
-        self._visible_ids = tuple(item.id for item in visible)
+        visible_ids = tuple(item.id for item in visible)
+        if visible_ids != self._visible_ids:
+            self._forget_hidden_pages()
+        self._visible_ids = visible_ids
         if newly_unlocked:
             self._new_ids.update(item.id for item in newly_unlocked)
             self.notice.set("Unlocked: " + ", ".join(item.name for item in newly_unlocked))

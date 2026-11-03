@@ -17,3 +17,23 @@
 - **motion approach** — a tiny typing window using the existing flat cat artwork; the page does not need three.js or a 3D scene.
 - **customization interaction** — visitors press **Mix it up** to vary the outfit; they do not need to manage accessory choices on the landing page.
 - **copy voice** — calm product language with occasional dry cat asides.
+
+## Settings design language
+
+- **settings visual voice** — quiet companion: a calm, rounded humanist voice that keeps the settings surface warm and approachable while making controls easy to scan.
+- **settings atmosphere** — playful toybox: an expressive settings surface that makes customization feel like part of the companion experience.
+- **settings shape language** — full toybox: larger rounded surfaces, pill tabs, and pill actions that make customization feel tactile and playful while preserving clear semantic grouping.
+- **settings color behavior** — accent on active states: a restrained visual language with neutral surfaces and dark text, where one accent signals selection, enabled controls, and focus.
+- **settings accent theme** — butter sun: a soft pastel yellow accent that keeps the toybox mood cheerful while neutral surfaces and dark ink carry the interface structure.
+- **settings typography** — system humanist: Segoe UI Variable on Windows 11 (Avenir Next on macOS, common UI sans on Linux), semibold display for titles and shelves, regular text for copy.
+- **settings motion** — toybox snap: a lively cat loop with small lift feedback on interactive controls, kept quick enough that the settings surface still feels responsive. Hover lifts ease in over about 120ms and switches glide over about 170ms on a decelerating curve; both jump straight to their end state when the system turns animations off.
+- **settings button treatment** — soft toybox pill: navigation, choices, and actions share one rounded face, warm hairline border, soft ambient shadow that lifts on hover, Butter selected state, and a small pressed shift. Navigation items stay flush with the rail until hovered or selected.
+- **settings surface depth** — soft shelf: shelves use a hairline warm border and a faint diffuse shadow rather than heavy outlines; the scrollbar is a slim neutral thumb so Butter Sun stays reserved for active states.
+- **settings spacing** — roomy playroom: generous spacing that lets each settings group feel like a distinct object while keeping the page calm to scan.
+- **settings navigation** — toy rail: a stable vertical rail keeps Settings, Metrics, Wardrobe, and Achievements visible while the selected page owns the roomy content area.
+- **cat stage** — the large square at the top of the toy rail that shows the current cat and outfit. The rail stays pinned while pages scroll so the cat is always in view; on short windows the stage shrinks before any navigation item is hidden.
+- **settings section grouping** — toy shelves: distinct rounded sections give Companion, Appearance, Behavior, and other settings groups equal visual weight.
+- **settings focus treatment** — Butter + ink ring: a dark inner focus ring with a Butter Sun outer ring keeps keyboard focus unmistakable while fitting the toybox language.
+- **settings save feedback** — Quiet inline: auto-save feedback stays as a small persistent status line near the action area, discoverable without interrupting the settings flow or adding transient notification noise.
+- **settings save error** — Inline + retry: a compact inline message explains the failure with wording and an icon, then exposes one direct Retry action while keeping the user in context.
+- **settings empty state** — Friendly shelf: an empty section gets a small consistent visual anchor, a plain explanation, and one useful next step without becoming a promotional card grid.

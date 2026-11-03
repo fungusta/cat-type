@@ -645,6 +645,50 @@ class WardrobeTests(unittest.TestCase):
         window.window.update()
         return window
 
+    def test_returning_to_a_page_reuses_its_rows_instead_of_rebuilding(self):
+        import wardrobe_view
+        window = self.window(set(ACCESSORY_BY_ID))
+        view = window.wardrobe
+        first_buttons = dict(view.buttons)
+        view.show_page(1)
+        window.window.update()
+        with patch.object(wardrobe_view, "load_frame", wraps=wardrobe_view.load_frame) as render:
+            view.show_page(0)
+            window.window.update()
+        render.assert_not_called()
+        self.assertEqual(view.buttons, first_buttons)
+        self.assertTrue(all(button.winfo_ismapped() for button in view.buttons.values()))
+        self.assertEqual(
+            [child for child in view.choices_area.winfo_children() if child.winfo_ismapped()],
+            [view._current_page],
+        )
+
+    def test_next_page_is_built_in_the_background_with_measured_wrapping(self):
+        window = self.window(set(ACCESSORY_BY_ID))
+        view = window.wardrobe
+        window.window.after(view.PREFETCH_DELAY_MS * 3)
+        window.window.update()
+        self.assertGreater(view._copy_wrap, 1)
+        next_ids = tuple(item.id for item in view._visible_items[view._page_size:view._page_size * 2])
+        self.assertIn(next_ids, view._pages)
+        prefetched = view._pages[next_ids]
+        self.assertFalse(prefetched.winfo_ismapped())
+        labels = [widget for tile in prefetched.choice_tiles.values()
+                  for widget in tile.content.winfo_children()[1].winfo_children()
+                  if isinstance(widget, tk.Label)]
+        self.assertTrue(labels)
+        self.assertTrue(all(int(str(label.cget("wraplength"))) > 1 for label in labels))
+
+    def test_unlocking_new_rewards_drops_stale_cached_pages(self):
+        window = self.window({"round-glasses"})
+        view = window.wardrobe
+        view.show_page(1)
+        window.window.update()
+        stale = [page for page in view._pages.values() if page is not view._current_page]
+        window.update_achievements(set(ACCESSORY_BY_ID))
+        window.window.update()
+        self.assertTrue(all(not page.winfo_exists() for page in stale))
+
     def test_locked_items_link_to_separate_achievement_and_cannot_be_equipped(self):
         window = self.window()
         window.page_buttons["Achievements"].invoke()
@@ -746,14 +790,19 @@ class WardrobeTests(unittest.TestCase):
         window.window.minsize(1, 1)
         window.window.geometry('620x500')
         window.window.update()
-        self.assertLessEqual(window.wardrobe.winfo_reqwidth(), window.scroll_canvas.winfo_width())
+        # The pinned rail sits beside the scroll canvas; measure the area the
+        # rail and page share, as when the rail scrolled with the page.
+        rail = window.page_switcher
+        shared_width = window.scroll_canvas.winfo_width() + (
+            window.scroll_canvas.winfo_rootx() - rail.winfo_rootx())
+        self.assertLessEqual(window.wardrobe.winfo_reqwidth(), shared_width)
         self.assertIn('Achievements', window.page_buttons)
         for page in ('Metrics', 'Settings', 'Achievements', 'Wardrobe'):
             window.page_buttons[page].invoke()
             window.window.update()
             self.assertEqual(bool(window.wardrobe.winfo_ismapped()), page == 'Wardrobe')
             self.assertEqual(bool(window.achievements.winfo_ismapped()), page == 'Achievements')
-            self.assertLessEqual(window.achievements.winfo_reqwidth(), window.scroll_canvas.winfo_width() - 52)
+            self.assertLessEqual(window.achievements.winfo_reqwidth(), shared_width - 52)
             last_tab = window.page_buttons['Achievements']
             self.assertLessEqual(last_tab.winfo_rootx() + last_tab.winfo_width(),
                                  window.scroll_canvas.winfo_rootx() + window.scroll_canvas.winfo_width())
