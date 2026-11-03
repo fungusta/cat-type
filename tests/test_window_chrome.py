@@ -32,6 +32,39 @@ class TitleBarTests(unittest.TestCase):
         self.bar.set_title('Another title')
         self.assertEqual(self.bar.title.cget('text'), 'Another title')
 
+    def test_compact_icon_controls_blend_with_title_bar(self):
+        self.assertEqual(self.bar.cget('background').lower(), '#fff9f3')
+        scale = max(1.0, float(self.root.tk.call('tk', 'scaling')) / (96 / 72))
+        for control in self.bar.controls:
+            self.assertLess(control.winfo_width(), 48 * scale)
+            self.assertFalse(any(control.type(item) == 'text' for item in control.find_all()))
+            self.assertEqual(control.cget('accessible_name'), control.cget('text'))
+
+    def test_icon_control_hover_focus_and_restore(self):
+        control = self.bar.controls[1]
+        control.event_generate('<Enter>')
+        self.root.update()
+        self.assertIn('#f2d66b', [control.itemcget(item, 'fill').lower()
+                                 for item in control.find_all() if control.type(item) != 'image'])
+        control.event_generate('<Leave>')
+        control.event_generate('<FocusIn>')
+        self.root.update()
+        self.assertIn('#f2d66b', [control.itemcget(item, 'fill').lower()
+                                 for item in control.find_all() if control.type(item) != 'image'])
+        normal_icon = [control.coords(item) for item in control.find_withtag('icon')]
+        self.bar.set_maximized(True)
+        self.assertEqual(control.cget('accessible_name'), 'Restore')
+        self.assertNotEqual(normal_icon, [control.coords(item) for item in control.find_withtag('icon')])
+
+    def test_icon_controls_activate_from_keyboard(self):
+        self.root.focus_force()
+        for control, key in zip(self.bar.controls, ('space', 'Return', 'space')):
+            control.focus_force()
+            self.root.update()
+            control.event_generate(f'<KeyPress-{key}>')
+            self.root.update()
+        self.assertEqual(self.calls, ['min', 'max', 'close'])
+
     def test_drag_delta(self):
         window = Mock()
         window.winfo_x.return_value = 80

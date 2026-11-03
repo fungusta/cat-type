@@ -173,6 +173,41 @@ class SettingsWindowSizingTests(unittest.TestCase):
 
 
 class SettingsWindowMetricsGeometryTests(unittest.TestCase):
+    def test_uneven_month_labels_do_not_overlap_after_position_clamping(self) -> None:
+        # Thirty-day labels land every five days, plus the final day. Six
+        # count-selected labels leave only four buckets between the last two.
+        candidates = [0, 5, 10, 20, 25, 29]
+        width = 540
+        text_width = 76  # Includes the canvas text bounding-box inset.
+        labels = [(index, 20 + index * 504 / 29, text_width) for index in candidates]
+        centers = SettingsWindow._metric_label_centers(labels, width)
+        self.assertIn(29, centers)
+        self.assertNotIn(25, centers)
+        self.assertGreaterEqual(len(centers), 2)
+        bounds = sorted((x - text_width / 2, x + text_width / 2) for x in centers.values())
+        self.assertGreaterEqual(bounds[0][0], 0)
+        self.assertLessEqual(bounds[-1][1], width)
+        for previous, following in zip(bounds, bounds[1:]):
+            self.assertGreaterEqual(following[0] - previous[1], 8)
+
+    def test_compact_axis_labels_preserve_exact_significant_digits(self) -> None:
+        ticks = (0, 5_000_000_000, 10_000_000_000, 15_000_000_000, 20_000_000_000)
+        self.assertEqual(
+            [SettingsWindow._format_metric_tick(tick, compact=True) for tick in ticks],
+            ["0", "5e9", "1e10", "1.5e10", "2e10"],
+        )
+
+    def test_axis_label_selection_can_keep_one_measured_label(self) -> None:
+        labels = ["18 Dec", None, "23 Dec", None, "28 Dec"]
+        self.assertEqual(
+            SettingsWindow._metric_label_indices(labels, 90, minimum_spacing=80),
+            {4},
+        )
+        self.assertEqual(
+            SettingsWindow._metric_label_indices(labels, 200, minimum_spacing=80),
+            {0, 4},
+        )
+
     def test_line_positions_use_exact_bucket_endpoints(self) -> None:
         self.assertEqual(
             SettingsWindow._metric_line_positions(
@@ -739,12 +774,92 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertNotIn("Keep the cat close, calm, and easy to personalize.", texts)
         self.assertNotIn("Make it feel like yours.", texts)
 
-    def test_metrics_keeps_summary_above_one_activity_shelf(self) -> None:
+    def test_metrics_keeps_summary_and_chart_in_one_activity_shelf(self) -> None:
         self.settings_window.active_page.set("Metrics")
         self.settings_window._switch_page()
         self.settings_window.window.update()
-        self.assertEqual(len(self.settings_window.metric_stat_cards), 3)
+        self.assertEqual(len(self.settings_window.metric_stat_rows), 3)
         self.assertTrue(self.settings_window.metrics_chart.winfo_ismapped())
+
+    def test_metrics_controls_and_exact_values_fit_narrow_high_dpi_windows(self) -> None:
+        metrics_clock = patch("settings_window.datetime", wraps=datetime)
+        clock = metrics_clock.start()
+        self.addCleanup(metrics_clock.stop)
+        clock.now.return_value = datetime(2026, 2, 15, 12).astimezone()
+        self.root.tk.call("tk", "scaling", 2.5)
+        view = SettingsWindow(self.root, AppSettings(), Mock())
+        self.addCleanup(view.close)
+        today = clock.now.return_value.date()
+        daily = {
+            (today - timedelta(days=offset)).isoformat(): (offset + 1) * 777_000_000
+            for offset in range(60)
+        }
+        view.update_usage_metrics(UsageMetrics(total_keystrokes=sum(daily.values()), daily=daily))
+        view.page_buttons["Metrics"].invoke()
+        view.window.minsize(1, 1)
+
+        def assert_fits(widget: tk.Misc) -> None:
+            content = view.metrics_activity_content
+            self.assertGreaterEqual(widget.winfo_rootx(), content.winfo_rootx())
+            self.assertLessEqual(widget.winfo_rootx() + widget.winfo_reqwidth(),
+                                 content.winfo_rootx() + content.winfo_width())
+            self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth())
+
+        for width in (600, 620):
+            for _ in range(2):
+                view.window.geometry(f"{width}x600")
+                view.window.update()
+            self.assertEqual(view.window.winfo_width(), width)
+            view.metrics_range_buttons[30].invoke()
+            view.metrics_view_buttons["columns"].invoke()
+            view.metrics_previous_button.invoke()
+            view.window.update()
+            self.assertIn("2025", view.metrics_interval_text.get())
+            self.assertIn("2026", view.metrics_interval_text.get())
+            for widget in (
+                *view.metric_stat_values,
+                *view.metrics_range_buttons.values(),
+                *view.metrics_view_buttons.values(),
+                view.metrics_range_label, view.metrics_view_label,
+                view.metrics_interval_label,
+                view.metrics_previous_button, view.metrics_next_button,
+            ):
+                with self.subTest(width=width, widget=widget):
+                    assert_fits(widget)
+
+            canvas = view.metrics_chart
+            self.assertEqual(view._metrics_values[-1], daily[(today - timedelta(days=30)).isoformat()])
+            self.assertLessEqual(max(x for x, _y in view._metrics_positions), canvas.winfo_width())
+            view._show_metrics_inspection(29)
+            tooltip = canvas.find_withtag("metric-tooltip-text")[0]
+            self.assertIn(f"{31 * 777_000_000:,} keystrokes", canvas.itemcget(tooltip, "text"))
+            for tag in ("metric-tooltip", "metric-tooltip-text", "metric-y-label"):
+                for item in canvas.find_withtag(tag):
+                    left, top, right, bottom = canvas.bbox(item)
+                    with self.subTest(width=width, tag=tag):
+                        self.assertGreaterEqual(left, 0)
+                        self.assertGreaterEqual(top, 0)
+                        self.assertLessEqual(right, canvas.winfo_width())
+                        self.assertLessEqual(bottom, canvas.winfo_height())
+            x_label_bounds = sorted(
+                canvas.bbox(item) for item in canvas.find_withtag("metric-x-label")
+            )
+            for previous, following in zip(x_label_bounds, x_label_bounds[1:]):
+                self.assertLess(previous[2], following[0])
+            view.metrics_next_button.invoke()
+            self.assertEqual(view.metrics_period_offset, 0)
+            self.assertEqual(str(view.metrics_next_button.cget("state")), "disabled")
+
+        view.update_usage_metrics(UsageMetrics(
+            total_keystrokes=600_000_000_000,
+            daily={day: 10_000_000_000 for day in daily},
+        ))
+        view.window.update()
+        axis_texts = {
+            view.metrics_chart.itemcget(item, "text")
+            for item in view.metrics_chart.find_withtag("metric-y-label")
+        }
+        self.assertEqual(axis_texts, {"0", "5e9", "1e10", "1.5e10"})
 
     def test_wardrobe_heading_owns_the_mix_action(self) -> None:
         self.assertFalse(self.settings_window.mix_it_up_button.winfo_ismapped())
@@ -756,6 +871,47 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Mix it up",
         )
 
+    def test_page_headings_and_save_feedback_fit_narrow_high_dpi_windows(self) -> None:
+        self.root.tk.call("tk", "scaling", 2.5)
+        view = SettingsWindow(self.root, AppSettings(), Mock())
+        self.addCleanup(view.close)
+        view.window.minsize(1, 1)
+        for width in (600, 620):
+            for _ in range(2):
+                view.window.geometry(f"{width}x600")
+                view.window.update()
+            for page in ("Wardrobe", "Achievements"):
+                view.page_buttons[page].invoke()
+                for status in ("", "Saved!", "Couldn't save this change. Try again."):
+                    view.save_status.set(status)
+                    view.window.update()
+                    widgets = [view.page_heading_label]
+                    if page == "Wardrobe":
+                        widgets.append(view.mix_it_up_button)
+                    if status:
+                        widgets.append(view.save_status_surface)
+                        self.assertTrue(view.save_status_surface.winfo_ismapped())
+                        self.assertGreaterEqual(view.save_status_label.winfo_width(),
+                                                view.save_status_label.winfo_reqwidth())
+                    else:
+                        self.assertFalse(view.save_status_surface.winfo_ismapped())
+                    for widget in widgets:
+                        with self.subTest(width=width, page=page, status=status, widget=widget):
+                            self.assertGreaterEqual(widget.winfo_rootx(), view.page_heading.winfo_rootx())
+                            self.assertLessEqual(widget.winfo_rootx() + widget.winfo_reqwidth(),
+                                                 view.page_heading.winfo_rootx() + view.page_heading.winfo_width())
+                            self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth())
+                    if page == "Wardrobe":
+                        button = view.mix_it_up_button
+                        text = next(item for item in button.find_all() if button.type(item) == "text")
+                        left, top, right, bottom = button.bbox(text)
+                        self.assertGreaterEqual(left, 0)
+                        self.assertGreaterEqual(top, 0)
+                        self.assertLessEqual(right, button.winfo_width())
+                        self.assertLessEqual(bottom, button.winfo_height())
+                        self.assertGreaterEqual(button.winfo_rooty(),
+                                                view.page_heading_label.winfo_rooty() + view.page_heading_label.winfo_height())
+
     def test_settings_rows_keep_controls_on_the_right(self) -> None:
         self.settings_window.active_page.set("Settings")
         self.settings_window._switch_page()
@@ -764,6 +920,157 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.cat_style_control.winfo_rootx(),
             self.settings_window.columns.winfo_rootx() + self.settings_window.columns.winfo_width(),
         )
+
+    def test_settings_sliders_align_with_their_labels_at_wide_width(self) -> None:
+        self.settings_window.window.geometry("920x800")
+        self.settings_window.window.update()
+
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+
+        widgets = list(descendants(self.settings_window.cat_style_content))
+        scales = [widget for widget in widgets if isinstance(widget, CatScale)]
+        self.assertEqual(len(scales), 3)
+        for title, scale in zip(("Preview scale", "Hang around", "Soft fade"), scales):
+            label = next(widget for widget in widgets
+                         if isinstance(widget, tk.Label) and widget.cget("text") == title)
+            with self.subTest(title=title):
+                self.assertGreater(scale.winfo_rootx(), label.winfo_rootx() + label.winfo_width())
+                self.assertLess(scale.winfo_rooty(), label.winfo_rooty() + label.master.winfo_height())
+
+    def test_narrow_settings_rows_keep_controls_inside_the_shelf(self) -> None:
+        self.settings_window.window.minsize(1, 1)
+        self.settings_window.window.geometry("600x600")
+        self.settings_window.window.update()
+        shelf = self.settings_window.cat_style_content
+        controls = (self.settings_window.cat_style_control,
+                    self.settings_window.placement_control,
+                    self.settings_window.enabled_toggle.switch,
+                    self.settings_window.launch_at_startup_toggle.switch)
+        for control in controls:
+            with self.subTest(control=control):
+                self.assertGreaterEqual(control.winfo_rootx(), shelf.winfo_rootx())
+                self.assertLessEqual(control.winfo_rootx() + control.winfo_width(),
+                                     shelf.winfo_rootx() + shelf.winfo_width())
+                self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth())
+
+        for control in (self.settings_window.check_for_updates_button,
+                        self.settings_window.open_release_page_button):
+            with self.subTest(control=control):
+                self.assertGreaterEqual(control.winfo_width(), control.winfo_reqwidth())
+                self.assertLessEqual(control.winfo_rootx() + control.winfo_width(),
+                                     shelf.winfo_rootx() + shelf.winfo_width())
+
+    def test_scaled_narrow_settings_keep_choices_and_copy_reachable(self) -> None:
+        self.root.tk.call("tk", "scaling", 2.5)
+        view = SettingsWindow(self.root, AppSettings(), Mock())
+        self.addCleanup(view.close)
+        view.window.minsize(1, 1)
+        view.window.update()
+
+        def descendants(widget):
+            for child in widget.winfo_children():
+                yield child
+                yield from descendants(child)
+
+        for width in (600, 620):
+            view.window.geometry(f"{width}x600")
+            view.window.update()
+            # On Windows the first configure also synchronizes native minimums.
+            view.window.geometry(f"{width}x600")
+            view.window.update()
+            self.assertEqual(view.window.winfo_width(), width)
+            content = view.cat_style_content
+            labels = [child for child in descendants(content)
+                      if isinstance(child, tk.Label) and child.winfo_ismapped()]
+            for widget in (*view.cat_style_buttons.values(), *labels):
+                with self.subTest(width=width, widget=widget):
+                    self.assertGreaterEqual(widget.winfo_rootx(), content.winfo_rootx())
+                    self.assertLessEqual(widget.winfo_rootx() + widget.winfo_reqwidth(),
+                                         content.winfo_rootx() + content.winfo_width())
+                    self.assertGreaterEqual(widget.winfo_width(), widget.winfo_reqwidth())
+            for choice in view.cat_style_buttons.values():
+                visible = False
+                for step in range(41):
+                    view.scroll_canvas.yview_moveto(step / 40)
+                    view.window.update()
+                    top = view.scroll_canvas.winfo_rooty()
+                    bottom = top + view.scroll_canvas.winfo_height()
+                    if top <= choice.winfo_rooty() and (
+                        choice.winfo_rooty() + choice.winfo_height() <= bottom
+                    ):
+                        visible = True
+                        break
+                self.assertTrue(visible, choice.cget("text"))
+
+            for button in (view.placement_control, view.check_for_updates_button,
+                           view.open_release_page_button):
+                with self.subTest(width=width, button=button.cget("text")):
+                    text_bounds = button.bbox("all")
+                    self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
+                                         content.winfo_rootx() + content.winfo_width())
+                    self.assertGreaterEqual(button.winfo_width(), button.winfo_reqwidth())
+                    self.assertGreaterEqual(text_bounds[0], 0)
+                    self.assertLessEqual(text_bounds[2], button.winfo_width())
+
+        view.window.geometry("1200x600")
+        view.window.update()
+        self.assertEqual(view.cat_style_buttons["Gray tabby"].grid_info()["column"], 1)
+
+    def test_setting_action_text_fits_its_face_at_default_and_large_scaling(self) -> None:
+        def assert_text_fits(button):
+            text_item = next(item for item in button.find_all() if button.type(item) == "text")
+            left, top, right, bottom = button.bbox(text_item)
+            self.assertGreaterEqual(left, 0)
+            self.assertGreaterEqual(top, 0)
+            self.assertLessEqual(right, button.winfo_width())
+            self.assertLessEqual(bottom, button.winfo_height())
+            return bottom - top
+
+        view = self.settings_window
+        view.window.geometry("920x800")
+        view.window.update()
+        for placement in ("Above · right", "Above · left", "Below · right", "Below · left"):
+            view.placement.set(placement)
+            view.window.update()
+            with self.subTest(placement=placement, scale="default"):
+                height = assert_text_fits(view.placement_control)
+                face = tkfont.Font(view.placement_control, font=view.placement_control._font)
+                self.assertLessEqual(height, face.metrics("linespace") + 3)
+
+        self.root.tk.call("tk", "scaling", 2.5)
+        scaled = SettingsWindow(self.root, AppSettings(), Mock(),
+                                on_check_for_updates=Mock(), on_open_release_page=Mock(),
+                                requires_input_monitoring=True)
+        self.addCleanup(scaled.close)
+        scaled.window.minsize(1, 1)
+        scaled.window.update()
+        for _ in range(2):
+            scaled.window.geometry("600x600")
+            scaled.window.update()
+        for placement in ("Above · right", "Above · left", "Below · right", "Below · left"):
+            scaled.placement.set(placement)
+            scaled.window.update()
+            with self.subTest(placement=placement, scale="large"):
+                assert_text_fits(scaled.placement_control)
+        for checking in (True, False):
+            scaled.set_update_status("Checking for updates…" if checking else "Ready", checking)
+            scaled.window.update()
+            for button in (scaled.check_for_updates_button, scaled.open_release_page_button):
+                with self.subTest(button=button.cget("text"), checking=checking):
+                    assert_text_fits(button)
+        for granted, attempted in ((False, False), (False, True), (True, True)):
+            scaled.set_input_monitoring_status(granted, request_attempted=attempted)
+            scaled.window.update()
+            with self.subTest(button=scaled.input_monitoring_button.cget("text")):
+                assert_text_fits(scaled.input_monitoring_button)
+        for _ in range(2):
+            scaled._toggle_privacy_details()
+            scaled.window.update()
+            with self.subTest(button=scaled.privacy_details_button.cget("text")):
+                assert_text_fits(scaled.privacy_details_button)
 
     def test_settings_page_matches_companion_studio_shelf_layout(self) -> None:
         self.settings_window.active_page.set("Settings")

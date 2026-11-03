@@ -69,17 +69,19 @@ class Toggle(tk.Frame):
         self.focus_ring = ink
 
         copy = tk.Frame(self, background=background, cursor="hand2")
-        copy.pack(side="left", fill="x", expand=True)
-        tk.Label(
+        title_label = tk.Label(
             copy,
             text=title,
             background=background,
             foreground=ink,
             font=title_font,
             cursor="hand2",
-        ).pack(anchor="w")
+            justify="left",
+            anchor="w",
+        )
+        title_label.pack(anchor="w")
         if description:
-            tk.Label(
+            description_label = tk.Label(
                 copy,
                 text=description,
                 background=background,
@@ -88,7 +90,8 @@ class Toggle(tk.Frame):
                 justify="left",
                 anchor="w",
                 wraplength=220,
-            ).pack(anchor="w", pady=(2, 0))
+            )
+            description_label.pack(anchor="w", pady=(2, 0))
 
         self.switch = tk.Canvas(
             self,
@@ -99,6 +102,15 @@ class Toggle(tk.Frame):
             cursor="hand2",
         )
         self.switch.pack(side="right", padx=(12, 0))
+        copy.pack(side="left", fill="x", expand=True)
+
+        def wrap_copy(event: tk.Event[tk.Misc]) -> None:
+            width = max(1, event.width)
+            for label in copy.winfo_children():
+                if abs(int(float(str(label.cget("wraplength")))) - width) > 1:
+                    label.configure(wraplength=width)
+
+        copy.bind("<Configure>", wrap_copy)
 
         for widget in (self, copy, *copy.winfo_children(), self.switch):
             widget.bind("<Button-1>", self._toggle)
@@ -808,15 +820,22 @@ class SettingsWindow:
         self.page_heading = tk.Frame(self.page_host, background=self.BACKGROUND)
         self.page_heading.pack(fill="x", pady=(0, 12))
         self.page_heading_text = tk.StringVar(value=self.active_page.get())
-        tk.Label(
+        self.page_heading_label = tk.Label(
             self.page_heading,
             textvariable=self.page_heading_text,
             background=self.BACKGROUND,
             foreground=self.INK,
             font=self.fonts["display_compact"],
-        ).pack(side="left", anchor="w")
+            anchor="w",
+            justify="left",
+        )
+        self.page_heading_label.grid(row=0, column=0, sticky="w")
+        self.page_heading.grid_columnconfigure(0, weight=1)
+        self.page_heading_actions = tk.Frame(self.page_heading, background=self.BACKGROUND)
+        self.page_heading_actions.grid_columnconfigure(0, weight=1)
+        self.page_heading.bind("<Configure>", self._reflow_page_heading)
         self.save_status_surface = RoundedPanel(
-            self.page_heading,
+            self.page_heading_actions,
             background=self.BACKGROUND,
             fill=self.ACCENT,
             border=self.ACCENT_DARK,
@@ -847,7 +866,7 @@ class SettingsWindow:
             "Achievements": self._create_achievements_page,
         }
         self.mix_it_up_button = RoundedAction(
-            self.page_heading,
+            self.page_heading_actions,
             text="Mix it up",
             command=self._mix_wardrobe,
             style=self.primary_button_style,
@@ -922,6 +941,7 @@ class SettingsWindow:
             self.page_host, assets_root=self._assets_root,
             metrics=self.usage_metrics, unlocked=self.unlocked_accessories,
             palette=self._reward_palette(), fonts=self.fonts,
+            responsive_width=self._stable_scroll_layout_width,
             on_content_change=self._invalidate_scrollbar_reflow)
         self.achievements.mark_new(tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_achievement_new_ids))
@@ -1200,9 +1220,54 @@ class SettingsWindow:
             return
         if self.active_page.get() == "Wardrobe":
             if not self.mix_it_up_button.winfo_manager():
-                self.mix_it_up_button.pack(side="right", padx=(0, 8), pady=(2, 0))
+                self.mix_it_up_button.grid(row=0, column=0, sticky="w")
         else:
-            self.mix_it_up_button.pack_forget()
+            self.mix_it_up_button.grid_remove()
+        self._reflow_page_heading()
+
+    def _reflow_page_heading(self, _event: tk.Event[tk.Misc] | None = None) -> None:
+        width = self.page_heading.winfo_width()
+        title = self.page_heading_text.get()
+        status = self.save_status.get()
+        has_mix = self.active_page.get() == "Wardrobe" and hasattr(self, "mix_it_up_button")
+        layout = (width, title, status, has_mix)
+        if width <= 1 or layout == getattr(self, "_page_heading_layout", None):
+            return
+        self._page_heading_layout = layout
+        title_width = self.fonts["display_compact"].measure(title) + 4
+        mix_width = 0
+        if has_mix:
+            button = self.mix_it_up_button
+            mix_width = max(68, tkfont.Font(button, font=button._font).measure(button.cget("text")) + 24)
+            button.fit_width(width)
+        status_width = 0
+        if status:
+            padding = self.save_status_surface._padding * 2 + 14
+            status_width = min(width, self.fonts["control"].measure(status) + 4 + padding)
+            self.save_status_label.configure(wraplength=max(1, status_width - padding - 8))
+            self.save_status_surface.configure(width=status_width)
+            self.save_status_surface.grid(row=0, column=1, sticky="e")
+        action_width = mix_width + status_width + (12 if has_mix and status else 0)
+        stacked = title_width + action_width + 16 > width
+        self.page_heading_label.configure(wraplength=max(1, width - 8 if stacked else width - action_width - 20))
+        self.page_heading_label.grid_configure(columnspan=2 if stacked else 1)
+        if not action_width:
+            self.page_heading_actions.grid_remove()
+        else:
+            self.page_heading_actions.grid(
+                row=1 if stacked else 0, column=0 if stacked else 1,
+                columnspan=2 if stacked else 1, sticky="ew" if stacked else "e",
+                padx=0 if stacked else (16, 0), pady=(8, 0) if stacked else 0,
+            )
+            separate_status = bool(has_mix and status and action_width > width)
+            if status:
+                self.save_status_surface.grid_configure(
+                    row=1 if separate_status else 0, column=0 if separate_status else 1,
+                    columnspan=2 if separate_status else 1,
+                    sticky="w" if separate_status else "e",
+                    padx=0 if separate_status or not has_mix else (12, 0),
+                    pady=(8, 0) if separate_status else 0,
+                )
 
     def _show_achievement(self, accessory_id: str) -> None:
         self.active_page.set("Achievements")
@@ -1417,8 +1482,7 @@ class SettingsWindow:
     def _build_metrics_page(self, parent: tk.Frame) -> None:
         self.metrics_page = tk.Frame(parent, background=self.BACKGROUND)
         # Keep the aggregate label available to integrations that update the
-        # legacy counter live; the visible summary uses the prototype's
-        # compact "All time" card instead.
+        # legacy counter live; the visible summary uses the All time row.
         self.keystroke_count_title = tk.Label(
             self.metrics_page,
             text="All-time keystrokes",
@@ -1427,41 +1491,37 @@ class SettingsWindow:
             font=self.fonts["small"],
         )
 
-        summary = tk.Frame(self.metrics_page, background=self.BACKGROUND)
-        summary.pack(fill="x", pady=(0, 14))
-        for column in range(3):
-            summary.grid_columnconfigure(column, weight=1, uniform="metrics")
-        self.metric_stat_cards: list[RoundedPanel] = []
+        activity_card, activity_content = self._card(self.metrics_page, "Activity")
+        self.metrics_activity_shelf = activity_card
+        self.metrics_activity_content = activity_content
+        self.metrics_summary = tk.Frame(activity_content, background=self.CARD)
+        self.metrics_summary.pack(fill="x")
+        tk.Label(
+            self.metrics_summary,
+            text="keystrokes",
+            background=self.CARD,
+            foreground=self.MUTED,
+            font=self.fonts["tiny"],
+        ).pack(anchor="e", pady=(0, 3))
+        self.metric_stat_rows: list[tk.Frame] = []
+        self.metric_stat_values: list[tk.Label] = []
         self._metric_stat(
-            summary,
-            column=0,
+            self.metrics_summary,
             label="Today",
             value=self.metrics_today_text,
-            detail="keystrokes",
-            padx=(0, 5),
         )
         self._metric_stat(
-            summary,
-            column=1,
+            self.metrics_summary,
             label="Last 7 days",
             value=self.metrics_week_text,
-            detail="keystrokes",
-            padx=5,
         )
         self._metric_stat(
-            summary,
-            column=2,
+            self.metrics_summary,
             label="All time",
             value=self.metrics_total_text,
-            detail="keystrokes",
-            padx=(5, 0),
         )
-
-        activity_card, activity_content = self._card(
-            self.metrics_page,
-            "Activity",
-            heading_actions=self._build_metrics_controls,
-        )
+        self._divider(activity_content, color="#F1ECE7").pack(fill="x", pady=14)
+        self._build_metrics_controls(activity_content)
         self.metrics_chart = tk.Canvas(
             activity_content,
             height=250,
@@ -1471,11 +1531,11 @@ class SettingsWindow:
             highlightcolor=self.FOCUS,
             takefocus=True,
         )
-        metrics_navigation = tk.Frame(
+        self.metrics_navigation = metrics_navigation = tk.Frame(
             activity_content,
             background=self.CARD,
         )
-        metrics_navigation.pack(fill="x", pady=(0, 8))
+        metrics_navigation.pack(fill="x", pady=(16, 8))
         metrics_navigation.grid_columnconfigure(1, weight=1)
         self.metrics_previous_button = RoundedAction(
             metrics_navigation,
@@ -1491,6 +1551,7 @@ class SettingsWindow:
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["small"],
+            justify="center",
         )
         self.metrics_interval_label.grid(row=0, column=1, padx=12)
         self.metrics_next_button = RoundedAction(
@@ -1501,6 +1562,10 @@ class SettingsWindow:
             takefocus=True,
         )
         self.metrics_next_button.grid(row=0, column=2, sticky="e")
+        metrics_navigation.bind("<Configure>", self._reflow_metrics_navigation)
+        self.metrics_interval_text.trace_add(
+            "write", lambda *_args: self._reflow_metrics_navigation()
+        )
         self.metrics_chart.pack(fill="x")
         self.metrics_chart.bind(
             "<Configure>",
@@ -1530,11 +1595,14 @@ class SettingsWindow:
         activity_card.pack(fill="x", pady=(0, 14))
 
     def _build_metrics_controls(self, parent: tk.Frame) -> None:
-        controls = tk.Frame(parent, background=self.CARD)
-        controls.pack(side="right")
+        self.metrics_controls = controls = tk.Frame(parent, background=self.CARD)
+        controls.pack(fill="x")
+        controls.grid_columnconfigure(0, weight=1)
+        controls.grid_columnconfigure(1, weight=1)
 
         range_control = tk.Frame(controls, background=self.CARD)
-        range_control.pack(side="left", padx=(0, 12))
+        range_control.grid(row=0, column=0, sticky="ew", padx=(0, 20))
+        range_control.grid_columnconfigure(1, weight=1)
         self.metrics_range_label = tk.Label(
             range_control,
             text="Range",
@@ -1542,9 +1610,9 @@ class SettingsWindow:
             foreground=self.MUTED,
             font=self.fonts["tiny"],
         )
-        self.metrics_range_label.pack(anchor="w", pady=(0, 4))
+        self.metrics_range_label.grid(row=0, column=0, sticky="w", padx=(0, 12))
         ranges = tk.Frame(range_control, background=self.CARD)
-        ranges.pack()
+        ranges.grid(row=0, column=1, sticky="e")
         self.metrics_range_buttons: dict[int, tk.Radiobutton] = {}
         for index, (label, days) in enumerate(
             (("1d", 1), ("7d", 7), ("30d", 30))
@@ -1574,7 +1642,8 @@ class SettingsWindow:
             self.metrics_range_buttons[days] = button
 
         view_control = tk.Frame(controls, background=self.CARD)
-        view_control.pack(side="left")
+        view_control.grid(row=0, column=1, sticky="ew")
+        view_control.grid_columnconfigure(1, weight=1)
         self.metrics_view_label = tk.Label(
             view_control,
             text="View",
@@ -1582,9 +1651,9 @@ class SettingsWindow:
             foreground=self.MUTED,
             font=self.fonts["tiny"],
         )
-        self.metrics_view_label.pack(anchor="w", pady=(0, 4))
+        self.metrics_view_label.grid(row=0, column=0, sticky="w", padx=(0, 12))
         views = tk.Frame(view_control, background=self.CARD)
-        views.pack()
+        views.grid(row=0, column=1, sticky="e")
         self.metrics_view_buttons: dict[str, tk.Radiobutton] = {}
         for index, (label, view) in enumerate(
             (("Line", "line"), ("Columns", "columns"))
@@ -1613,6 +1682,54 @@ class SettingsWindow:
             button.grid(row=0, column=index)
             self.metrics_view_buttons[view] = button
 
+        last_controls_width: int | None = None
+
+        def reflow(event: tk.Event[tk.Misc]) -> None:
+            nonlocal last_controls_width
+            if event.width <= 1 or event.width == last_controls_width:
+                return
+            last_controls_width = event.width
+            groups = (
+                (range_control, self.metrics_range_label, ranges,
+                 list(self.metrics_range_buttons.values())),
+                (view_control, self.metrics_view_label, views,
+                 list(self.metrics_view_buttons.values())),
+            )
+            natural_widths = [
+                label.winfo_reqwidth() + 12
+                + sum(button._natural_size[0] + max(0, button.winfo_reqwidth() - button._size[0])
+                      for button in buttons)
+                for _row, label, _choices, buttons in groups
+            ]
+            stacked = sum(natural_widths) + 20 > event.width
+            controls.grid_columnconfigure(1, weight=0 if stacked else 1)
+            range_control.grid_configure(padx=0 if stacked else (0, 20))
+            view_control.grid_configure(
+                row=1 if stacked else 0, column=0 if stacked else 1,
+                pady=(10, 0) if stacked else 0,
+            )
+            for index, (row, label, choices, buttons) in enumerate(groups):
+                available = event.width if stacked else natural_widths[index]
+                choices_width = sum(
+                    button._natural_size[0] + max(0, button.winfo_reqwidth() - button._size[0])
+                    for button in buttons
+                )
+                wrap_label = label.winfo_reqwidth() + 12 + choices_width > available
+                choices.grid_configure(
+                    row=1 if wrap_label else 0, column=0 if wrap_label else 1,
+                    columnspan=2 if wrap_label else 1,
+                    sticky="w" if wrap_label else "e",
+                    pady=(5, 0) if wrap_label else 0,
+                )
+                button_width = max(1, available // len(buttons))
+                for button in buttons:
+                    inset = max(0, button.winfo_reqwidth() - button._size[0])
+                    button.fit_width(
+                        max(1, button_width - inset)
+                        if choices_width > available else button._natural_size[0]
+                    )
+
+        controls.bind("<Configure>", reflow)
         self._refresh_metrics_range_buttons()
         self._refresh_metrics_view_buttons()
 
@@ -1620,44 +1737,79 @@ class SettingsWindow:
         self,
         parent: tk.Frame,
         *,
-        column: int,
         label: str,
         value: tk.StringVar,
-        detail: str,
-        padx: int | tuple[int, int],
     ) -> None:
-        card = RoundedPanel(
-            parent,
-            background=self.BACKGROUND,
-            fill=self.CARD,
-            border=self.BORDER,
-            radius=16,
-            padding=10,
-        )
-        card.grid(row=0, column=column, sticky="nsew", padx=padx)
-        self.metric_stat_cards.append(card)
-        content = card.content
-        tk.Label(
-            content,
+        row = tk.Frame(parent, background=self.CARD)
+        row.pack(fill="x", pady=4)
+        row.grid_columnconfigure(0, weight=1)
+        title = tk.Label(
+            row,
             text=label,
             background=self.CARD,
             foreground=self.MUTED,
             font=self.fonts["small"],
-        ).pack(anchor="w", padx=8, pady=(8, 4))
-        tk.Label(
-            content,
+            anchor="w",
+            justify="left",
+        )
+        title.grid(row=0, column=0, sticky="w", padx=(0, 16))
+        number = tk.Label(
+            row,
             textvariable=value,
             background=self.CARD,
             foreground=self.INK,
-            font=self.fonts["display_compact"],
-        ).pack(anchor="w", padx=8)
-        tk.Label(
-            content,
-            text=detail,
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["tiny"],
-        ).pack(anchor="w", padx=8, pady=(2, 8))
+            font=self.fonts["control"],
+            anchor="e",
+            justify="right",
+        )
+        number.grid(row=0, column=1, sticky="e")
+
+        last_layout: tuple[int, str] | None = None
+
+        def reflow(_event: tk.Event[tk.Misc] | None = None) -> None:
+            nonlocal last_layout
+            width = row.winfo_width()
+            layout = (width, value.get())
+            if width <= 1 or layout == last_layout:
+                return
+            last_layout = layout
+            value_width = self.fonts["control"].measure(value.get()) + 4
+            title_width = self.fonts["small"].measure(label) + 4
+            stacked = title_width + value_width + 16 > width
+            wrap = max(1, width - 8)
+            title.configure(wraplength=wrap)
+            number.configure(wraplength=wrap)
+            number.grid_configure(
+                row=1 if stacked else 0, column=0 if stacked else 1,
+                sticky="w" if stacked else "e", pady=(2, 0) if stacked else 0,
+            )
+
+        row.bind("<Configure>", reflow)
+        value.trace_add("write", lambda *_args: reflow())
+        self.metric_stat_rows.append(row)
+        self.metric_stat_values.append(number)
+
+    def _reflow_metrics_navigation(self, _event: tk.Event[tk.Misc] | None = None) -> None:
+        navigation = self.metrics_navigation
+        width = navigation.winfo_width()
+        layout = (width, self.metrics_interval_text.get())
+        if width <= 1 or layout == getattr(self, "_metrics_navigation_layout", None):
+            return
+        self._metrics_navigation_layout = layout
+        previous_width, next_width = (
+            max(68, tkfont.Font(button, font=button._font).measure(button.cget("text")) + 24)
+            for button in (self.metrics_previous_button, self.metrics_next_button)
+        )
+        interval_width = self.fonts["small"].measure(self.metrics_interval_text.get()) + 4
+        stacked = previous_width + next_width + interval_width + 24 > width
+        for button in (self.metrics_previous_button, self.metrics_next_button):
+            button.fit_width(max(1, width // 2 - 6))
+            button.grid_configure(row=1 if stacked else 0)
+        self.metrics_interval_label.configure(wraplength=max(1, width - 4))
+        self.metrics_interval_label.grid_configure(
+            row=0, column=0 if stacked else 1, columnspan=3 if stacked else 1,
+            padx=0 if stacked else 12, pady=(0, 8) if stacked else 0,
+        )
 
     def _change_metrics_range(self) -> None:
         self.metrics_period_offset = 0
@@ -1733,7 +1885,12 @@ class SettingsWindow:
         return axis_maximum, list(range(0, axis_maximum + 1, step))
 
     @staticmethod
-    def _format_metric_tick(value: int) -> str:
+    def _format_metric_tick(value: int, *, compact: bool = False) -> str:
+        if compact and value:
+            digits = str(value)
+            significant = digits.rstrip("0")
+            fraction = f".{significant[1:]}" if len(significant) > 1 else ""
+            return f"{significant[0]}{fraction}e{len(digits) - 1}"
         if value < 1_000:
             return f"{value:,}"
         if value < 10_000 and value % 1_000:
@@ -1778,19 +1935,44 @@ class SettingsWindow:
     def _metric_label_indices(
         labels: list[str | None],
         usable_width: int,
+        *,
+        minimum_spacing: int = 52,
     ) -> set[int]:
         candidates = [
             index for index, label in enumerate(labels) if label is not None
         ]
-        maximum_labels = max(2, usable_width // 52)
+        maximum_labels = max(1, usable_width // max(1, minimum_spacing))
         if len(candidates) <= maximum_labels:
             return set(candidates)
+        if maximum_labels == 1:
+            return {candidates[-1]}
         return {
             candidates[
                 round(position * (len(candidates) - 1) / (maximum_labels - 1))
             ]
             for position in range(maximum_labels)
         }
+
+    @staticmethod
+    def _metric_label_centers(
+        labels: list[tuple[int, float, int]],
+        canvas_width: int,
+        *,
+        gap: int = 8,
+    ) -> dict[int, float]:
+        """Clamp labels to the canvas and keep their measured bounds apart."""
+        centers: dict[int, float] = {}
+        next_left = float(canvas_width + gap)
+        # Keep the most recent label when uneven bucket spacing causes a
+        # collision, then work back through earlier candidates.
+        for index, bucket_x, text_width in reversed(labels):
+            half_width = text_width / 2
+            x = max(half_width + 3, min(bucket_x, canvas_width - half_width - 3))
+            left, right = x - half_width, x + half_width
+            if left >= 0 and right <= canvas_width and right + gap <= next_left:
+                centers[index] = x
+                next_left = left
+        return centers
 
     @staticmethod
     def _metric_line_positions(
@@ -1901,17 +2083,26 @@ class SettingsWindow:
             )
         )
         self._refresh_metrics_navigation()
-        width = max(320, canvas.winfo_width())
+        width = max(1, canvas.winfo_width())
         height = max(180, canvas.winfo_height())
-        left = 46
-        right = 14
-        top = 24
-        bottom = 34
         visible_values = values[:visible_count]
         maximum = max(visible_values, default=0)
         axis_maximum, ticks = self._metric_axis(maximum)
+        axis_font = self.fonts["tiny"]
+        right = min(14, width // 8)
+        axis_labels = {tick: self._format_metric_tick(tick) for tick in ticks}
+        maximum_axis_width = max(1, (width - right) // 2 - 12)
+        for tick, text in axis_labels.items():
+            if axis_font.measure(text) > maximum_axis_width:
+                axis_labels[tick] = self._format_metric_tick(tick, compact=True)
+        left = min(
+            max(46, max(axis_font.measure(text) for text in axis_labels.values()) + 12),
+            max(0, (width - right) // 2),
+        )
+        top = 24
+        bottom = max(34, axis_font.metrics("linespace") + 14)
         baseline = height - bottom
-        usable_width = width - left - right
+        usable_width = max(1, width - left - right)
 
         if self.metrics_view.get() == "columns":
             column_positions = self._metric_column_positions(
@@ -1985,10 +2176,12 @@ class SettingsWindow:
             canvas.create_text(
                 left - 8,
                 y,
-                text=self._format_metric_tick(tick),
+                text=axis_labels[tick],
                 anchor="e",
                 fill=self.MUTED,
                 font=self.fonts["tiny"],
+                width=max(1, left - 12),
+                justify="right",
                 tags=("metric-y-label",),
             )
         if self.metrics_view.get() == "columns":
@@ -2067,15 +2260,30 @@ class SettingsWindow:
                     width=1,
                     tags=("metric-single-point",),
                 )
-        visible_label_indices = self._metric_label_indices(labels, usable_width)
+        label_spacing = max(
+            (axis_font.measure(label) for label in labels if label is not None),
+            default=0,
+        ) + 12
+        visible_label_indices = self._metric_label_indices(
+            labels, usable_width, minimum_spacing=label_spacing,
+        )
+        label_centers = self._metric_label_centers(
+            [
+                (index, label_positions[index][0], axis_font.measure(label) + 4)
+                for index, label in enumerate(labels)
+                if label is not None and index in visible_label_indices
+            ],
+            width,
+        )
         for index, ((x, _y), label) in enumerate(zip(label_positions, labels)):
-            if label is not None and index in visible_label_indices:
+            if label is not None and index in label_centers:
                 canvas.create_text(
-                    x,
-                    height - 13,
+                    label_centers[index],
+                    height - bottom / 2,
                     text=label,
                     fill=self.MUTED,
                     font=self.fonts["tiny"],
+                    tags=("metric-x-label",),
                 )
         if not maximum:
             empty_x = width / 2
@@ -2104,6 +2312,8 @@ class SettingsWindow:
                 text=empty_message,
                 fill=self.MUTED,
                 font=self.fonts["body"],
+                width=max(1, width - 24),
+                justify="center",
                 tags=("metric-empty-shelf",),
             )
 
@@ -2225,6 +2435,7 @@ class SettingsWindow:
             fill="#FFFFFF",
             font=self.fonts["small"],
             justify="left",
+            width=max(1, canvas.winfo_width() - 26),
             tags=("metric-inspection", "metric-tooltip-text"),
         )
         text_bounds = canvas.bbox(text_id)
@@ -2235,11 +2446,11 @@ class SettingsWindow:
         tooltip_x = x + 12
         if tooltip_x + tooltip_width > right:
             tooltip_x = x - tooltip_width - 12
-        tooltip_x = max(left, min(tooltip_x, right - tooltip_width))
+        tooltip_x = max(4, min(tooltip_x, canvas.winfo_width() - tooltip_width - 4))
         tooltip_y = y - tooltip_height - 12
         if tooltip_y < top + 4:
             tooltip_y = min(baseline - tooltip_height, y + 12)
-        tooltip_y = max(top + 4, tooltip_y)
+        tooltip_y = max(4, min(tooltip_y, canvas.winfo_height() - tooltip_height - 4))
         canvas.coords(text_id, tooltip_x + 9, tooltip_y + 7)
         rectangle_id = canvas.create_rectangle(
             tooltip_x,
@@ -2312,15 +2523,12 @@ class SettingsWindow:
             font=self.fonts["symbol"],
         )
         self._preview_image = self.preview_canvas.create_image(126, 84)
-        style_panel = self._setting_panel(content, pady=(0, 8))
-        style_row = style_panel.content
-        self._setting_copy(
-            style_row,
+        _, choices = self._setting_row(
+            content,
             "Cat style",
             "Choose the look that follows your outfit.",
-        ).pack(side="left", fill="x", expand=True)
-        choices = tk.Frame(style_row, background=self.CARD)
-        choices.pack(side="right")
+            first=True,
+        )
         self.cat_style_control = choices
         self.cat_style_buttons: dict[str, tk.Radiobutton] = {}
         columns = 2
@@ -2355,21 +2563,46 @@ class SettingsWindow:
             )
             choices.grid_columnconfigure(index % columns, weight=1)
             self.cat_style_buttons[label] = button
+
+        choice_columns = 2
+
+        def reflow_choices(_event: tk.Event[tk.Misc]) -> None:
+            nonlocal choice_columns
+            buttons = list(self.cat_style_buttons.values())
+            two_column_width = (
+                max(button._natural_size[0] for button in buttons[::2])
+                + max(button._natural_size[0] for button in buttons[1::2]) + 8
+            )
+            available = max(1, content.winfo_width())
+            count = 2 if available >= two_column_width else 1
+            for index, button in enumerate(buttons):
+                button.fit_width(
+                    max(1, available - 4) if count == 1 else button._natural_size[0]
+                )
+                if count != choice_columns:
+                    button.grid_configure(
+                        row=index // count, column=index % count,
+                        padx=(4 if count == 2 and index % 2 else 0, 0),
+                        pady=(0 if index < count else 4, 0),
+                    )
+            if count != choice_columns:
+                choices.grid_columnconfigure(1, weight=1 if count == 2 else 0)
+                choice_columns = count
+
+        content.bind("<Configure>", reflow_choices, add="+")
         self.cat_style.trace_add(
             "write",
             lambda *_args: self._refresh_cat_style_buttons(),
         )
         self._refresh_cat_style_buttons()
 
-        placement_panel = self._setting_panel(content, pady=(0, 8))
-        placement_row = placement_panel.content
-        self._setting_copy(
-            placement_row,
+        _, placement_controls = self._setting_row(
+            content,
             "Favorite spot",
             "Where your typing companion settles in.",
-        ).pack(side="left", fill="x", expand=True)
+        )
         placement_control = RoundedAction(
-            placement_row,
+            placement_controls,
             text=self.placement.get(),
             command=self._open_placement_menu,
             style=self.secondary_button_style,
@@ -2378,6 +2611,11 @@ class SettingsWindow:
         )
         placement_control.pack(side="right")
         self.placement_control = placement_control
+        content.bind(
+            "<Configure>",
+            lambda event: placement_control.fit_width(event.width),
+            add="+",
+        )
         self.placement.trace_add(
             "write",
             lambda *_args: self.placement_control.configure(
@@ -2391,7 +2629,6 @@ class SettingsWindow:
             60,
             175,
             lambda value: f"{round(float(value))}%",
-            top_padding=2,
             helper="Set how large your cat looks.",
             shelf_row=True,
         )
@@ -2402,7 +2639,6 @@ class SettingsWindow:
             0.5,
             5.0,
             lambda value: f"{float(value):.1f}s",
-            top_padding=14,
             helper="How long the cat stays after typing.",
             shelf_row=True,
         )
@@ -2413,7 +2649,6 @@ class SettingsWindow:
             0.0,
             1.5,
             lambda value: f"{float(value):.1f}s",
-            top_padding=14,
             helper="Let the cat fade away gently.",
             shelf_row=True,
         )
@@ -2421,9 +2656,8 @@ class SettingsWindow:
 
     def _build_behavior_card(self, parent: tk.Frame) -> None:
         card, content = self._card(parent, "Behavior")
-        enabled_row = self._setting_panel(content, pady=(0, 8))
         self.enabled_toggle = Toggle(
-            enabled_row.content,
+            content,
             variable=self.enabled,
             title="Show my cat while I type",
             description="Keep the companion visible as you work.",
@@ -2434,9 +2668,9 @@ class SettingsWindow:
             description_font=self.fonts["small"],
         )
         self.enabled_toggle.pack(fill="x")
-        launch_row = self._setting_panel(content, pady=(0, 8))
+        self._divider(content, color="#F1ECE7").pack(fill="x", pady=10)
         self.launch_at_startup_toggle = Toggle(
-            launch_row.content,
+            content,
             variable=self.launch_at_startup,
             title="Start Cat Type when I sign in",
             description="Have the companion ready when your day starts.",
@@ -2475,7 +2709,7 @@ class SettingsWindow:
             )
             permission = tk.Frame(content, background=self.BLUSH)
             permission.pack(fill="x", pady=(12, 0))
-            tk.Label(
+            permission_status = tk.Label(
                 permission,
                 textvariable=self.input_monitoring_status_text,
                 background=self.BLUSH,
@@ -2483,13 +2717,30 @@ class SettingsWindow:
                 font=self.fonts["small"],
                 justify="left",
                 wraplength=330,
-            ).pack(fill="x", padx=12, pady=(10, 4))
+            )
+            permission_status.pack(fill="x", padx=12, pady=(10, 4))
             self.input_monitoring_button = RoundedAction(
                 permission,
                 command=self._handle_input_monitoring_action,
                 style=self.primary_button_style,
             )
             self.input_monitoring_button.pack(anchor="e", padx=12, pady=(4, 10))
+
+            def fit_privacy(event: tk.Event[tk.Misc]) -> None:
+                self.privacy_details_button.fit_width(event.width)
+                wrap = max(1, event.width - 4)
+                if abs(int(float(str(self.privacy_explanation.cget("wraplength")))) - wrap) > 1:
+                    self.privacy_explanation.configure(wraplength=wrap)
+
+            def fit_permission(event: tk.Event[tk.Misc]) -> None:
+                width = max(1, event.width - 24)
+                self.input_monitoring_button.fit_width(width)
+                wrap = max(1, width - 4)
+                if abs(int(float(str(permission_status.cget("wraplength")))) - wrap) > 1:
+                    permission_status.configure(wraplength=wrap)
+
+            privacy.bind("<Configure>", fit_privacy)
+            permission.bind("<Configure>", fit_permission)
             self.set_input_monitoring_status(
                 self._input_monitoring_granted,
                 request_attempted=self._input_monitoring_request_attempted,
@@ -2575,7 +2826,7 @@ class SettingsWindow:
             cursor="arrow",
             takefocus=True,
         )
-        self.check_for_updates_button.pack(side="left")
+        self.check_for_updates_button.grid(row=0, column=0, sticky="w")
         self.set_update_status(self.update_status_text.get(), self._update_checking)
         self.open_release_page_button = RoundedAction(
             update_actions,
@@ -2586,7 +2837,27 @@ class SettingsWindow:
             cursor="arrow",
             takefocus=True,
         )
-        self.open_release_page_button.pack(side="left", padx=(8, 0))
+        self.open_release_page_button.grid(row=0, column=1, sticky="w", padx=(8, 0))
+
+        def reflow_update_actions(event: tk.Event[tk.Misc]) -> None:
+            buttons = (self.check_for_updates_button, self.open_release_page_button)
+            natural_widths = [
+                max(68, tkfont.Font(button, font=button._font).measure(button.cget("text")) + 24)
+                for button in buttons
+            ]
+            stacked = sum(natural_widths) + 8 > event.width
+            for button in buttons:
+                button.fit_width(event.width)
+            position = (1, 0) if stacked else (0, 1)
+            current = self.open_release_page_button.grid_info()
+            if (int(current["row"]), int(current["column"])) != position:
+                self.open_release_page_button.grid_configure(
+                    row=position[0], column=position[1],
+                    padx=0 if stacked else (8, 0),
+                    pady=(8, 0) if stacked else 0,
+                )
+
+        content.bind("<Configure>", reflow_update_actions, add="+")
         card.pack(fill="x", pady=(0, 14))
         self.settings_shelves.append(card)
         self.settings_shelf_titles.append("Updates")
@@ -2665,8 +2936,8 @@ class SettingsWindow:
         content.pack(fill="x", padx=20, pady=(0, 19))
         return outer, content
 
-    def _divider(self, parent: tk.Misc) -> tk.Frame:
-        return tk.Frame(parent, background=self.BORDER, height=1)
+    def _divider(self, parent: tk.Misc, *, color: str | None = None) -> tk.Frame:
+        return tk.Frame(parent, background=color or self.BORDER, height=1)
 
     def _field_label(self, parent: tk.Misc, text: str) -> tk.Label:
         return tk.Label(
@@ -2697,22 +2968,46 @@ class SettingsWindow:
         ).pack(anchor="w", pady=(2, 0))
         return copy
 
-    def _setting_panel(
+    def _setting_row(
         self,
         parent: tk.Misc,
+        label: str,
+        helper: str,
         *,
-        pady: tuple[int, int] = (0, 8),
-    ) -> RoundedPanel:
-        panel = RoundedPanel(
-            parent,
-            background=self.CARD,
-            fill=self.CARD,
-            border=self.BORDER,
-            radius=14,
-            padding=6,
-        )
-        panel.pack(fill="x", pady=pady)
-        return panel
+        first: bool = False,
+    ) -> tuple[tk.Frame, tk.Frame]:
+        if not first:
+            self._divider(parent, color="#F1ECE7").pack(fill="x", pady=10)
+        row = tk.Frame(parent, background=self.CARD)
+        row.pack(fill="x")
+        copy = self._setting_copy(row, label, helper)
+        controls = tk.Frame(row, background=self.CARD)
+        row.grid_columnconfigure(0, weight=1)
+        copy.grid(row=0, column=0, sticky="w")
+        controls.grid(row=0, column=1, sticky="e", padx=(16, 0))
+
+        def reflow(_event: tk.Event[tk.Misc]) -> None:
+            wrap = max(1, min(220, row.winfo_width() - 4))
+            for label_widget in copy.winfo_children():
+                current_wrap = int(float(str(label_widget.cget("wraplength"))))
+                if abs(current_wrap - wrap) > 1:
+                    label_widget.configure(wraplength=wrap)
+            stacked = row.winfo_width() < (
+                copy.winfo_reqwidth() + controls.winfo_reqwidth() + 16
+            )
+            position = (1, 0) if stacked else (0, 1)
+            current = controls.grid_info()
+            if (int(current["row"]), int(current["column"])) != position:
+                controls.grid_configure(
+                    row=position[0], column=position[1],
+                    sticky="w" if stacked else "e",
+                    padx=0 if stacked else (16, 0),
+                    pady=(8, 0) if stacked else 0,
+                )
+
+        row.bind("<Configure>", reflow)
+        controls.bind("<Configure>", reflow)
+        return row, controls
 
     def _slider(
         self,
@@ -2726,25 +3021,22 @@ class SettingsWindow:
         helper: str | None = None,
         shelf_row: bool = False,
     ) -> None:
-        row_parent: tk.Misc = parent
         if shelf_row:
-            row_parent = self._setting_panel(
-                parent,
-                pady=(top_padding, 8),
-            ).content
-            top_padding = 0
-        row = tk.Frame(row_parent, background=self.CARD)
-        row.pack(fill="x", pady=(top_padding, 0))
-        if helper:
+            row, controls = self._setting_row(parent, label, helper or "")
+        else:
+            row = tk.Frame(parent, background=self.CARD)
+            row.pack(fill="x", pady=(top_padding, 0))
+            controls = row
+        if helper and not shelf_row:
             self._setting_copy(row, label, helper).pack(
                 side="left",
                 fill="x",
                 expand=True,
             )
-        else:
+        elif not shelf_row:
             self._field_label(row, label).pack(side="left")
         value_label = RoundedBadge(
-            row,
+            controls,
             text="",
             font=self.fonts["control"],
         )
@@ -2757,7 +3049,7 @@ class SettingsWindow:
             value_label.configure(text=formatter(value))
 
         scale = CatScale(
-            row_parent,
+            controls if shelf_row else parent,
             variable=variable,
             minimum=minimum,
             maximum=maximum,
@@ -2767,7 +3059,11 @@ class SettingsWindow:
             accent=self.ACCENT,
             accent_dark=self.ACCENT_DARK,
         )
-        scale.pack(fill="x", pady=(9, 0))
+        if shelf_row:
+            scale.configure(width=130)
+            scale.pack(side="right", padx=(0, 10))
+        else:
+            scale.pack(fill="x", pady=(9, 0))
         update(str(variable.get()))
 
     def _on_content_configure(
@@ -3075,7 +3371,8 @@ class SettingsWindow:
         self._invalidate_scrollbar_reflow()
         text = self.save_status.get()
         if not text:
-            self.save_status_surface.pack_forget()
+            self.save_status_surface.grid_remove()
+            self._reflow_page_heading()
             return
         is_success = text == "Saved!"
         fill = self.ACCENT if is_success else self.BLUSH
@@ -3088,16 +3385,7 @@ class SettingsWindow:
             foreground=self.INK,
         )
         self.save_status_label.update_idletasks()
-        self.save_status_surface.configure(
-            width=(
-                self.save_status_label.winfo_reqwidth()
-                + (self.save_status_surface._padding * 2)
-                + 14
-            )
-        )
-        self.save_status_surface._sync_size()
-        if not self.save_status_surface.winfo_manager():
-            self.save_status_surface.pack(side="right", anchor="e", pady=(2, 0))
+        self._reflow_page_heading()
         self.save_status_surface._draw()
 
     def _save_from_shortcut(self, _event: tk.Event[tk.Misc]) -> str:

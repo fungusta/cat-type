@@ -12,32 +12,86 @@ from PIL import Image, ImageTk
 from ui_surfaces import RoundedAction, BUTTON_ACCENT, BUTTON_INK
 
 
+TITLEBAR_BACKGROUND = '#FFF9F3'
+
+
+class TitleBarAction(RoundedAction):
+    """A compact icon action with the existing keyboard and naming contract."""
+
+    def __init__(self, parent, *, label, command, scale):
+        self._button_width = round(36 * scale)
+        self._button_height = round(30 * scale)
+        self._scale = scale
+        super().__init__(parent, text=label, command=command, takefocus=True)
+        self._width, self._height = self._button_width, self._button_height
+        tk.Canvas.configure(self, width=self._width, height=self._height)
+        self.accessible_name = label
+        self._draw()
+
+    def set_label(self, label):
+        self._text = label
+        self.accessible_name = label
+        self._draw()
+
+    def _draw(self):
+        self.delete('all')
+        width, height = self._button_width, self._button_height
+        scale = self._scale
+        if self._hovered or self._focused or self._pressed:
+            inset = max(1, round(scale))
+            self.create_round_rect(inset, inset, width - inset, height - inset,
+                radius=round(7 * scale), fill=BUTTON_ACCENT,
+                outline=BUTTON_INK if self._focused else '',
+                width=max(1, round(scale)))
+        x, y = width / 2, height / 2
+        d = 4.5 * scale
+        stroke = max(1, round(1.25 * scale))
+        opts = dict(fill=BUTTON_INK, width=stroke, tags='icon')
+        if self._text == 'Minimize':
+            self.create_line(x - d, y, x + d, y, **opts)
+        elif self._text == 'Maximize':
+            self.create_line(x - d, y - d, x + d, y - d, x + d, y + d,
+                             x - d, y + d, x - d, y - d, **opts)
+        elif self._text == 'Restore':
+            self.create_line(x - d + 3 * scale, y - d + 2 * scale,
+                             x - d + 3 * scale, y - d - scale,
+                             x + d + scale, y - d - scale,
+                             x + d + scale, y + d - 3 * scale,
+                             x + d - 2 * scale, y + d - 3 * scale, **opts)
+            self.create_line(x - d, y - d + 2 * scale, x + d - 2 * scale, y - d + 2 * scale,
+                             x + d - 2 * scale, y + d, x - d, y + d,
+                             x - d, y - d + 2 * scale, **opts)
+        else:
+            self.create_line(x - d, y - d, x + d, y + d, **opts)
+            self.create_line(x + d, y - d, x - d, y + d, **opts)
+
+
 class ThemedTitleBar(tk.Frame):
     def __init__(self, parent, *, on_minimize, on_toggle_maximize, on_close):
-        super().__init__(parent, background=BUTTON_ACCENT)
+        super().__init__(parent, background=TITLEBAR_BACKGROUND)
         self._drag_origin = None
         self._maximized = False
+        scale = max(1.0, float(self.tk.call('tk', 'scaling')) / (96 / 72))
         # Pack controls first: the title yields space before any action does.
-        actions = tk.Frame(self, background=BUTTON_ACCENT)
-        actions.pack(side='right', padx=5, pady=2)
+        actions = tk.Frame(self, background=TITLEBAR_BACKGROUND)
+        actions.pack(side='right', padx=round(8 * scale), pady=round(6 * scale))
         self.controls = []
         for label, callback in zip(('Minimize', 'Maximize', 'Close'),
                                    (on_minimize, on_toggle_maximize, on_close)):
-            control = RoundedAction(actions, text=label, command=callback,
-                                    takefocus=True, font=('TkDefaultFont', 9))
-            control.pack(side='left', padx=1)
-            control.accessible_name = label
+            control = TitleBarAction(actions, label=label, command=callback, scale=scale)
+            control.pack(side='left', padx=round(scale))
             self.controls.append(control)
         self.title = tk.Label(self, text='Cat Type Settings', anchor='w',
-                              background=BUTTON_ACCENT, foreground=BUTTON_INK,
-                              font=('TkDefaultFont', 10, 'bold'))
+                              background=TITLEBAR_BACKGROUND, foreground=BUTTON_INK,
+                              font=('TkDefaultFont', 9, 'bold'))
         try:
             with Image.open(Path(__file__).resolve().parent / 'assets' / 'cat-type.png') as mark:
-                self._mark = ImageTk.PhotoImage(mark.convert('RGBA').resize((24, 24), Image.Resampling.LANCZOS), master=self)
-            self.title.configure(image=self._mark, compound='left', padx=6)
+                mark_size = round(22 * scale)
+                self._mark = ImageTk.PhotoImage(mark.convert('RGBA').resize((mark_size, mark_size), Image.Resampling.LANCZOS), master=self)
+            self.title.configure(image=self._mark, compound='left', padx=round(6 * scale))
         except OSError:
             pass  # Keep title and window commands usable in asset-light installs.
-        self.title.pack(side='left', fill='x', expand=True, padx=8)
+        self.title.pack(side='left', fill='both', expand=True, padx=round(8 * scale))
         for region in (self, self.title):
             region.bind('<ButtonPress-1>', self.drag_start)
             region.bind('<B1-Motion>', self.drag_move)
@@ -52,8 +106,7 @@ class ThemedTitleBar(tk.Frame):
             return
         self._maximized = bool(value)
         label = 'Restore' if value else 'Maximize'
-        self.controls[1].configure(text=label)
-        self.controls[1].accessible_name = label
+        self.controls[1].set_label(label)
 
     def drag_start(self, event):
         window = self.winfo_toplevel()

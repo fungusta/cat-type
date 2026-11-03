@@ -23,6 +23,7 @@ TEST_MODULES = (
     "tests.test_settings",
     "tests.test_cat_artwork",
     "tests.test_achievements",
+    "tests.test_achievements_layout",
     "tests.test_accessory_artwork",
     "tests.test_wardrobe",
     "tests.test_wardrobe_integration",

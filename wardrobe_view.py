@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import tkinter as tk
+from tkinter import font as tkfont
 from pathlib import Path
 from typing import Callable
 
@@ -13,6 +14,15 @@ from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, SLOT_LABELS, Acces
 from cat_artwork import load_frame
 from ui_surfaces import RoundedAction, RoundedChoice, RoundedPanel, RoundedBadge, PaginationControls
 from pagination import page_window, page_slice
+
+
+class _AccessoryRow(tk.Frame):
+    """An unboxed row with the content handle used by outfit navigation."""
+
+    def __init__(self, parent: tk.Misc, *, background: str) -> None:
+        super().__init__(parent, background=background)
+        self.content = tk.Frame(self, background=background)
+        self.content.pack(fill="x", padx=6, pady=6)
 
 
 class WardrobeView(tk.Frame):
@@ -40,7 +50,7 @@ class WardrobeView(tk.Frame):
         self.on_change = on_change
         self.buttons: dict[str, RoundedAction] = {}
         self.none_buttons: dict[str, tk.Radiobutton] = {}
-        self.choice_tiles: dict[str, RoundedPanel] = {}
+        self.choice_tiles: dict[str, _AccessoryRow] = {}
         self.status_text: dict[str, tk.StringVar] = {}
         self.new_badges: dict[str, RoundedBadge] = {}
         self._new_ids: set[str] = set()
@@ -83,21 +93,22 @@ class WardrobeView(tk.Frame):
         tray_content = self.tray_shelf.content
         tray_heading = tk.Frame(tray_content, background=palette["card"])
         tray_heading.pack(fill="x", padx=20, pady=(17, 12))
-        tk.Label(
+        tray_title = tk.Label(
             tray_heading,
             text="Accessory tray",
             font=fonts["section"],
             bg=palette["card"],
             fg=palette["ink"],
-        ).pack(side="left")
+        )
         self.tray_count = tk.StringVar(master=self, value="")
-        tk.Label(
+        tray_count = tk.Label(
             tray_heading,
             textvariable=self.tray_count,
             font=fonts["small"],
             bg=palette["card"],
             fg=palette["muted"],
-        ).pack(side="right")
+        )
+        self._bind_heading_layout(tray_heading, tray_title, tray_count)
         self.choices_area = tk.Frame(tray_content, background=palette["card"])
         self.choices_area.pack(fill="x", padx=20, pady=(0, 19))
         self.pagination_controls = PaginationControls(
@@ -109,6 +120,47 @@ class WardrobeView(tk.Frame):
         self.pagination_controls.pack(anchor="center", pady=(0, 12))
         self.choices_area.bind("<Configure>", self._resize_choices)
         self.update_unlocks(unlocked)
+
+    def _bind_heading_layout(
+        self, header: tk.Frame, title: tk.Label, trailing: tk.Label | RoundedChoice,
+    ) -> None:
+        """Keep heading text and its count or None action visible together."""
+        title_width = title.winfo_reqwidth()
+        trailing_font = tkfont.Font(trailing, font=trailing.cget("font"))
+        header.grid_columnconfigure(0, weight=1)
+        title.configure(anchor="w", justify="left")
+        title.grid(row=0, column=0, sticky="ew")
+        trailing.grid(row=0, column=1, sticky="e", padx=(16, 0))
+        previous_mode = None
+
+        def arrange(_event: tk.Event) -> None:
+            nonlocal previous_mode
+            width = header.winfo_width()
+            if width <= 1:
+                return
+            trailing_width = (
+                trailing._natural_size[0] if isinstance(trailing, RoundedChoice)
+                else trailing_font.measure(str(trailing.cget("text"))) + 4
+            )
+            stacked = self._responsive_width(width) < title_width + trailing_width + 16
+            if previous_mode != stacked:
+                previous_mode = stacked
+                title.grid_configure(columnspan=2 if stacked else 1)
+                trailing.grid_configure(
+                    row=1 if stacked else 0, column=0 if stacked else 1,
+                    columnspan=2 if stacked else 1, sticky="w" if stacked else "e",
+                    padx=0 if stacked else (16, 0), pady=(6, 0) if stacked else 0,
+                )
+            wrap = max(1, width - 4 if stacked else width - trailing_width - 20)
+            if int(str(title.cget("wraplength"))) != wrap:
+                title.configure(wraplength=wrap)
+            if isinstance(trailing, RoundedChoice):
+                trailing.fit_width(width)
+            elif int(str(trailing.cget("wraplength"))) != max(1, width - 4):
+                trailing.configure(wraplength=max(1, width - 4), justify="left")
+
+        header.bind("<Configure>", arrange)
+        trailing.bind("<Configure>", arrange, add="+")
 
     def _build_choices(self, visible: tuple[Accessory, ...]) -> None:
         for child in self.choices_area.winfo_children():
@@ -127,8 +179,8 @@ class WardrobeView(tk.Frame):
                 continue
             header = tk.Frame(self.choices_area, background=palette["card"])
             header.pack(fill="x", pady=(6, 8))
-            tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
-                     bg=palette["card"], fg=palette["ink"]).pack(side="left")
+            slot_title = tk.Label(header, text=SLOT_LABELS[slot], font=fonts["section"],
+                                  bg=palette["card"], fg=palette["ink"])
             none_button = RoundedChoice(
                 header, text="None", variable=self.slots[slot], value="none",
                 command=self._choose, indicatoron=False, font=fonts["small"],
@@ -138,22 +190,18 @@ class WardrobeView(tk.Frame):
                 highlightthickness=1, highlightcolor=palette["accent_dark"],
                 highlightbackground=palette["border"], takefocus=True,
             )
-            none_button.pack(side="right")
+            self._bind_heading_layout(header, slot_title, none_button)
             self.none_buttons[slot] = none_button
             choices = tk.Frame(self.choices_area, background=palette["card"])
             choices.pack(fill="x", pady=(0, 10))
             choices.grid_columnconfigure(0, weight=1)
             for index, item in enumerate(items):
-                row, column = index, 0
-                tile = RoundedPanel(
-                    choices,
-                    background=palette["background"],
-                    fill=palette["card"],
-                    border=palette["border"],
-                    radius=16,
-                    padding=6,
-                )
-                tile.grid(row=row, column=column, sticky="ew", pady=(0, 8))
+                if index:
+                    tk.Frame(choices, background="#F1ECE7", height=1).grid(
+                        row=index * 2 - 1, column=0, sticky="ew", pady=10,
+                    )
+                tile = _AccessoryRow(choices, background=palette["card"])
+                tile.grid(row=index * 2, column=0, sticky="ew")
                 self.choice_tiles[item.id] = tile
                 tile_content = tile.content
                 with load_frame(assets_root, "white", "idle", 58, **{slot: item.id}) as frame:
@@ -173,7 +221,7 @@ class WardrobeView(tk.Frame):
                     pady=4,
                 )
                 copy = tk.Frame(tile_content, background=palette["card"])
-                copy.grid(row=0, column=1, sticky="ew", pady=(4, 0))
+                copy.grid(row=0, column=1, rowspan=2, sticky="ew", pady=(4, 0))
                 name_label = tk.Label(
                     copy,
                     wraplength=1, justify="left",
@@ -202,7 +250,7 @@ class WardrobeView(tk.Frame):
                     takefocus=True,
                     cursor="hand2",
                 )
-                button.grid(row=0, column=2, rowspan=2, padx=(14, 4), pady=4)
+                button.grid(row=0, column=2, sticky="e", padx=(14, 4), pady=4)
                 self.buttons[item.id] = button
                 value = tk.StringVar(master=self)
                 self.status_text[item.id] = value
@@ -210,7 +258,7 @@ class WardrobeView(tk.Frame):
                 status_row.pack(fill="x", pady=(5, 2))
                 status_label = tk.Label(status_row, textvariable=value, font=fonts["small"],
                          bg=palette["card"], fg=palette["accent_dark"],
-                         wraplength=1, justify="left")
+                         wraplength=1, anchor="w", justify="left")
                 status_label.pack(anchor="w", fill="x")
                 def wrap_copy(event, labels=(name_label, achievement_label)):
                     width = max(1, event.width - 4)
@@ -235,10 +283,12 @@ class WardrobeView(tk.Frame):
                     command=lambda accessory_id=item.id: self.on_achievement(accessory_id),
                     cursor="hand2", takefocus=True,
                 )
-                link.grid(row=2, column=1, columnspan=2, sticky="w", padx=(0, 4), pady=(0, 4))
+                link.grid(row=1, column=2, sticky="e", padx=(14, 4), pady=(0, 4))
                 self.achievement_links[item.id] = link
                 def arrange(event, copy=copy, button=button, thumbnail=thumbnail_label,
                             badge=badge, link=link, previous_mode=[None]):
+                    for action in (button, link):
+                        action.fit_width(max(1, event.width - 4))
                     width = self._responsive_width(event.width)
                     compact = width < thumbnail.winfo_reqwidth() + button.winfo_reqwidth() + 178
                     # The two-column compact layout still needs room beside
@@ -256,15 +306,18 @@ class WardrobeView(tk.Frame):
                     thumbnail.grid_configure(rowspan=1 if stacked else 2)
                     copy.grid_configure(row=1 if stacked else 0,
                                         column=0 if stacked else 1,
-                                        columnspan=3 if stacked else (2 if compact else 1))
+                                        columnspan=3 if stacked else (2 if compact else 1),
+                                        rowspan=1 if compact or stacked else 2)
                     button.grid_configure(row=2 if stacked else (1 if compact else 0),
                                           column=0 if stacked else (1 if compact else 2),
-                                          rowspan=1 if compact or stacked else 2,
-                                          sticky="w" if compact or stacked else "",
+                                          rowspan=1,
+                                          sticky="w" if compact or stacked else "e",
                                           padx=(0, 4) if compact or stacked else (14, 4))
-                    link.grid_configure(row=3 if stacked else 2,
-                                        column=0 if stacked else 1,
-                                        columnspan=3 if stacked else 2)
+                    link.grid_configure(row=3 if stacked else (2 if compact else 1),
+                                        column=0 if stacked else (1 if compact else 2),
+                                        columnspan=3 if stacked else (2 if compact else 1),
+                                        sticky="w" if compact or stacked else "e",
+                                        padx=(0, 4) if compact or stacked else (14, 4))
                 tile_content.bind("<Configure>", arrange, add="+")
 
     def _resize_choices(self, event: tk.Event) -> None:

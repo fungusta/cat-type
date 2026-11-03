@@ -100,6 +100,9 @@ class RoundedChoice(tk.Radiobutton):
             max(min_width, 60, face.measure(text) + (padx * 2) + 8),
             face.metrics("linespace") + (pady * 2) + 6,
         )
+        self._natural_size = self._size
+        self._text_padding = padx
+        self._vertical_padding = pady
         super().__init__(
             parent,
             background=self._surface,
@@ -117,6 +120,24 @@ class RoundedChoice(tk.Radiobutton):
         self.bind("<ButtonRelease-1>", lambda _event: self._set_pressed(False), add="+")
         self.bind("<FocusIn>", lambda _event: self._set_focus(True), add="+")
         self.bind("<FocusOut>", lambda _event: self._set_focus(False), add="+")
+        self._render()
+
+    def fit_width(self, width: int) -> None:
+        """Wrap the label when the available width cannot fit its natural face."""
+        width = min(self._natural_size[0], max(1, width))
+        if width == self._size[0]:
+            return
+        wrap = max(1, width - self._text_padding * 2 - 8) if width < self._natural_size[0] else 0
+        if wrap:
+            measure = tk.Label(self, text=self.cget("text"), font=self.cget("font"),
+                               wraplength=wrap, justify="center")
+            height = measure.winfo_reqheight() + self._vertical_padding * 2 + 4
+            measure.destroy()
+        else:
+            height = self._natural_size[1]
+        size = (width, height)
+        self._size = size
+        super().configure(wraplength=wrap)
         self._render()
 
     def _set_hover(self, hovered: bool) -> None:
@@ -213,6 +234,8 @@ class RoundedAction(tk.Canvas):
         face = tkfont.Font(parent, font=self._font)
         self._width = max(68, face.measure(self._text) + 24)
         self._height = max(34, face.metrics("linespace") + 18)
+        self._max_width: int | None = None
+        self._wrap_width = 0
         super().__init__(
             parent,
             width=self._width,
@@ -264,6 +287,26 @@ class RoundedAction(tk.Canvas):
             return None
         return self._command()
 
+    def fit_width(self, width: int) -> None:
+        """Fit and wrap button text within the available width."""
+        self._max_width = max(1, width)
+        face = tkfont.Font(self, font=self._font)
+        natural_width = max(68, face.measure(self._text) + 24)
+        new_width = min(natural_width, self._max_width)
+        wrap_width = max(1, new_width - 24) if new_width < natural_width else 0
+        if wrap_width:
+            measure = tk.Label(self, text=self._text, font=self._font,
+                               wraplength=wrap_width, justify="center")
+            new_height = max(34, measure.winfo_reqheight() + 16)
+            measure.destroy()
+        else:
+            new_height = max(34, face.metrics("linespace") + 18)
+        if (new_width, new_height, wrap_width) != (self._width, self._height, self._wrap_width):
+            self._width, self._height = new_width, new_height
+            self._wrap_width = wrap_width
+            super().configure(width=new_width, height=new_height)
+            self._draw()
+
     def _draw(self) -> None:
         self.delete("all")
         width, height = self._width, self._height
@@ -285,6 +328,8 @@ class RoundedAction(tk.Canvas):
             text=self._text,
             fill=self._ink if self._state != "disabled" else self._muted,
             font=self._font,
+            width=self._wrap_width,
+            justify="center",
         )
 
     def create_round_rect(self, x1: int, y1: int, x2: int, y2: int, *, radius: int, **kwargs: object) -> int:
@@ -313,6 +358,8 @@ class RoundedAction(tk.Canvas):
             face = tkfont.Font(self, font=self._font)
             self._width = max(68, face.measure(self._text) + 24)
             super().configure(width=self._width)
+            if self._max_width is not None:
+                self.fit_width(self._max_width)
             redraw = True
         if "state" in kwargs:
             self._state = str(kwargs.pop("state"))
@@ -355,22 +402,61 @@ class PaginationControls(tk.Frame):
         fonts: Mapping[str, object],
     ) -> None:
         super().__init__(parent, background=palette["background"], takefocus=False)
+        self._button_font = fonts["button"]
+        self._layout_key: tuple[int, int] | None = None
+        self.grid_anchor("center")
         self.previous_button = RoundedAction(
             self, text="Previous page", command=on_previous, font=fonts["button"],
         )
         self.previous_button.title = "Previous page"
-        self.previous_button.pack(side="left")
+        self.previous_button.grid(row=0, column=0)
         self.page_label = tk.Label(
             self, background=palette["background"], foreground=palette["ink"],
             font=fonts["small"], takefocus=False,
         )
-        self.page_label.pack(side="left", padx=12)
+        self.page_label.grid(row=0, column=1, padx=12)
         self.next_button = RoundedAction(
             self, text="Next page", command=on_next, font=fonts["button"],
         )
         self.next_button.title = "Next page"
-        self.next_button.pack(side="left")
+        self.next_button.grid(row=0, column=2)
+        self.bind("<Configure>", self._layout_controls, add="+")
         self.set_state(page_window(0, 0, 1))
+
+    def _layout_controls(self, event: tk.Event[tk.Misc] | None = None) -> None:
+        if self.winfo_manager() == "pack" and self.pack_info().get("fill") != "x":
+            # Keep observing the host width after a compact page grows again.
+            self.pack_configure(fill="x")
+        width = int(event.width) if event is not None else self.winfo_width()
+        if width <= 1:
+            return
+        label_width = self.page_label.winfo_reqwidth()
+        key = (width, label_width)
+        if key == self._layout_key:
+            return
+        self._layout_key = key
+        face = tkfont.Font(self, font=self._button_font)
+        previous_width = max(68, face.measure(str(self.previous_button.cget("text"))) + 24)
+        next_width = max(68, face.measure(str(self.next_button.cget("text"))) + 24)
+        inline = width >= previous_width + label_width + next_width + 24
+        if inline:
+            for column in range(3):
+                self.grid_columnconfigure(column, weight=0, uniform="")
+            self.previous_button.fit_width(previous_width)
+            self.next_button.fit_width(next_width)
+            self.previous_button.grid(row=0, column=0, sticky="", padx=0, pady=0)
+            self.page_label.grid(row=0, column=1, columnspan=1, padx=12, pady=0)
+            self.next_button.grid(row=0, column=2, sticky="", padx=0, pady=0)
+        else:
+            self.grid_columnconfigure(0, weight=1, uniform="pager-actions")
+            self.grid_columnconfigure(1, weight=1, uniform="pager-actions")
+            self.grid_columnconfigure(2, weight=0, uniform="")
+            button_width = max(1, (width - 8) // 2)
+            self.previous_button.fit_width(button_width)
+            self.next_button.fit_width(button_width)
+            self.page_label.grid(row=0, column=0, columnspan=2, padx=0, pady=(0, 8))
+            self.previous_button.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=0)
+            self.next_button.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=0)
 
     def set_state(self, window: PageWindow) -> None:
         focused = self.focus_get()
@@ -378,6 +464,7 @@ class PaginationControls(tk.Frame):
         self.page_label.configure(text=label)
         self.page_label.title = label
         self.page_label.accessible_name = label
+        self._layout_controls()
         states = (
             (self.previous_button, window.page_count > 0 and window.index > 0),
             (self.next_button, window.index + 1 < window.page_count),

@@ -189,6 +189,41 @@ class WardrobeTests(unittest.TestCase):
                     self.assertLessEqual(widget.winfo_rooty() + widget.winfo_height(),
                                          tile.winfo_rooty() + tile.winfo_height())
 
+    def test_high_scaling_tray_and_slot_headings_keep_all_text_and_none_actions_visible(self):
+        original_scaling = self.root.tk.call("tk", "scaling")
+        self.root.tk.call("tk", "scaling", 2.5)
+        self.addCleanup(lambda: self.root.tk.call("tk", "scaling", original_scaling))
+        window = self.window()
+        window.window.minsize(1, 1)
+        view = window.wardrobe
+        first_in_slot = {}
+        for item in view._visible_items:
+            first_in_slot.setdefault(item.slot, item.id)
+        tray_heading = next(
+            child for child in view.tray_shelf.content.winfo_children()
+            if isinstance(child, tk.Frame) and child is not view.choices_area
+        )
+        for geometry in ("600x700", "620x700", "920x800"):
+            window.window.geometry(geometry)
+            window.window.update()
+            for item_id in first_in_slot.values():
+                view.focus_item(item_id)
+                window.window.update()
+                headings = [tray_heading, *(button.master for button in view.none_buttons.values())]
+                for heading in headings:
+                    for child in heading.winfo_children():
+                        with self.subTest(geometry=geometry, item=item_id,
+                                          heading=str(heading), text=str(child.cget("text"))):
+                            self.assertTrue(child.winfo_ismapped())
+                            self.assertGreaterEqual(child.winfo_width(), child.winfo_reqwidth())
+                            self.assertGreaterEqual(child.winfo_height(), child.winfo_reqheight())
+                            self.assertGreaterEqual(child.winfo_rootx(), heading.winfo_rootx())
+                            self.assertLessEqual(child.winfo_rootx() + child.winfo_width(),
+                                                 heading.winfo_rootx() + heading.winfo_width())
+                            self.assertGreaterEqual(child.winfo_rooty(), heading.winfo_rooty())
+                            self.assertLessEqual(child.winfo_rooty() + child.winfo_height(),
+                                                 heading.winfo_rooty() + heading.winfo_height())
+
     def test_high_scaling_narrow_cards_wrap_all_copy_and_keep_actions_inside(self):
         original_scaling = self.root.tk.call("tk", "scaling")
         self.root.tk.call("tk", "scaling", 2.5)
@@ -197,32 +232,36 @@ class WardrobeTests(unittest.TestCase):
         window.window.minsize(1, 1)
         window.window.geometry("620x700")
         view = window.wardrobe
-        for item_id in ("round-glasses", "ribbon-clip"):
-            view.focus_item(item_id)
+        for geometry in ("600x700", "920x800", "620x700"):
+            window.window.geometry(geometry)
             window.window.update()
-            tile = view.choice_tiles[item_id]
-            pending = list(tile.content.winfo_children())
-            while pending:
-                child = pending.pop()
-                pending.extend(child.winfo_children())
-                if not child.winfo_ismapped():
-                    continue
-                self.assertGreaterEqual(child.winfo_rootx(), tile.winfo_rootx())
-                self.assertLessEqual(child.winfo_rootx() + child.winfo_width(),
-                                     tile.winfo_rootx() + tile.winfo_width())
-                self.assertLessEqual(child.winfo_rooty() + child.winfo_height(),
-                                     tile.winfo_rooty() + tile.winfo_height())
-                if isinstance(child, tk.Label) and child.cget("text"):
-                    self.assertGreater(int(str(child.cget("wraplength"))), 0)
-                    self.assertLessEqual(child.winfo_reqwidth(), child.winfo_width())
-            pager = view.pagination_controls
-            shelf = view.tray_shelf
-            self.assertTrue(pager.winfo_ismapped())
-            self.assertLessEqual(pager.winfo_rooty() + pager.winfo_height(),
-                                 shelf.winfo_rooty() + shelf.winfo_height())
-            bounds = window.scroll_canvas.bbox("all")
-            self.assertLessEqual(shelf.winfo_rooty() - window.scroll_canvas.winfo_rooty()
-                                 + window.scroll_canvas.canvasy(0) + shelf.winfo_height(), bounds[3])
+            for item_id in ("round-glasses", "ribbon-clip"):
+                with self.subTest(geometry=geometry, item=item_id):
+                    view.focus_item(item_id)
+                    window.window.update()
+                    tile = view.choice_tiles[item_id]
+                    pending = list(tile.content.winfo_children())
+                    while pending:
+                        child = pending.pop()
+                        pending.extend(child.winfo_children())
+                        if not child.winfo_ismapped():
+                            continue
+                        self.assertGreaterEqual(child.winfo_rootx(), tile.winfo_rootx())
+                        self.assertLessEqual(child.winfo_rootx() + child.winfo_width(),
+                                             tile.winfo_rootx() + tile.winfo_width())
+                        self.assertLessEqual(child.winfo_rooty() + child.winfo_height(),
+                                             tile.winfo_rooty() + tile.winfo_height())
+                        if isinstance(child, tk.Label) and child.cget("text"):
+                            self.assertGreater(int(str(child.cget("wraplength"))), 0)
+                            self.assertLessEqual(child.winfo_reqwidth(), child.winfo_width())
+                    pager = view.pagination_controls
+                    shelf = view.tray_shelf
+                    self.assertTrue(pager.winfo_ismapped())
+                    self.assertLessEqual(pager.winfo_rooty() + pager.winfo_height(),
+                                         shelf.winfo_rooty() + shelf.winfo_height())
+                    bounds = window.scroll_canvas.bbox("all")
+                    self.assertLessEqual(shelf.winfo_rooty() - window.scroll_canvas.winfo_rooty()
+                                         + window.scroll_canvas.canvasy(0) + shelf.winfo_height(), bounds[3])
 
     def test_cards_and_pagination_fit_content_driven_shelf(self):
         window = self.window()
@@ -337,7 +376,7 @@ class WardrobeTests(unittest.TestCase):
         window.wardrobe.focus_item('bow-tie')
         self.assertIn('bow-tie', window.wardrobe.buttons)
 
-    def test_wardrobe_and_achievement_surfaces_use_shared_soft_shelves(self):
+    def test_wardrobe_and_achievements_keep_outer_shelves_and_flat_rows(self):
         window = self.window()
         window.page_buttons["Achievements"].invoke()
         window.page_buttons["Wardrobe"].invoke()
@@ -347,7 +386,8 @@ class WardrobeTests(unittest.TestCase):
         self.assertEqual(window.wardrobe.preview_card._radius, 18)
         self.assertTrue(window.wardrobe.choice_tiles)
         self.assertTrue(
-            all(tile._radius == 16 for tile in window.wardrobe.choice_tiles.values())
+            all(isinstance(tile, tk.Frame) and not isinstance(tile, RoundedPanel)
+                for tile in window.wardrobe.choice_tiles.values())
         )
         self.assertTrue(
             all(
@@ -358,8 +398,8 @@ class WardrobeTests(unittest.TestCase):
         self.assertTrue(window.achievements.cards)
         self.assertTrue(
             all(
-                isinstance(card, RoundedPanel)
-                and card._radius == 16
+                isinstance(card, tk.Frame)
+                and not isinstance(card, RoundedPanel)
                 and bool(int(card.cget("takefocus")))
                 for card in window.achievements.cards.values()
             )
@@ -427,14 +467,14 @@ class WardrobeTests(unittest.TestCase):
         self.assertNotIn("Favorite spot", texts(window.wardrobe))
         self.assertTrue(window.wardrobe.choice_tiles)
 
-    def test_achievements_cards_are_focusable_rounded_shelves(self) -> None:
+    def test_achievement_rows_keep_keyboard_focus_indicators(self) -> None:
         window = self.window()
         window.page_buttons["Achievements"].invoke()
         window.page_buttons["Wardrobe"].invoke()
         window.window.update()
         for card in window.achievements.cards.values():
             self.assertTrue(bool(int(card.cget("takefocus"))))
-            self.assertEqual(card._radius, 16)
+            self.assertEqual(int(card.cget("highlightthickness")), 2)
 
     def test_empty_new_badges_are_hidden_until_a_reward_is_new(self) -> None:
         window = self.window()
@@ -498,7 +538,10 @@ class WardrobeTests(unittest.TestCase):
         self.assertEqual(title.winfo_manager(), 'grid')
         self.assertEqual(badge.winfo_manager(), 'grid')
         self.assertTrue(badge.winfo_ismapped())
-        self.assertLessEqual(title.winfo_x() + title.winfo_width(), badge.winfo_x())
+        if int(badge.grid_info()["row"]) == 0:
+            self.assertLessEqual(title.winfo_x() + title.winfo_width(), badge.winfo_x())
+        else:
+            self.assertLessEqual(title.winfo_y() + title.winfo_height(), badge.winfo_y())
         self.assertLessEqual(badge.winfo_x() + badge.winfo_width(), heading.winfo_width())
         self.assertEqual(int(title.cget('wraplength')), max(1, title.winfo_width() - 4))
 
@@ -539,11 +582,11 @@ class WardrobeTests(unittest.TestCase):
         window.page_buttons["Achievements"].invoke()
         window.window.update()
         card = next(iter(window.achievements.cards.values()))
-        before = card._shelf_image
         card.focus_set()
         window.window.update()
         self.assertTrue(card._focused)
-        self.assertIsNot(before, card._shelf_image)
+        self.assertEqual(card.cget("highlightbackground"),
+                         window.achievements.palette["accent_dark"])
 
     def test_live_secret_reveal_keeps_choices_and_autosaves_all_slots(self):
         self.assertIn('slots', inspect.signature(WardrobeView).parameters)
