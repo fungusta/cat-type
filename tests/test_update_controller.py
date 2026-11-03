@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import queue
 import threading
 import unittest
@@ -159,6 +160,14 @@ class BlockingInstaller(FakeInstaller):
             if not self.release_handoff.wait(timeout=1.0):
                 raise RuntimeError("start test barrier timed out")
         super().start(prepared)
+
+
+def setUpModule() -> None:
+    # Earlier UI tests leave Tk roots in reference cycles. If the cycle
+    # collector first runs on one of this module's worker threads, Tcl
+    # deletes the interpreter from the wrong thread ("Tcl_AsyncDelete") and
+    # can stall the thread under test. Collect them on the main thread first.
+    gc.collect()
 
 
 class UpdateControllerTests(unittest.TestCase):
