@@ -1243,7 +1243,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         preview = self.settings_window.rail_preview
         width, height = int(preview.cget("width")), int(preview.cget("height"))
         self.assertEqual(width, height)
-        self.assertGreaterEqual(width, 160)
+        # Fonts differ by platform, so measure against the nav pills the
+        # stage spans rather than a fixed pixel size.
+        pill_width = next(iter(self.settings_window.page_buttons.values()))._size[0]
+        self.assertEqual(width, self.settings_window._rail_stage_max)
+        self.assertGreaterEqual(width, pill_width)
+        self.assertGreaterEqual(width, 120)
         self.assertGreater(
             int(self.settings_window.rail_brand_title.grid_info()["row"]),
             int(preview.grid_info()["row"]),
@@ -1260,10 +1265,21 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
     def test_short_window_shrinks_the_stage_to_keep_navigation_visible(self) -> None:
         view = self.settings_window
-        view.window.geometry("700x480")
+        view.window.minsize(1, 1)
+        view.window.geometry("700x800")
+        view.window.update()
+        # Derive the height from the rail's own metrics, which vary by
+        # platform: room for a stage halfway between its minimum and maximum.
+        chrome_height = view.window.winfo_height() - view.scroll_host.winfo_height()
+        rail_without_stage = (view.page_switcher.content.winfo_reqheight()
+                              - int(view.rail_preview.cget("height")))
+        host_height = (rail_without_stage + 24 + 18 + view.page_switcher._padding * 2
+                       + (view._rail_stage_min + view._rail_stage_max) // 2)
+        view.window.geometry(f"700x{host_height + chrome_height}")
         view.window.update()
         view.window.update()
         self.assertLess(int(view.rail_preview.cget("width")), view._rail_stage_max)
+        self.assertGreaterEqual(int(view.rail_preview.cget("width")), view._rail_stage_min)
         last_tab = view.page_buttons["Achievements"]
         self.assertLessEqual(
             last_tab.winfo_rooty() + last_tab.winfo_height(),

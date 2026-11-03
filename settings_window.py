@@ -744,7 +744,6 @@ class SettingsWindow:
                     assets_root, variant, name, render_size,
                     **self._selected_outfit(),
                 )
-                sources[name] = image
                 vector_frames[name] = ImageTk.PhotoImage(
                     self._resized_art(image, 148),
                     master=self.window,
@@ -753,6 +752,9 @@ class SettingsWindow:
                     self._resized_art(image, self._rail_art_size()),
                     master=self.window,
                 )
+                # Only rendered poses are kept for stage resizes; failed ones
+                # stay with the bounded hydration retry.
+                sources[name] = image
             self._preview_frames[variant] = vector_frames
             self._rail_preview_frames[variant] = rail_frames
 
@@ -1115,7 +1117,7 @@ class SettingsWindow:
             highlightthickness=0,
         )
         self.rail_preview.grid(row=0, column=0, pady=(0, 10))
-        self._rail_stage_backdrop = self.rail_preview.create_image(0, 0, anchor="nw")
+        self._rail_stage_corners = self._render_rail_stage_corners()
         self._rail_preview_image = self.rail_preview.create_image(stage // 2, stage // 2)
         # A text placeholder identifies the current cat before vector rendering.
         placeholder = self.cat_style.get()
@@ -1198,19 +1200,40 @@ class SettingsWindow:
         self._refresh_page_buttons()
         self._refresh_achievement_indicator()
 
-    def _draw_rail_stage(self) -> None:
-        size = self._rail_stage_size
-        scale = 4
-        tile = Image.new("RGB", (size * scale, size * scale), self.CARD)
+    RAIL_STAGE_RADIUS = 18
+
+    def _render_rail_stage_corners(self) -> tuple[ImageTk.PhotoImage, ...]:
+        """Anti-aliased stage corners, rendered once for every stage size."""
+        radius, scale = self.RAIL_STAGE_RADIUS, 4
+        tile_size = radius * 2 + 1
+        tile = Image.new("RGB", (tile_size * scale, tile_size * scale), self.CARD)
         ImageDraw.Draw(tile).rounded_rectangle(
-            (0, 0, size * scale - 1, size * scale - 1), radius=18 * scale,
+            (0, 0, tile_size * scale - 1, tile_size * scale - 1), radius=radius * scale,
             fill=self.CHIP, outline=self.BORDER, width=scale,
         )
-        self._rail_stage_image = ImageTk.PhotoImage(
-            tile.resize((size, size), getattr(Image, "Resampling", Image).LANCZOS),
-            master=self.window,
+        tile = tile.resize((tile_size, tile_size), getattr(Image, "Resampling", Image).LANCZOS)
+        far = tile_size - radius
+        boxes = ((0, 0), (far, 0), (0, far), (far, far))
+        return tuple(
+            ImageTk.PhotoImage(tile.crop((x, y, x + radius, y + radius)), master=self.window)
+            for x, y in boxes
         )
-        self.rail_preview.itemconfigure(self._rail_stage_backdrop, image=self._rail_stage_image)
+
+    def _draw_rail_stage(self) -> None:
+        # Resizing only moves canvas items: no new images, so a short window
+        # cannot fail or stall on rendering the stage itself.
+        canvas, size, radius = self.rail_preview, self._rail_stage_size, self.RAIL_STAGE_RADIUS
+        canvas.delete("stage")
+        far = size - radius
+        for x0, y0, x1, y1 in ((radius, 0, far, size), (0, radius, size, far)):
+            canvas.create_rectangle(x0, y0, x1, y1, fill=self.CHIP, width=0, tags="stage")
+        for line in ((radius, 0, far, 0), (radius, size - 1, far, size - 1),
+                     (0, radius, 0, far), (size - 1, radius, size - 1, far)):
+            canvas.create_line(*line, fill=self.BORDER, tags="stage")
+        for image, (x, y) in zip(self._rail_stage_corners,
+                                 ((0, 0), (far, 0), (0, far), (far, far))):
+            canvas.create_image(x, y, image=image, anchor="nw", tags="stage")
+        canvas.tag_lower("stage")
 
     def _fit_rail_stage(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         # Short windows trade stage size for keeping every nav item reachable.
@@ -1235,10 +1258,20 @@ class SettingsWindow:
         self._draw_rail_stage()
         art_size = self._rail_art_size()
         for variant, sources in self._rail_preview_sources.items():
-            self._rail_preview_frames[variant] = {
-                name: ImageTk.PhotoImage(self._resized_art(image, art_size), master=self.window)
-                for name, image in sources.items()
-            }
+            frames = self._rail_preview_frames.setdefault(variant, {})
+            for name, image in list(sources.items()):
+                try:
+                    frames[name] = ImageTk.PhotoImage(
+                        self._resized_art(image, art_size), master=self.window,
+                    )
+                except tk.TclError:
+                    # Same recovery as a failed first render: drop the pose
+                    # and let the visible Retry previews action rebuild it.
+                    del sources[name]
+                    frames.pop(name, None)
+                    self._preview_frames.get(variant, {}).pop(name, None)
+                    self._preview_errors.add((variant, name))
+        self._refresh_preview_error()
         self._display_preview()
 
     def _refresh_achievement_indicator(self) -> None:
