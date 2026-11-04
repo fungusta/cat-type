@@ -797,6 +797,30 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual({int(card.grid_info()["column"]) for card in view.metric_stat_rows}, {0})
         self.assertEqual({int(card.grid_info()["row"]) for card in view.metric_stat_rows}, {0, 1, 2})
 
+    def test_rail_collapses_to_icons_when_the_page_would_be_crowded(self) -> None:
+        view = self.settings_window
+        view.window.minsize(1, 1)
+        full = view._rail_expanded_width
+        roomy = full * 2 + view.RAIL_OUTER + 26 + 80
+        view.window.geometry(f"{roomy}x700")
+        view.window.update()
+        self.assertFalse(view.rail_compact)
+        view.window.geometry(f"{full * 2 + view.RAIL_OUTER + 26 - 40}x700")
+        view.window.update()
+        self.assertTrue(view.rail_compact)
+        self.assertLess(view.page_switcher.winfo_width(), full)
+        self.assertFalse(view.rail_brand_title.winfo_ismapped())
+        for label, button in view.page_buttons.items():
+            # Icon only, but the label stays the button's name.
+            self.assertTrue(button._compact)
+            self.assertEqual(button.cget("text"), label)
+            self.assertTrue(button.winfo_ismapped())
+        self.assertLessEqual(view._rail_stage_size, view.page_switcher.content.winfo_width())
+        view.window.geometry(f"{roomy}x700")
+        view.window.update()
+        self.assertFalse(view.rail_compact)
+        self.assertTrue(view.rail_brand_title.winfo_ismapped())
+
     def test_navigation_items_carry_icons(self) -> None:
         for label, button in self.settings_window.page_buttons.items():
             self.assertEqual(button._icon, label.lower())

@@ -912,6 +912,7 @@ class SettingsWindow:
         self._build_page_switcher(self.scroll_host, self.scroll_content)
         self.scroll_content.grid_columnconfigure(0, weight=1)
         self.scroll_content.grid_rowconfigure(0, weight=1)
+        self.scroll_host.bind("<Configure>", self._fit_rail_mode, add="+")
         self.scroll_host.bind("<Configure>", self._fit_rail_stage, add="+")
         self.page_switcher.content.bind("<Configure>", self._fit_rail_stage, add="+")
 
@@ -1233,10 +1234,50 @@ class SettingsWindow:
             style=self.secondary_button_style, takefocus=True,
         )
         self.preview_retry_button.pack(anchor="w")
+        self._rail_expanded_width = rail_content_width
+        self._rail_expanded_stage = (self._rail_stage_min, self._rail_stage_max)
+        self.rail_compact = False
         self._refresh_page_buttons()
         self._refresh_achievement_indicator()
 
     RAIL_STAGE_RADIUS = 18
+    RAIL_OUTER = 26 + 18 + 20  # rail padx plus its shelf padding
+
+    def _fit_rail_mode(self, _event: tk.Event[tk.Misc] | None = None) -> None:
+        """Collapse the rail to icons when a full rail would crowd the page.
+
+        At high display scaling in a narrow window the labelled rail could
+        leave the page a sliver, stretching it into a very tall column.
+        """
+        window_width = self.window.winfo_width()
+        if window_width <= 1 or not hasattr(self, "_rail_expanded_width"):
+            return
+        expanded = self._rail_expanded_width
+        page_beside_full_rail = window_width - expanded - self.RAIL_OUTER - 26
+        # A small margin keeps the rail from flipping back and forth at the edge.
+        compact = page_beside_full_rail < expanded + (24 if self.rail_compact else 0)
+        if compact != self.rail_compact:
+            self._set_rail_compact(compact)
+
+    def _set_rail_compact(self, compact: bool) -> None:
+        self.rail_compact = compact
+        self._invalidate_scrollbar_reflow()
+        for button in self.page_buttons.values():
+            button.set_compact(compact)
+        if compact:
+            width = max(button._size[0] for button in self.page_buttons.values()) + 8
+            self.rail_brand_title.grid_remove()
+            self.rail_brand_subtitle.grid_remove()
+            self._rail_stage_max = width - 8
+            self._rail_stage_min = min(self._rail_stage_min, self._rail_stage_max)
+        else:
+            width = self._rail_expanded_width
+            self.rail_brand_title.grid()
+            self.rail_brand_subtitle.grid()
+            self._rail_stage_min, self._rail_stage_max = self._rail_expanded_stage
+        self.page_switcher.configure(width=width + 20)
+        self.page_switcher.content.configure(width=width)
+        self._fit_rail_stage()
 
     def _render_rail_stage_corners(self) -> tuple[ImageTk.PhotoImage, ...]:
         """Anti-aliased stage corners, rendered once for every stage size."""

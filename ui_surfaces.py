@@ -19,6 +19,7 @@ BUTTON_ACCENT = "#F2D66B"
 BUTTON_INK = "#302A33"
 BUTTON_MUTED = "#575059"
 BUTTON_DISABLED = "#F3EFEA"
+UNREAD_DOT = "#D9822B"
 BUTTON_DISABLED_EDGE = "#E8E1DA"
 SOFT_PILL_MAX_RADIUS = 14
 # Fluent motion timings: hover/press feedback is "fast", state changes "normal".
@@ -399,6 +400,9 @@ class RoundedChoice(tk.Radiobutton):
         self._label_var = variable
         self._label_face = face
         self._icon_pad = ""
+        self._compact = False
+        self._display: tk.StringVar | None = None
+        self._plain_label = text
         if self._icon:
             # Tk centres a button's text over its image, so leading spaces
             # open room for the icon, which the face then draws in that gap.
@@ -407,8 +411,8 @@ class RoundedChoice(tk.Radiobutton):
             space = max(1, face.measure(" "))
             self._icon_pad = " " * -(-(self._icon_size + self._icon_gap) // space)
             if variable is not None:
-                display = tk.StringVar(master=parent, value=self._icon_pad + text)
-                variable.trace_add("write", lambda *_args: self._sync_icon_label(display))
+                display = self._display = tk.StringVar(master=parent, value=self._icon_pad + text)
+                variable.trace_add("write", lambda *_args: self._sync_icon_label())
                 kwargs["textvariable"] = display
             else:
                 kwargs["text"] = self._icon_pad + text
@@ -444,22 +448,44 @@ class RoundedChoice(tk.Radiobutton):
     def _label(self) -> str:
         if self._label_var is not None:
             return str(self._label_var.get())
-        return str(super().cget("text"))[len(self._icon_pad):]
+        return self._plain_label
 
-    def _sync_icon_label(self, display: tk.StringVar) -> None:
-        display.set(self._icon_pad + str(self._label_var.get()))
+    def _sync_icon_label(self) -> None:
+        # A compact item shows only its icon; the label stays the accessible name.
+        shown = "" if self._compact else self._icon_pad + self._label()
+        if self._display is not None:
+            self._display.set(shown)
+        else:
+            super().configure(text=shown)
         self._render()
+
+    def set_compact(self, compact: bool) -> None:
+        """Show just the icon, for a navigation rail collapsed on narrow windows."""
+        if not self._icon or compact == self._compact:
+            return
+        self._compact = compact
+        self._size = ((max(44, self._icon_size + self._text_padding * 2 + 8), self._natural_size[1])
+                      if compact else self._natural_size)
+        self._sync_icon_label()
 
     def _with_icon(self, image: Image.Image) -> Image.Image:
         """Draw the icon in the gap the leading spaces leave before the label."""
         width, height = self._size
         size = self._icon_size
         face = self._label_face
-        line = face.measure(self._icon_pad + self._label())
-        left = (width - line) // 2 + face.measure(self._icon_pad) - self._icon_gap - size
         top = (height - 1 - size) // 2 + (1 if self._pressed else 0)
+        if self._compact:
+            left = (width - size) // 2
+        else:
+            line = face.measure(self._icon_pad + self._label())
+            left = (width - line) // 2 + face.measure(self._icon_pad) - self._icon_gap - size
         composed = image.convert("RGBA")
         composed.alpha_composite(nav_icon_image(self._icon, size), (max(0, left), max(0, top)))
+        if self._compact and "New" in self._label():
+            # Without its label, an unread item keeps a small marker by its icon.
+            dot = max(4, size // 4)
+            x, y = left + size - dot // 2, top - dot // 2
+            ImageDraw.Draw(composed).ellipse((x, y, x + dot, y + dot), fill=UNREAD_DOT)
         return composed.convert("RGB")
 
     def fit_width(self, width: int) -> None:
@@ -996,7 +1022,7 @@ class RoundedPanel(tk.Canvas):
             short = self._shelf_surface(width, cap * 2 + 1)
             self._place_shelf_image(short.crop((0, 0, width, cap)), 0)
             self._place_shelf_image(short.crop((0, cap + 1, width, cap * 2 + 1)), height - cap)
-            middle = list(short.crop((0, cap, width, cap + 1)).getdata())
+            middle = [short.getpixel((x, cap)) for x in range(width)]
             start = 0
             for x in range(1, width + 1):
                 if x == width or middle[x] != middle[start]:
