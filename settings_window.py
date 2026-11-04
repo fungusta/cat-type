@@ -2497,14 +2497,30 @@ class SettingsWindow:
         visible_label_indices = self._metric_label_indices(
             labels, usable_width, minimum_spacing=label_spacing,
         )
-        label_centers = self._metric_label_centers(
-            [
-                (index, label_positions[index][0], axis_font.measure(label) + 4)
-                for index, label in enumerate(labels)
-                if label is not None and index in visible_label_indices
-            ],
-            width,
+        def centers_at(xs: list[float]) -> dict[int, float]:
+            return self._metric_label_centers(
+                [
+                    (index, xs[index], axis_font.measure(label) + 4)
+                    for index, label in enumerate(labels)
+                    if label is not None and index in visible_label_indices
+                ],
+                width,
+            )
+
+        # Line points run edge to edge while columns sit mid-bucket, so a
+        # label can collide in one view only. Keep the labels that fit in
+        # both, so switching views never changes which dates are shown.
+        geometry = dict(left=left, right=right, top=top, bottom=bottom, maximum=axis_maximum)
+        other_xs = (
+            [x for x, _y in self._metric_line_positions(values, width, height, **geometry)]
+            if self.metrics_view.get() == "columns"
+            else [x for x, _base, _y in self._metric_column_positions(values, width, height, **geometry)]
         )
+        in_other = centers_at(other_xs)
+        label_centers = {
+            index: x for index, x in centers_at([x for x, _y in label_positions]).items()
+            if index in in_other
+        }
         for index, ((x, _y), label) in enumerate(zip(label_positions, labels)):
             if label is not None and index in label_centers:
                 canvas.create_text(
@@ -3407,7 +3423,11 @@ class SettingsWindow:
         self,
         event: tk.Event[tk.Misc],
     ) -> None:
-        wraplength = max(1, event.width)
+        # A label's requested width adds its own padding to the wrapped text.
+        label = self.update_status_label
+        inset = 2 * sum(int(float(str(label.cget(option))))
+                        for option in ("padx", "borderwidth", "highlightthickness"))
+        wraplength = max(1, event.width - inset)
         current_wraplength = int(
             float(self.update_status_label.cget("wraplength"))
         )

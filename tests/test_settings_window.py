@@ -489,7 +489,8 @@ class SettingsWindowUpdateCardTests(unittest.TestCase):
     def test_one_pixel_wraplength_jitter_does_not_reconfigure_label(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         label = Mock()
-        label.cget.return_value = "381"
+        label.cget.side_effect = {"wraplength": "381", "padx": "0",
+                                  "borderwidth": "0", "highlightthickness": "0"}.get
         settings_window.update_status_label = label
 
         settings_window._on_update_card_configure(SimpleNamespace(width=380))
@@ -2382,9 +2383,11 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window.window.geometry("700x480")
         self.settings_window.window.update()
 
-        self.assertEqual(
-            int(float(self.settings_window.update_status_label.cget("wraplength"))),
-            self.settings_window.update_status_label.master.winfo_width(),
+        label = self.settings_window.update_status_label
+        inset = 2 * sum(int(float(str(label.cget(option))))
+                        for option in ("padx", "borderwidth", "highlightthickness"))
+        self.assertLessEqual(
+            abs(int(float(label.cget("wraplength"))) - (label.master.winfo_width() - inset)), 1,
         )
         self.assertLessEqual(
             self.settings_window.update_status_label.winfo_reqwidth(),
