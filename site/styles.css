@@ -253,7 +253,7 @@ a:focus-visible, button:focus-visible {
   background: var(--chip);
 }
 
-.tile img { width: 64px; height: 64px; }
+.tile-art { width: 64px; height: 64px; }
 .tile-name { margin: 0; color: var(--ink); font-weight: 800; }
 .tile-blurb { font-size: .9rem; }
 
@@ -273,7 +273,7 @@ a:focus-visible, button:focus-visible {
 
 .tile-equipped .tile-badge { background: var(--butter); color: var(--butter-ink); }
 .tile-locked .tile-badge { background: var(--track); color: var(--muted); }
-.tile-locked img { filter: grayscale(1); opacity: .45; }
+.tile-locked .tile-art { filter: grayscale(1); opacity: .45; }
 .tile-locked .tile-name { color: var(--muted); }
 
 .meter {
