@@ -80,6 +80,25 @@ function copyOfDefault() {
   return { cat: DEFAULT_CHOICE.cat, outfit: { ...DEFAULT_CHOICE.outfit } };
 }
 
+// Touching window.localStorage itself throws when site data is blocked, so
+// resolve it once here; readChoice and writeChoice treat null as "no storage".
+export function storageFrom(getStorage) {
+  try {
+    return getStorage() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Renders can finish out of order; only the most recent one may be shown.
+export function createRenderTickets() {
+  let latest = 0;
+  return {
+    next: () => ++latest,
+    isCurrent: (ticket) => ticket === latest,
+  };
+}
+
 export function readChoice(storage, catalog) {
   try {
     const saved = JSON.parse(storage.getItem(STORAGE_KEY));

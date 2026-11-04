@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_CHOICE,
   RELEASE_BASE,
+  createRenderTickets,
   downloadFor,
+  storageFrom,
   nextOutfit,
   platformFor,
   readChoice,
@@ -110,6 +112,25 @@ test("test_read_choice_rejects_bad_saved_state", () => {
   for (const [name, storage] of Object.entries(cases)) {
     assert.deepEqual(readChoice(storage, CATALOG), DEFAULT_CHOICE, name);
   }
+});
+
+test("test_unreachable_storage_falls_back_to_default", () => {
+  // Chrome throws a SecurityError just for touching window.localStorage
+  // when site data is blocked.
+  const storage = storageFrom(() => { throw new Error("SecurityError"); });
+  assert.equal(storage, null);
+  assert.deepEqual(readChoice(storage, CATALOG), DEFAULT_CHOICE);
+  assert.doesNotThrow(() => writeChoice(storage, DEFAULT_CHOICE));
+  const reachable = memoryStorage();
+  assert.equal(storageFrom(() => reachable), reachable);
+});
+
+test("test_only_the_latest_render_is_current", () => {
+  const tickets = createRenderTickets();
+  const first = tickets.next();
+  const second = tickets.next();
+  assert.equal(tickets.isCurrent(first), false);
+  assert.equal(tickets.isCurrent(second), true);
 });
 
 test("test_read_choice_round_trips_valid_state", () => {

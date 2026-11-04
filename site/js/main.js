@@ -1,4 +1,13 @@
-import { DEFAULT_CHOICE, downloadFor, nextOutfit, platformFor, readChoice, writeChoice } from "./logic.js";
+import {
+  DEFAULT_CHOICE,
+  createRenderTickets,
+  downloadFor,
+  nextOutfit,
+  platformFor,
+  readChoice,
+  storageFrom,
+  writeChoice,
+} from "./logic.js";
 import { happy, renderCat, startHeroLoop, wave } from "./cat.js";
 
 document.documentElement.classList.add("js");
@@ -99,22 +108,31 @@ async function start() {
     return;
   }
 
-  let choice = readChoice(localStorage, catalog);
+  const storage = storageFrom(() => window.localStorage);
+  let choice = readChoice(storage, catalog);
   let heroSvg = null;
   let customSvg = null;
   const chips = [...document.querySelectorAll("#style-chips [data-cat]")];
+  const renders = createRenderTickets();
 
+  // Cats render off-page first, so a slow earlier render can never land on
+  // top of a newer choice.
   const show = async () => {
+    const ticket = renders.next();
     chips.forEach((chip) => chip.setAttribute("aria-pressed", String(chip.dataset.cat === choice.cat)));
-    [heroSvg, customSvg] = await Promise.all([
-      renderCat($("#hero-cat"), choice, "hero"),
-      renderCat($("#customise-cat"), choice, "custom"),
+    const [hero, custom] = await Promise.all([
+      renderCat(document.createElement("div"), choice, "hero"),
+      renderCat(document.createElement("div"), choice, "custom"),
     ]);
+    if (!renders.isCurrent(ticket)) return;
+    $("#hero-cat").replaceChildren(hero);
+    $("#customise-cat").replaceChildren(custom);
+    [heroSvg, customSvg] = [hero, custom];
   };
 
   const choose = async (next) => {
     choice = next;
-    writeChoice(localStorage, choice);
+    writeChoice(storage, choice);
     await show();
   };
 
