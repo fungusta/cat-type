@@ -38,6 +38,7 @@ TEST_MODULES = (
     "tests.test_platform_assets",
     "tests.test_bundled_icon_check",
     "tests.test_package_smoke",
+    "tests.test_site_build",
     "tests.test_release_version_check",
     "tests.test_auto_update",
     "tests.test_update_controller",
