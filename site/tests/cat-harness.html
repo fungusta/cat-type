@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Cat harness</title>
+  <link rel="stylesheet" href="../cat.css">
+  <style>
+    body { display: flex; gap: 24px; padding: 24px; background: #f6f1ea; }
+    .stage { width: 240px; height: 240px; background: #ebe3d8; border-radius: 24px; display: grid; place-items: center; }
+    .stage svg { width: 200px; height: 200px; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="a"></div>
+  <div class="stage" id="b"></div>
+  <script type="module">
+    import { renderCat, wave, burst, happy, startHeroLoop } from "../js/cat.js";
+    const base = "../../build/site/assets/";
+    const a = await renderCat(document.querySelector("#a"), { cat: "gray", outfit: { hat: "beanie", neck: "bow-tie" } }, "a", base);
+    const b = await renderCat(document.querySelector("#b"), { cat: "white", outfit: { ears: "daisy-clip", glasses: "sunglasses", neck: "bell-collar" } }, "b", base);
+    Object.assign(window, { a, b, wave, burst, happy, startHeroLoop });
+    document.body.dataset.ready = "true";
+  </script>
+</body>
+</html>
