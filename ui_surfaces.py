@@ -985,6 +985,36 @@ class RoundedPanel(tk.Canvas):
         self._last_draw_key = key
         self.itemconfigure(self._content_id, width=max(1, width - self._padding * 2))
         self.delete("shelf")
+        # Long shelves are painted as two short caps and a run of solid
+        # rectangles between them: one full-height image can exceed what an
+        # X server will allocate for a pixmap (BadAlloc) once a page grows long.
+        cap = min(self._radius, max(1, (width - 4) // 2)) + 12
+        self._shelf_images = []
+        if height <= cap * 2 + 1:
+            self._place_shelf_image(self._shelf_surface(width, height), 0)
+        else:
+            short = self._shelf_surface(width, cap * 2 + 1)
+            self._place_shelf_image(short.crop((0, 0, width, cap)), 0)
+            self._place_shelf_image(short.crop((0, cap + 1, width, cap * 2 + 1)), height - cap)
+            middle = list(short.crop((0, cap, width, cap + 1)).getdata())
+            start = 0
+            for x in range(1, width + 1):
+                if x == width or middle[x] != middle[start]:
+                    self.create_rectangle(
+                        start, cap, x, height - cap, outline="", width=0,
+                        fill="#{:02X}{:02X}{:02X}".format(*middle[start][:3]), tags="shelf",
+                    )
+                    start = x
+        self.tag_lower("shelf")
+
+    def _place_shelf_image(self, image: Image.Image, y: int) -> None:
+        photo = ImageTk.PhotoImage(image, master=self)
+        self._shelf_images.append(photo)
+        self.create_image(0, y, anchor="nw", image=photo, tags="shelf")
+
+    def _shelf_surface(self, width: int, height: int) -> Image.Image:
+        key = (width, height, self.cget("background"), self._fill, self._border,
+               self._radius, self._focused)
         surface = self._raster_cache.get(key)
         if surface is None:
             # Face inset leaves a few pixels below for a soft ambient shadow,
@@ -1005,9 +1035,4 @@ class RoundedPanel(tk.Canvas):
             if len(self._raster_cache) >= self._raster_cache_limit:
                 self._raster_cache.pop(next(iter(self._raster_cache)))
             self._raster_cache[key] = surface
-        self._shelf_image = ImageTk.PhotoImage(
-            surface,
-            master=self,
-        )
-        self.create_image(0, 0, anchor="nw", image=self._shelf_image, tags="shelf")
-        self.tag_lower("shelf")
+        return surface
