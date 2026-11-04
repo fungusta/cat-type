@@ -156,6 +156,8 @@ class NativeWindowChrome:
         self.user.GetParent.restype = w.HWND
         self.user.SendMessageW.argtypes = [w.HWND, w.UINT, c.c_size_t, pointer]
         self.user.SendMessageW.restype = pointer
+        self.user.PostMessageW.argtypes = [w.HWND, w.UINT, c.c_size_t, pointer]
+        self.user.PostMessageW.restype = w.BOOL
         self.user.GetWindowRect.argtypes = [w.HWND, c.POINTER(w.RECT)]
         self.user.IsZoomed.argtypes = self.user.IsIconic.argtypes = [w.HWND]
         self.user.ShowWindow.argtypes = [w.HWND, c.c_int]
@@ -264,7 +266,51 @@ class NativeWindowChrome:
         return bool(self.hwnd and self.user.IsZoomed(self.hwnd))
 
     def begin_drag(self, event):
-        if self.hwnd:
-            self.user.ReleaseCapture()
-            point = ((event.y_root & 0xffff) << 16) | (event.x_root & 0xffff)
-            self.user.SendMessageW(self.hwnd, 0xA1, 2, point)  # native caption move/snap loop
+        self._start_native_loop(2, event)  # HTCAPTION: native move/snap loop
+
+    # Tk's own child windows cover the client area right up to its edges, so
+    # the wrapper's WM_NCHITTEST never sees the pointer there. The settings
+    # window asks resize_edge() from Tk events and starts the native loop.
+    RESIZE_EDGE = 7
+    RESIZE_CURSORS = {10: 'size_we', 11: 'size_we', 12: 'size_ns', 15: 'size_ns',
+                      13: 'size_nw_se', 17: 'size_nw_se', 14: 'size_ne_sw', 16: 'size_ne_sw'}
+
+    def resize_edge(self, x_root, y_root):
+        """Return the native hit-test code for a point on the resize border."""
+        if not self.hwnd or self.is_maximized():
+            return None
+        window = self.window
+        left, top = window.winfo_rootx(), window.winfo_rooty()
+        right, bottom = left + window.winfo_width(), top + window.winfo_height()
+        scale = float(window.tk.call('tk', 'scaling')) * 72 / 96
+        edge = max(5, round(self.RESIZE_EDGE * scale))
+        near_left, near_right = x_root < left + edge, x_root >= right - edge
+        near_top, near_bottom = y_root < top + edge, y_root >= bottom - edge
+        if not (near_left or near_right or near_top or near_bottom):
+            return None
+        # A corner also catches the pointer a little way along either side.
+        corner = edge * 3
+        on_left, on_right = x_root < left + corner, x_root >= right - corner
+        on_top, on_bottom = y_root < top + corner, y_root >= bottom - corner
+        if (near_top and on_left) or (near_left and on_top):
+            return 13  # HTTOPLEFT
+        if (near_top and on_right) or (near_right and on_top):
+            return 14  # HTTOPRIGHT
+        if (near_bottom and on_left) or (near_left and on_bottom):
+            return 16  # HTBOTTOMLEFT
+        if (near_bottom and on_right) or (near_right and on_bottom):
+            return 17  # HTBOTTOMRIGHT
+        return 12 if near_top else 15 if near_bottom else 10 if near_left else 11
+
+    def begin_resize(self, hit, event):
+        self._start_native_loop(hit, event)
+
+    def _start_native_loop(self, hit, event):
+        if not self.hwnd:
+            return
+        self.user.ReleaseCapture()
+        point = ((event.y_root & 0xffff) << 16) | (event.x_root & 0xffff)
+        # Posted, not sent: the modal move/size loop must start from Tk's own
+        # message pump. Entered from inside a Python callback, any Tk callback
+        # the loop dispatches finds no Python thread state and aborts.
+        self.user.PostMessageW(self.hwnd, 0xA1, hit, point)  # WM_NCLBUTTONDOWN

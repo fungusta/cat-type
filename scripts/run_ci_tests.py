@@ -33,7 +33,6 @@ TEST_MODULES = (
     "tests.test_overlay_rendering",
     "tests.test_usage_metrics",
     "tests.test_settings_window",
-    "tests.test_pagination",
     "tests.test_window_chrome",
     "tests.test_startup_performance",
     "tests.test_platform_assets",

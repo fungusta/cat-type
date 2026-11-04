@@ -133,6 +133,29 @@ class TitleBarTests(unittest.TestCase):
         chrome.toggle_maximize()
         self.root.update()
         self.assertFalse(user.IsZoomed(chrome.hwnd))
+        # Tk children cover the client area, so the border is found from Tk
+        # events: over a child at each edge, never in the middle.
+        self.root.geometry('460x220+40+40')
+        self.root.update()
+        left, top = self.root.winfo_rootx(), self.root.winfo_rooty()
+        right, bottom = left + self.root.winfo_width(), top + self.root.winfo_height()
+        middle_x, middle_y = (left + right) // 2, (top + bottom) // 2
+        for (x, y), hit in (((left + 1, middle_y), 10), ((right - 2, middle_y), 11),
+                            ((middle_x, top + 1), 12), ((middle_x, bottom - 2), 15),
+                            ((left + 1, top + 1), 13), ((right - 2, top + 1), 14),
+                            ((left + 1, bottom - 2), 16), ((right - 2, bottom - 2), 17),
+                            ((right - 2, bottom - 15), 17), ((middle_x, middle_y), None)):
+            with self.subTest(x=x - left, y=y - top):
+                self.assertEqual(chrome.resize_edge(x, y), hit)
+        with patch.object(chrome, 'is_maximized', return_value=True):
+            self.assertIsNone(chrome.resize_edge(left + 1, middle_y))
+        with patch.object(user, 'PostMessageW') as post, patch.object(user, 'SendMessageW') as send:
+            event = SimpleNamespace(x_root=right - 2, y_root=middle_y)
+            chrome.begin_resize(11, event)
+            chrome.begin_drag(SimpleNamespace(x_root=middle_x, y_root=top + 10))
+        # Posted so the modal loop starts from Tk's pump, never inside a callback.
+        send.assert_not_called()
+        self.assertEqual([call.args[1:3] for call in post.call_args_list], [(0xA1, 11), (0xA1, 2)])
         closed = []
         self.root.protocol('WM_DELETE_WINDOW', lambda: closed.append(True))
         user.SendMessageW(chrome.hwnd, 0x112, 0xF060, 0)  # SC_CLOSE, same path as Alt+F4

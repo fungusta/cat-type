@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import tkinter as tk
 import tempfile
 import unittest
@@ -781,6 +782,25 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.settings_window.window.update()
         self.assertEqual(len(self.settings_window.metric_stat_rows), 3)
         self.assertTrue(self.settings_window.metrics_chart.winfo_ismapped())
+
+    def test_metric_totals_are_big_cards_that_stack_when_narrow(self) -> None:
+        view = self.settings_window
+        view.window.minsize(1, 1)
+        view.window.geometry("920x900")
+        view.page_buttons["Metrics"].invoke()
+        view.window.update()
+        for number in view.metric_stat_values:
+            self.assertEqual(str(number.cget("font")), str(view.fonts["stat"]))
+        self.assertEqual({int(card.grid_info()["column"]) for card in view.metric_stat_rows}, {0, 1, 2})
+        with patch.object(view.metrics_summary, "winfo_width", return_value=160):
+            view._reflow_metric_stats()
+        self.assertEqual({int(card.grid_info()["column"]) for card in view.metric_stat_rows}, {0})
+        self.assertEqual({int(card.grid_info()["row"]) for card in view.metric_stat_rows}, {0, 1, 2})
+
+    def test_navigation_items_carry_icons(self) -> None:
+        for label, button in self.settings_window.page_buttons.items():
+            self.assertEqual(button._icon, label.lower())
+            self.assertEqual(button.cget("text"), label)
 
     def test_metrics_controls_and_exact_values_fit_narrow_high_dpi_windows(self) -> None:
         metrics_clock = patch("settings_window.datetime", wraps=datetime)
@@ -2655,11 +2675,43 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertTrue(self.settings_window.save_status_surface.winfo_ismapped())
         self.assertEqual(self.settings_window.save_status_surface._fill, self.settings_window.ACCENT)
         self.assertEqual(self.settings_window.save_status_label.cget("foreground"), self.settings_window.INK)
+        # "Saved!" fits easily; it must read on one line, not "Saved" over "!".
+        label = self.settings_window.save_status_label
+        self.assertLessEqual(label.winfo_reqheight(),
+                             self.settings_window.fonts["control"].metrics("linespace") + 8)
         self.assertGreaterEqual(
             self.settings_window.save_status_surface.winfo_width(),
             self.settings_window.save_status_label.winfo_reqwidth()
             + (self.settings_window.save_status_surface._padding * 2),
         )
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows custom frame")
+    def test_window_edges_show_resize_cursor_and_start_native_resize(self) -> None:
+        view = self.settings_window
+        view.window.update()
+        chrome = view._window_chrome
+        self.assertTrue(chrome.hwnd)
+        right = view.window.winfo_rootx() + view.window.winfo_width() - 2
+        middle_y = view.window.winfo_rooty() + view.window.winfo_height() // 2
+        # The body reaches the right edge; the border must still work over it.
+        self.assertGreaterEqual(view.body.winfo_rootx() + view.body.winfo_width(), right)
+        event = SimpleNamespace(x_root=right, y_root=middle_y)
+        view._show_resize_cursor(event)
+        self.assertEqual(str(view.window.cget("cursor")), "size_we")
+        with patch.object(chrome, "begin_resize") as resize:
+            self.assertEqual(view._begin_window_resize(event), "break")
+        resize.assert_called_once_with(11, event)
+        inside = SimpleNamespace(x_root=right - 60, y_root=middle_y)
+        view._show_resize_cursor(inside)
+        self.assertEqual(str(view.window.cget("cursor")), "")
+        self.assertIsNone(view._begin_window_resize(inside))
+        # The title bar's top edge resizes instead of moving the window.
+        top = SimpleNamespace(x_root=right - 200, y_root=view.window.winfo_rooty() + 1)
+        with patch.object(chrome, "begin_drag") as drag:
+            view._begin_window_drag(top)
+            drag.assert_not_called()
+            view._begin_window_drag(SimpleNamespace(x_root=right - 200, y_root=top.y_root + 15))
+            drag.assert_called_once()
 
     def test_successful_save_schedules_status_clear(self) -> None:
         with patch.object(self.settings_window.window, "after", wraps=self.settings_window.window.after) as after:
@@ -2730,66 +2782,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             scaled_root.destroy()
 
     def test_custom_actions_expose_button_accessibility_metadata(self) -> None:
-        from pagination import page_window
-        from ui_surfaces import PaginationControls
-
-        calls = []
-        controls = PaginationControls(
-            self.settings_window.window,
-            on_previous=lambda: calls.append("previous"),
-            on_next=lambda: calls.append("next"),
-            palette={"background": "#FFF8EC", "ink": "#302A33"},
-            fonts=self.settings_window.fonts,
-        )
-        controls.place(x=0, y=0)
-        self.settings_window.window.update()
-        try:
-            for button, name in ((controls.previous_button, "Previous page"),
-                                 (controls.next_button, "Next page")):
-                self.assertIsInstance(button, RoundedAction)
-                self.assertEqual(button.cget("accessible_name"), name)
-                self.assertEqual(button.cget("accessible_role"), "button")
-                self.assertEqual(button.title, name)
-                self.assertEqual(button._fill, "#FFFFFF")
-                self.assertTrue(button._pill_image)
-            controls.set_state(page_window(22, 0, 4))
-            self.assertEqual(controls.page_label.cget("text"), "Page 1 of 6")
-            self.assertEqual(controls.page_label.title, "Page 1 of 6")
-            self.assertEqual(controls.previous_button.cget("state"), "disabled")
-            self.assertEqual(str(controls.previous_button.cget("takefocus")), "0")
-            self.assertEqual(str(controls.next_button.cget("takefocus")), "1")
-            controls.previous_button.invoke()
-            controls.next_button.invoke()
-            self.assertEqual(calls, ["next"])
-            self.assertEqual(controls.previous_button.tk_focusNext(), controls.next_button)
-            controls.next_button.focus_force()
-            self.settings_window.window.update()
-            controls.set_state(page_window(22, 5, 4))
-            self.assertEqual(controls.focus_get(), controls.previous_button)
-            self.assertEqual(controls.next_button.cget("accessible_state"), "disabled")
-            self.assertEqual(str(controls.next_button.cget("takefocus")), "0")
-            self.assertEqual(str(controls.previous_button.cget("takefocus")), "1")
-            controls.previous_button.invoke()
-            self.assertEqual(calls, ["next", "previous"])
-            controls.set_state(page_window(0, 0, 4))
-            self.assertEqual(controls.previous_button.cget("state"), "disabled")
-            self.assertEqual(controls.next_button.cget("state"), "disabled")
-            self.assertEqual(controls.page_label.cget("text"), "Page 0 of 0")
-            for total in (0, 3):
-                with self.subTest(focus_after_total=total):
-                    controls.set_state(page_window(22, 5, 4))
-                    controls.previous_button.focus_force()
-                    self.settings_window.window.update()
-                    self.assertEqual(controls.focus_get(), controls.previous_button)
-                    controls.set_state(page_window(total, 0, 4))
-                    target = controls.focus_get()
-                    self.assertNotIn(target, (controls.previous_button, controls.next_button))
-                    self.assertEqual(target, controls.previous_button.tk_focusNext())
-                    self.assertNotEqual(str(target.cget("state")), "disabled")
-                    self.assertTrue(target.winfo_viewable())
-        finally:
-            controls.destroy()
-
         button = self.settings_window.check_for_updates_button
         self.assertEqual(button.cget("accessible_role"), "button")
         self.assertEqual(button.cget("accessible_name"), "Check for updates")

@@ -161,6 +161,15 @@ class AchievementTests(unittest.TestCase):
                           'beta-bandana', 'shooting-star-clip', 'sunrise-scarf', 'butterfly-wings'} & public)
         self.assertEqual({item.id for item in visible_accessories({'angel-wings'})}, public | {'angel-wings'})
 
+    def test_every_accessory_has_a_short_wardrobe_blurb(self):
+        from cat_accessories import ACCESSORY_BLURBS, ACCESSORY_BY_ID
+        self.assertEqual(set(ACCESSORY_BLURBS), set(ACCESSORY_BY_ID))
+        for item_id, blurb in ACCESSORY_BLURBS.items():
+            with self.subTest(item=item_id):
+                # Two lines at most on a narrow tile.
+                self.assertTrue(blurb.endswith('.'))
+                self.assertLessEqual(len(blurb), 28)
+
     def test_unknown_rule_cannot_fall_back_to_keystrokes(self):
         from cat_accessories import Accessory
         with self.assertRaises(ValueError):

@@ -97,5 +97,90 @@ class TweenTests(unittest.TestCase):
         self.assertEqual(action._hover.value, 0.0)
 
 
+class RewardMarkTests(unittest.TestCase):
+    def test_progress_bar_fills_its_share_and_keeps_a_rounded_sliver(self):
+        from ui_surfaces import BUTTON_ACCENT, PROGRESS_TRACK
+        from PIL import ImageColor
+
+        accent = ImageColor.getrgb(BUTTON_ACCENT)
+        track = ImageColor.getrgb(PROGRESS_TRACK)
+        half = ui_surfaces.progress_bar_image("#FFFFFF", 100, 8, 0.5)
+        self.assertEqual(half.size, (100, 8))
+        self.assertEqual(half.getpixel((25, 4)), accent)
+        self.assertEqual(half.getpixel((75, 4)), track)
+        empty = ui_surfaces.progress_bar_image("#FFFFFF", 100, 8, 0)
+        self.assertEqual(empty.getpixel((4, 4)), track)
+        # A tiny share still draws a full-height cap rather than a dot.
+        sliver = ui_surfaces.progress_bar_image("#FFFFFF", 100, 8, 0.001)
+        self.assertEqual(sliver.getpixel((4, 4)), accent)
+        self.assertIs(half, ui_surfaces.progress_bar_image("#FFFFFF", 100, 8, 0.5))
+
+    def test_status_marks_differ_and_blend_into_their_surface(self):
+        check = ui_surfaces.status_mark_image("#FFF1B8", 20, "check")
+        lock = ui_surfaces.status_mark_image("#FFF1B8", 20, "lock")
+        self.assertEqual(check.size, (20, 20))
+        self.assertNotEqual(check.tobytes(), lock.tobytes())
+        self.assertEqual(check.getpixel((0, 0)), (255, 241, 184))
+
+    def test_faded_art_is_grey_and_keeps_transparency(self):
+        from PIL import Image
+
+        art = Image.new("RGBA", (4, 4), (255, 0, 0, 0))
+        art.putpixel((1, 1), (220, 40, 40, 255))
+        faded = ui_surfaces.faded_art(art)
+        red, green, blue, alpha = faded.getpixel((1, 1))
+        self.assertEqual(red, green)
+        self.assertEqual(green, blue)
+        self.assertEqual(alpha, 255)
+        self.assertEqual(faded.getpixel((0, 0))[3], 0)
+
+    def test_navigation_icons_are_distinct_and_transparent(self):
+        icons = {kind: ui_surfaces.nav_icon_image(kind, 20)
+                 for kind in ("settings", "metrics", "wardrobe", "achievements")}
+        self.assertEqual(len({image.tobytes() for image in icons.values()}), 4)
+        for image in icons.values():
+            self.assertEqual(image.size, (20, 20))
+            self.assertEqual(image.getpixel((0, 19))[3], 0)
+
+    def test_icon_choice_keeps_its_plain_label_and_variable(self):
+        root = tk.Tk()
+        self.addCleanup(root.destroy)
+        rail = tk.Frame(root, background="#FFFFFF")
+        selected = tk.StringVar(master=root, value="Metrics")
+        label = tk.StringVar(master=root, value="Metrics")
+        plain = ui_surfaces.RoundedChoice(rail, text="Metrics", variable=selected, value="Metrics")
+        icon = ui_surfaces.RoundedChoice(rail, textvariable=label, variable=selected,
+                                         value="Metrics", icon="metrics")
+        self.assertEqual(icon.cget("text"), "Metrics")
+        self.assertEqual(icon["text"], "Metrics")
+        self.assertEqual(icon.cget("textvariable"), str(label))
+        self.assertGreater(icon._size[0], plain._size[0])
+        # The visible label follows the caller's variable.
+        label.set("Metrics · New")
+        self.assertEqual(icon.cget("text"), "Metrics · New")
+        self.assertTrue(str(super(ui_surfaces.RoundedChoice, icon).cget("text")).endswith("Metrics · New"))
+
+    def test_choices_wrap_into_rows_without_sharing_column_widths(self):
+        root = tk.Tk()
+        self.addCleanup(root.destroy)
+        bar = tk.Frame(root, background="#FFFFFF")
+        bar.pack(fill="x")
+        variable = tk.StringVar(master=root)
+        labels = ("All", "A much longer choice", "Mid", "Short")
+        buttons = [ui_surfaces.RoundedChoice(bar, text=label, variable=variable, value=label,
+                                             indicatoron=False) for label in labels]
+        width = buttons[0]._size[0] + buttons[1]._size[0] + 6
+        ui_surfaces.flow_choices(bar, buttons, width)
+        root.update()
+        rows = {}
+        for button in buttons:
+            rows.setdefault(button.winfo_y(), []).append(button)
+            self.assertLessEqual(button.winfo_x() + button.winfo_reqwidth(), width + 1)
+        self.assertGreater(len(rows), 1)
+        # Each wrapped row starts flush left, whatever the row above holds.
+        self.assertTrue(all(min(button.winfo_x() for button in row) == 0 for row in rows.values()))
+        self.assertGreaterEqual(bar.winfo_reqheight(), max(rows) + buttons[0].winfo_reqheight())
+
+
 if __name__ == "__main__":
     unittest.main()

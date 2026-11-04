@@ -6,9 +6,8 @@ import functools
 import sys
 import time
 import tkinter as tk
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 
-from pagination import PageWindow, page_label, page_window
 from tkinter import font as tkfont
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageTk
 
@@ -18,7 +17,7 @@ BUTTON_BORDER = "#E2D9D0"
 BUTTON_HOVER = "#FFF5D1"
 BUTTON_ACCENT = "#F2D66B"
 BUTTON_INK = "#302A33"
-BUTTON_MUTED = "#655C66"
+BUTTON_MUTED = "#575059"
 BUTTON_DISABLED = "#F3EFEA"
 BUTTON_DISABLED_EDGE = "#E8E1DA"
 SOFT_PILL_MAX_RADIUS = 14
@@ -238,6 +237,86 @@ def render_soft_pill(
     )
 
 
+PROGRESS_TRACK = "#EFE8E1"
+_mark_cache: dict[tuple[object, ...], Image.Image] = {}
+_MARK_CACHE_LIMIT = 256
+
+
+def _cached_mark(key: tuple[object, ...], draw: Callable[[], Image.Image]) -> Image.Image:
+    cached = _mark_cache.get(key)
+    if cached is None:
+        if len(_mark_cache) >= _MARK_CACHE_LIMIT:
+            _mark_cache.pop(next(iter(_mark_cache)))
+        cached = _mark_cache[key] = draw()
+    return cached
+
+
+def progress_bar_image(
+    surface: str, width: int, height: int, fraction: float, *,
+    track: str = PROGRESS_TRACK, fill: str = BUTTON_ACCENT,
+) -> Image.Image:
+    """Rasterize an anti-aliased pill meter; Tk canvas lines are aliased."""
+    width, height = max(2, int(width)), max(2, int(height))
+    fraction = min(1.0, max(0.0, fraction))
+    # Any progress at all shows, so a just-started goal never reads as empty.
+    filled = max(1, round(fraction * width)) if fraction > 0 else 0
+
+    def draw() -> Image.Image:
+        scale = _SUPERSAMPLE
+        image = Image.new("RGB", (width * scale, height * scale), surface)
+        pen = ImageDraw.Draw(image)
+        radius = height * scale / 2
+        pen.rounded_rectangle((0, 0, width * scale - 1, height * scale - 1), radius=radius, fill=track)
+        if filled:
+            # A sliver keeps its rounded ends instead of collapsing to a dot.
+            end = max(filled, height) * scale - 1
+            pen.rounded_rectangle((0, 0, end, height * scale - 1), radius=radius, fill=fill,
+                                  outline=blend(fill, "#7A5C2E", 0.2), width=scale)
+        return image.resize((width, height), Image.Resampling.LANCZOS)
+
+    return _cached_mark(("bar", surface, width, height, filled, track, fill), draw)
+
+
+def status_mark_image(surface: str, size: int, kind: str) -> Image.Image:
+    """A small round badge: a Butter check for earned, a quiet padlock for locked."""
+    size = max(8, int(size))
+
+    def draw() -> Image.Image:
+        scale = _SUPERSAMPLE
+        side = size * scale
+        image = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        pen = ImageDraw.Draw(image)
+        if kind == "check":
+            pen.ellipse((0, 0, side - 1, side - 1), fill=BUTTON_ACCENT,
+                        outline=blend(BUTTON_ACCENT, "#7A5C2E", 0.25), width=scale)
+            pen.line(((side * .28, side * .52), (side * .44, side * .67), (side * .73, side * .35)),
+                     fill=BUTTON_INK, width=max(scale, round(side * .1)), joint="curve")
+        else:
+            pen.ellipse((0, 0, side - 1, side - 1), fill=BUTTON_DISABLED,
+                        outline=BUTTON_DISABLED_EDGE, width=scale)
+            stroke = max(scale, round(side * .08))
+            pen.arc((side * .36, side * .2, side * .64, side * .52), 180, 360,
+                    fill=BUTTON_MUTED, width=stroke)
+            pen.line(((side * .36, side * .37), (side * .36, side * .46)), fill=BUTTON_MUTED, width=stroke)
+            pen.line(((side * .64, side * .37), (side * .64, side * .46)), fill=BUTTON_MUTED, width=stroke)
+            pen.rounded_rectangle((side * .29, side * .44, side * .71, side * .76),
+                                  radius=side * .06, fill=BUTTON_MUTED)
+        backdrop = Image.new("RGBA", (side, side), ImageColor.getrgb(surface)[:3] + (255,))
+        backdrop.alpha_composite(image)
+        return backdrop.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
+
+    return _cached_mark(("mark", surface, size, kind), draw)
+
+
+def faded_art(image: Image.Image, surface: str = "#FFFFFF") -> Image.Image:
+    """Desaturate and lighten artwork so locked rewards read as not yet earned."""
+    rgba = image.convert("RGBA")
+    gray = rgba.convert("L").convert("RGB")
+    washed = Image.blend(gray, Image.new("RGB", rgba.size, surface), 0.4)
+    washed.putalpha(rgba.getchannel("A"))
+    return washed
+
+
 def _hex(widget: tk.Misc, color: str) -> str:
     """Resolve Tk-only names such as ``SystemButtonFace`` for Pillow."""
     if color.startswith("#"):
@@ -246,11 +325,54 @@ def _hex(widget: tk.Misc, color: str) -> str:
     return f"#{red:02X}{green:02X}{blue:02X}"
 
 
+def nav_icon_image(kind: str, size: int, color: str = BUTTON_INK) -> Image.Image:
+    """A small line icon for a navigation item, on a transparent background."""
+    size = max(8, int(size))
+
+    def draw() -> Image.Image:
+        side = size * _SUPERSAMPLE
+        image = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        pen = ImageDraw.Draw(image)
+        stroke = max(_SUPERSAMPLE, round(side * .09))
+
+        def at(*points: float) -> list[tuple[float, float]]:
+            return [(points[i] * side, points[i + 1] * side) for i in range(0, len(points), 2)]
+
+        def dot(x: float, y: float, radius: float) -> None:
+            pen.ellipse((side * (x - radius), side * (y - radius),
+                         side * (x + radius), side * (y + radius)), fill=color)
+
+        if kind == "settings":  # three sliders
+            for y, knob in ((.24, .34), (.5, .66), (.76, .44)):
+                pen.line(at(.1, y, .9, y), fill=color, width=stroke)
+                dot(knob, y, .11)
+        elif kind == "metrics":  # rising columns
+            for left, top in ((.12, .56), (.4, .34), (.68, .12)):
+                pen.rounded_rectangle((side * left, side * top, side * (left + .2), side * .88),
+                                      radius=side * .05, fill=color)
+        elif kind == "wardrobe":  # coat hanger
+            pen.arc((side * .4, side * .1, side * .6, side * .3), 180, 90, fill=color, width=stroke)
+            pen.line(at(.5, .3, .5, .38, .08, .72, .92, .72, .5, .38), fill=color,
+                     width=stroke, joint="curve")
+        else:  # trophy
+            pen.chord((side * .26, side * -.08, side * .74, side * .6), 0, 180, fill=color)
+            pen.rectangle((side * .26, side * .1, side * .74, side * .26), fill=color)
+            for box, start, end in (((.1, .14, .36, .42), 90, 270), ((.64, .14, .9, .42), 270, 90)):
+                pen.arc(tuple(side * value for value in box), start, end, fill=color, width=stroke)
+            pen.line(at(.5, .5, .5, .74), fill=color, width=stroke)
+            pen.rounded_rectangle((side * .3, side * .74, side * .7, side * .9),
+                                  radius=side * .04, fill=color)
+        return image.resize((size, size), Image.Resampling.LANCZOS)
+
+    return _cached_mark(("nav", kind, size, color), draw)
+
+
 class RoundedChoice(tk.Radiobutton):
     """Native radio behavior with a softly rounded visual face.
 
     ``variant="ghost"`` keeps unselected items flush with their surface until
-    hovered, which suits navigation lists.
+    hovered, which suits navigation lists. ``icon`` names a ``nav_icon_image``
+    drawn just before the centred label.
     """
 
     def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
@@ -273,11 +395,28 @@ class RoundedChoice(tk.Radiobutton):
         if variable is not None:
             text = str(variable.get())
         face = tkfont.Font(parent, font=kwargs.get("font"))
+        self._icon = kwargs.pop("icon", None)
+        self._label_var = variable
+        self._label_face = face
+        self._icon_pad = ""
+        if self._icon:
+            # Tk centres a button's text over its image, so leading spaces
+            # open room for the icon, which the face then draws in that gap.
+            self._icon_size = round(face.metrics("linespace") * .8)
+            self._icon_gap = max(5, round(self._icon_size * .35))
+            space = max(1, face.measure(" "))
+            self._icon_pad = " " * -(-(self._icon_size + self._icon_gap) // space)
+            if variable is not None:
+                display = tk.StringVar(master=parent, value=self._icon_pad + text)
+                variable.trace_add("write", lambda *_args: self._sync_icon_label(display))
+                kwargs["textvariable"] = display
+            else:
+                kwargs["text"] = self._icon_pad + text
         min_width = int(kwargs.pop("min_width", 0))
         padx = int(kwargs.pop("padx", 10))
         pady = int(kwargs.pop("pady", 8))
         self._size = (
-            max(min_width, 60, face.measure(text) + (padx * 2) + 8),
+            max(min_width, 60, face.measure(self._icon_pad + text) + (padx * 2) + 8),
             face.metrics("linespace") + (pady * 2) + 6,
         )
         self._natural_size = self._size
@@ -301,6 +440,27 @@ class RoundedChoice(tk.Radiobutton):
         self.bind("<FocusIn>", lambda _event: self._set_focus(True), add="+")
         self.bind("<FocusOut>", lambda _event: self._set_focus(False), add="+")
         self._render()
+
+    def _label(self) -> str:
+        if self._label_var is not None:
+            return str(self._label_var.get())
+        return str(super().cget("text"))[len(self._icon_pad):]
+
+    def _sync_icon_label(self, display: tk.StringVar) -> None:
+        display.set(self._icon_pad + str(self._label_var.get()))
+        self._render()
+
+    def _with_icon(self, image: Image.Image) -> Image.Image:
+        """Draw the icon in the gap the leading spaces leave before the label."""
+        width, height = self._size
+        size = self._icon_size
+        face = self._label_face
+        line = face.measure(self._icon_pad + self._label())
+        left = (width - line) // 2 + face.measure(self._icon_pad) - self._icon_gap - size
+        top = (height - 1 - size) // 2 + (1 if self._pressed else 0)
+        composed = image.convert("RGBA")
+        composed.alpha_composite(nav_icon_image(self._icon, size), (max(0, left), max(0, top)))
+        return composed.convert("RGB")
 
     def fit_width(self, width: int) -> None:
         """Wrap the label when the available width cannot fit its natural face."""
@@ -341,28 +501,19 @@ class RoundedChoice(tk.Radiobutton):
         else:
             normal_fill = blend(self._face, self._hover_fill, hover)
             normal = dict(lift=hover)
-        images = [
-            render_soft_pill(
-                self,
-                self._surface,
-                width,
-                height,
-                normal_fill,
-                pressed=self._pressed,
-                focused=self._focused,
-                **normal,
+        faces = [
+            soft_pill_image(
+                _hex(self, self._surface), width, height, _hex(self, normal_fill),
+                pressed=self._pressed, focused=self._focused, **normal,
             ),
-            render_soft_pill(
-                self,
-                self._surface,
-                width,
-                height,
-                self._accent,
-                pressed=self._pressed,
-                focused=self._focused,
-                lift=hover,
+            soft_pill_image(
+                _hex(self, self._surface), width, height, _hex(self, self._accent),
+                pressed=self._pressed, focused=self._focused, lift=hover,
             ),
         ]
+        if self._icon:
+            faces = [self._with_icon(face) for face in faces]
+        images = [ImageTk.PhotoImage(face, master=self) for face in faces]
         self._images = images
         super().configure(image=images[0], selectimage=images[1])
 
@@ -385,7 +536,15 @@ class RoundedChoice(tk.Radiobutton):
 
     config = configure
 
+    def __getitem__(self, key: str) -> object:
+        return self.cget(key)
+
     def cget(self, key: str) -> object:
+        if key == "text" and self._icon:
+            return self._label()
+        if key == "textvariable" and self._icon and self._label_var is not None:
+            # Report the caller's variable; the padded one is display only.
+            return str(self._label_var)
         if key == "background":
             return self._face
         if key == "selectcolor":
@@ -393,6 +552,26 @@ class RoundedChoice(tk.Radiobutton):
         if key == "highlightbackground":
             return self._edge
         return super().cget(key)
+
+
+def flow_choices(bar: tk.Frame, buttons: list[RoundedChoice], width: int, gap: int = 6) -> None:
+    """Wrap a row of choice chips onto as many lines as ``width`` needs.
+
+    Chips are placed rather than gridded so wrapped rows never share column
+    widths; the bar is given the height of the rows it holds.
+    """
+    x = y = row_height = 0
+    for button in buttons:
+        # Native chrome can add a pixel or two around the drawn face.
+        chrome = max(0, button.winfo_reqwidth() - button._size[0])
+        button.fit_width(width - chrome)
+        needed = max(button._size[0], button.winfo_reqwidth())
+        if x and x + needed > width:
+            x, y, row_height = 0, y + row_height + gap, 0
+        button.place(x=x, y=y)
+        x += needed + gap
+        row_height = max(row_height, button.winfo_reqheight())
+    bar.configure(height=max(1, y + row_height))
 
 
 class RoundedAction(tk.Canvas):
@@ -583,103 +762,6 @@ class RoundedAction(tk.Canvas):
         if key == "accessible_state":
             return self._state
         return super().cget(key)
-
-
-class PaginationControls(tk.Frame):
-    """Shared pill actions with a plain page label and native tab traversal."""
-
-    def __init__(
-        self,
-        parent: tk.Misc,
-        *,
-        on_previous: Callable[[], None],
-        on_next: Callable[[], None],
-        palette: Mapping[str, str],
-        fonts: Mapping[str, object],
-    ) -> None:
-        super().__init__(parent, background=palette["background"], takefocus=False)
-        self._button_font = fonts["button"]
-        self._layout_key: tuple[int, int] | None = None
-        self.grid_anchor("center")
-        self.previous_button = RoundedAction(
-            self, text="Previous page", command=on_previous, font=fonts["button"],
-        )
-        self.previous_button.title = "Previous page"
-        self.previous_button.grid(row=0, column=0)
-        self.page_label = tk.Label(
-            self, background=palette["background"], foreground=palette["ink"],
-            font=fonts["small"], takefocus=False,
-        )
-        self.page_label.grid(row=0, column=1, padx=12)
-        self.next_button = RoundedAction(
-            self, text="Next page", command=on_next, font=fonts["button"],
-        )
-        self.next_button.title = "Next page"
-        self.next_button.grid(row=0, column=2)
-        self.bind("<Configure>", self._layout_controls, add="+")
-        self.set_state(page_window(0, 0, 1))
-
-    def _layout_controls(self, event: tk.Event[tk.Misc] | None = None) -> None:
-        if self.winfo_manager() == "pack" and self.pack_info().get("fill") != "x":
-            # Keep observing the host width after a compact page grows again.
-            self.pack_configure(fill="x")
-        width = int(event.width) if event is not None else self.winfo_width()
-        if width <= 1:
-            return
-        label_width = self.page_label.winfo_reqwidth()
-        key = (width, label_width)
-        if key == self._layout_key:
-            return
-        self._layout_key = key
-        face = tkfont.Font(self, font=self._button_font)
-        previous_width = max(68, face.measure(str(self.previous_button.cget("text"))) + 24)
-        next_width = max(68, face.measure(str(self.next_button.cget("text"))) + 24)
-        inline = width >= previous_width + label_width + next_width + 24
-        if inline:
-            for column in range(3):
-                self.grid_columnconfigure(column, weight=0, uniform="")
-            self.previous_button.fit_width(previous_width)
-            self.next_button.fit_width(next_width)
-            self.previous_button.grid(row=0, column=0, sticky="", padx=0, pady=0)
-            self.page_label.grid(row=0, column=1, columnspan=1, padx=12, pady=0)
-            self.next_button.grid(row=0, column=2, sticky="", padx=0, pady=0)
-        else:
-            self.grid_columnconfigure(0, weight=1, uniform="pager-actions")
-            self.grid_columnconfigure(1, weight=1, uniform="pager-actions")
-            self.grid_columnconfigure(2, weight=0, uniform="")
-            button_width = max(1, (width - 8) // 2)
-            self.previous_button.fit_width(button_width)
-            self.next_button.fit_width(button_width)
-            self.page_label.grid(row=0, column=0, columnspan=2, padx=0, pady=(0, 8))
-            self.previous_button.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=0)
-            self.next_button.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=0)
-
-    def set_state(self, window: PageWindow) -> None:
-        focused = self.focus_get()
-        label = page_label(window)
-        self.page_label.configure(text=label)
-        self.page_label.title = label
-        self.page_label.accessible_name = label
-        self._layout_controls()
-        states = (
-            (self.previous_button, window.page_count > 0 and window.index > 0),
-            (self.next_button, window.index + 1 < window.page_count),
-        )
-        for button, enabled in states:
-            button.configure(state="normal" if enabled else "disabled", takefocus=enabled)
-        if any(focused == button and not enabled for button, enabled in states):
-            for button, enabled in states:
-                if enabled:
-                    button.focus_set()
-                    break
-            else:
-                # Both actions can disappear from traversal when data shrinks.
-                # Follow the surrounding window's normal tab order instead of
-                # leaving focus on a disabled canvas.
-                target = focused.tk_focusNext()
-                if target in (self.previous_button, self.next_button):
-                    target = self.master
-                target.focus_set()
 
 
 class RoundedBadge(tk.Canvas):

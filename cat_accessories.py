@@ -55,6 +55,41 @@ ACCESSORIES = (
 )
 ACCESSORY_BY_ID = {item.id: item for item in ACCESSORIES}
 
+# One short line per accessory for its wardrobe tile, in the calm product
+# voice with the occasional dry cat aside.
+ACCESSORY_BLURBS = {
+    "ribbon-clip": "A small bow for big ideas.",
+    "round-glasses": "For reading the fine print.",
+    "bell-collar": "Announces every arrival.",
+    "bow-tie": "Dressed for the meeting.",
+    "beanie": "Warm ears, cool head.",
+    "leaf-sprout": "It's growing on you.",
+    "star-glasses": "Only sees the bright side.",
+    "party-hat": "Celebrates on cue.",
+    "travel-satchel": "Packed with snacks, mostly.",
+    "crown": "Rules the keyboard kindly.",
+    "pixel-glasses": "Rendered in crisp 8-bit.",
+    "wizard-hat": "Casts typing spells.",
+    "dragon-wings": "Mostly for show. Mostly.",
+    "golden-wings": "A million keys, gilded.",
+    "royal-cape": "Swishes when you type.",
+    "daisy-clip": "Picked on day three.",
+    "sunglasses": "Too cool to blink.",
+    "aviator-goggles": "Cleared for takeoff.",
+    "red-bandana": "A month of good habits.",
+    "sailor-hat": "Smooth sailing ahead.",
+    "adventure-cape": "Ready for anything.",
+    "laurel-wreath": "A year, well typed.",
+    "angel-wings": "Nine lives, all yours.",
+    "moon-pendant": "Glows after midnight.",
+    "sunflower-clip": "Up before the sun.",
+    "cozy-scarf": "Glad you're back.",
+    "beta-bandana": "Tried it first.",
+    "shooting-star-clip": "Make a wish.",
+    "sunrise-scarf": "Wrapped in first light.",
+    "butterfly-wings": "Changed, for the better.",
+}
+
 
 def visible_accessories(unlocked: set[str]) -> tuple[Accessory, ...]:
     return tuple(item for item in ACCESSORIES if not item.hidden or item.id in unlocked)

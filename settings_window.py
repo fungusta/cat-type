@@ -91,7 +91,7 @@ class Toggle(tk.Frame):
                 copy,
                 text=description,
                 background=background,
-                foreground="#655C66",
+                foreground="#575059",
                 font=description_font or title_font,
                 justify="left",
                 anchor="w",
@@ -336,7 +336,7 @@ class SettingsWindow:
     BACKGROUND = "#FFF9F3"
     CARD = "#FFFFFF"
     INK = "#302A33"
-    MUTED = "#655C66"
+    MUTED = "#575059"
     ACCENT = "#F2D66B"
     ACCENT_DARK = "#5C4A1F"
     PEACH = "#FFF1B8"
@@ -417,6 +417,9 @@ class SettingsWindow:
         self._preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
         self._rail_preview_frames: dict[str, dict[str, ImageTk.PhotoImage]] = {}
         self._rail_preview_sources: dict[str, dict[str, Image.Image]] = {}
+        # A wardrobe tile under the pointer dresses the stage cat without
+        # saving; ``None`` returns the stage to the saved outfit's loop.
+        self._try_on_frame: ImageTk.PhotoImage | None = None
         self._layout_mode: str | None = None
         self.usage_metrics = (usage_metrics or UsageMetrics()).normalized()
         if keystroke_count > self.usage_metrics.total_keystrokes:
@@ -550,40 +553,47 @@ class SettingsWindow:
             "display_compact": tkfont.Font(
                 self.window,
                 family=display,
+                size=26,
+                weight=display_weight,
+            ),
+            # Headline numbers on the Metrics stat cards.
+            "stat": tkfont.Font(
+                self.window,
+                family=display,
                 size=22,
                 weight=display_weight,
             ),
             "section": tkfont.Font(
                 self.window,
                 family=display,
-                size=12,
+                size=14,
                 weight=display_weight,
             ),
             "control": tkfont.Font(
                 self.window,
                 family=strong,
-                size=10,
+                size=11,
                 weight=strong_weight,
             ),
             "body": tkfont.Font(
                 self.window,
                 family=body,
-                size=10,
+                size=11,
             ),
             "small": tkfont.Font(
                 self.window,
                 family=body,
-                size=9,
+                size=10,
             ),
             "tiny": tkfont.Font(
                 self.window,
                 family=body,
-                size=8,
+                size=9,
             ),
             "button": tkfont.Font(
                 self.window,
                 family=strong,
-                size=10,
+                size=11,
                 weight=strong_weight,
             ),
             "symbol": tkfont.Font(
@@ -786,7 +796,22 @@ class SettingsWindow:
         self.title_bar.set_maximized(self._window_chrome.is_maximized())
 
     def _begin_window_drag(self, event) -> None:
-        self._window_chrome.begin_drag(event)
+        # The title bar's top edge belongs to the resize border.
+        if self._window_chrome.resize_edge(event.x_root, event.y_root) is None:
+            self._window_chrome.begin_drag(event)
+
+    def _show_resize_cursor(self, event) -> None:
+        hit = self._window_chrome.resize_edge(event.x_root, event.y_root)
+        cursor = self._window_chrome.RESIZE_CURSORS.get(hit, "")
+        if str(self.window.cget("cursor")) != cursor:
+            self.window.configure(cursor=cursor)
+
+    def _begin_window_resize(self, event) -> str | None:
+        hit = self._window_chrome.resize_edge(event.x_root, event.y_root)
+        if hit is None:
+            return None
+        self._window_chrome.begin_resize(hit, event)
+        return "break"
 
     def _drag_window(self, event) -> None:
         # Windows owns the modal move loop, including snap and drag-to-restore.
@@ -816,6 +841,10 @@ class SettingsWindow:
                 region.bind("<B1-Motion>", self._drag_window)
             self.window.bind("<Configure>", self._sync_window_chrome, add="+")
             self.window.bind("<Map>", self._sync_window_chrome, add="+")
+            # Bound on the toplevel tag, which every child carries, so the
+            # border works over whatever widget reaches the window's edge.
+            self.window.bind("<Motion>", self._show_resize_cursor, add="+")
+            self.window.bind("<ButtonPress-1>", self._begin_window_resize, add="+")
         # Unsupported window systems retain a native frame without duplicate controls.
         self.body = tk.Frame(self.window, background=self.BACKGROUND)
         self.body.pack(fill="both", expand=True)
@@ -999,7 +1028,8 @@ class SettingsWindow:
             on_change=self._refresh_outfit_preview, on_achievement=self._show_achievement,
             palette=self._reward_palette(), fonts=self.fonts,
             responsive_width=self._stable_scroll_layout_width,
-            on_content_change=self._invalidate_scrollbar_reflow)
+            on_content_change=self._invalidate_scrollbar_reflow,
+            on_try_on=self._try_on_outfit, metrics=lambda: self.usage_metrics)
         self.wardrobe.update_unlocks(self.unlocked_accessories, tuple(
             ACCESSORY_BY_ID[item] for item in self._pending_wardrobe_new_ids))
         self._pending_wardrobe_new_ids.clear()
@@ -1079,10 +1109,15 @@ class SettingsWindow:
 
     def _build_page_switcher(self, rail_parent: tk.Frame, page_parent: tk.Frame) -> None:
         page_labels = ("Settings", "Metrics", "Wardrobe", "Achievements")
+        # Each item draws an icon before its label; budget it like the label's
+        # leading spaces in RoundedChoice (icon plus gap, rounded up a space).
+        control = self.fonts["control"]
+        icon = round(control.metrics("linespace") * .8)
+        icon_room = icon + max(5, round(icon * .35)) + control.measure(" ")
         choice_widths = {
-            label: self.fonts["control"].measure(
+            label: control.measure(
                 "Achievements · New" if label == "Achievements" else label
-            ) + (14 * 2) + 8
+            ) + icon_room + (14 * 2) + 8
             for label in page_labels
         }
         rail_content_width = max(134, max(choice_widths.values()) + 10)
@@ -1175,11 +1210,12 @@ class SettingsWindow:
                 foreground=self.INK,
                 font=self.fonts["control"],
                 padx=14,
-                pady=10,
+                pady=12,
                 cursor="hand2",
                 takefocus=True,
                 min_width=max(60, rail_content_width - 8),
                 variant="ghost",
+                icon=label.lower(),
             )
             button.grid(row=index, column=0, sticky="ew", pady=(0 if index == 0 else 4, 0))
             self.page_buttons[label] = button
@@ -1316,11 +1352,14 @@ class SettingsWindow:
         self._refresh_page_buttons()
         for page in self._page_views.values():
             page.pack_forget()
+        self._try_on_outfit(None)
         self._ensure_page(selected).pack(fill="x")
         if selected == "Metrics":
             self._refresh_usage_metrics()
         elif selected == "Achievements":
             self.achievements.update_progress(self.usage_metrics, self.unlocked_accessories)
+        elif selected == "Wardrobe":
+            self.wardrobe.refresh_progress()
         self.scroll_canvas.yview_moveto(0)
         if self._scroll_sync_after_id is not None:
             self.window.after_cancel(self._scroll_sync_after_id)
@@ -1382,8 +1421,12 @@ class SettingsWindow:
         status_width = 0
         if status:
             padding = self.save_status_surface._padding * 2 + 14
-            status_width = min(width, self.fonts["control"].measure(status) + 4 + padding)
-            self.save_status_label.configure(wraplength=max(1, status_width - padding - 8))
+            natural_width = self.fonts["control"].measure(status) + 4 + padding
+            status_width = min(width, natural_width)
+            # Wrap only when the heading is narrower than the message; a wrap
+            # length below the text's own width splits even "Saved!".
+            wrap = 0 if natural_width <= width else max(1, status_width - padding - 4)
+            self.save_status_label.configure(wraplength=wrap)
             self.save_status_surface.configure(width=status_width)
             self.save_status_surface.grid(row=0, column=1, sticky="e")
         action_width = mix_width + status_width + (12 if has_mix and status else 0)
@@ -1634,15 +1677,8 @@ class SettingsWindow:
         self.metrics_activity_shelf = activity_card
         self.metrics_activity_content = activity_content
         self.metrics_summary = tk.Frame(activity_content, background=self.CARD)
-        self.metrics_summary.pack(fill="x")
-        tk.Label(
-            self.metrics_summary,
-            text="keystrokes",
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["tiny"],
-        ).pack(anchor="e", pady=(0, 3))
-        self.metric_stat_rows: list[tk.Frame] = []
+        self.metrics_summary.pack(fill="x", pady=(4, 0))
+        self.metric_stat_rows: list[RoundedPanel] = []
         self.metric_stat_values: list[tk.Label] = []
         self._metric_stat(
             self.metrics_summary,
@@ -1663,7 +1699,8 @@ class SettingsWindow:
         self._build_metrics_controls(activity_content)
         self.metrics_chart = tk.Canvas(
             activity_content,
-            height=250,
+            # Tall enough for a two-line tooltip at any text scaling.
+            height=max(300, self.fonts["small"].metrics("linespace") * 12),
             background=self.CARD,
             highlightthickness=2,
             highlightbackground=self.CARD,
@@ -1872,6 +1909,8 @@ class SettingsWindow:
         self._refresh_metrics_range_buttons()
         self._refresh_metrics_view_buttons()
 
+    STAT_FILL = "#FBF7F2"
+
     def _metric_stat(
         self,
         parent: tk.Frame,
@@ -1879,54 +1918,60 @@ class SettingsWindow:
         label: str,
         value: tk.StringVar,
     ) -> None:
-        row = tk.Frame(parent, background=self.CARD)
-        row.pack(fill="x", pady=4)
-        row.grid_columnconfigure(0, weight=1)
+        """One headline total: a small label over a big number on a soft card."""
+        card = RoundedPanel(
+            parent, background=self.CARD, fill=self.STAT_FILL, border="#EFE7DF",
+            radius=14, padding=14,
+        )
+        content = card.content
         title = tk.Label(
-            row,
-            text=label,
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["small"],
-            anchor="w",
-            justify="left",
+            content, text=label, background=self.STAT_FILL, foreground=self.MUTED,
+            font=self.fonts["small"], anchor="w", justify="left",
         )
-        title.grid(row=0, column=0, sticky="w", padx=(0, 16))
+        title.pack(fill="x")
         number = tk.Label(
-            row,
-            textvariable=value,
-            background=self.CARD,
-            foreground=self.INK,
-            font=self.fonts["control"],
-            anchor="e",
-            justify="right",
+            content, textvariable=value, background=self.STAT_FILL, foreground=self.INK,
+            font=self.fonts["stat"], anchor="w", justify="left",
         )
-        number.grid(row=0, column=1, sticky="e")
-
-        last_layout: tuple[int, str] | None = None
-
-        def reflow(_event: tk.Event[tk.Misc] | None = None) -> None:
-            nonlocal last_layout
-            width = row.winfo_width()
-            layout = (width, value.get())
-            if width <= 1 or layout == last_layout:
-                return
-            last_layout = layout
-            value_width = self.fonts["control"].measure(value.get()) + 4
-            title_width = self.fonts["small"].measure(label) + 4
-            stacked = title_width + value_width + 16 > width
-            wrap = max(1, width - 8)
-            title.configure(wraplength=wrap)
-            number.configure(wraplength=wrap)
-            number.grid_configure(
-                row=1 if stacked else 0, column=0 if stacked else 1,
-                sticky="w" if stacked else "e", pady=(2, 0) if stacked else 0,
-            )
-
-        row.bind("<Configure>", reflow)
-        value.trace_add("write", lambda *_args: reflow())
-        self.metric_stat_rows.append(row)
+        number.pack(fill="x", pady=(2, 0))
+        tk.Label(
+            content, text="keystrokes", background=self.STAT_FILL, foreground=self.MUTED,
+            font=self.fonts["tiny"], anchor="w", justify="left",
+        ).pack(fill="x")
+        value.trace_add("write", lambda *_args: self._reflow_metric_stats())
+        self.metric_stat_rows.append(card)
         self.metric_stat_values.append(number)
+        if len(self.metric_stat_rows) == 1:
+            parent.bind("<Configure>", lambda _event: self._reflow_metric_stats(), add="+")
+
+    def _reflow_metric_stats(self) -> None:
+        """Lay the stat cards side by side when every number fits, else stack them."""
+        parent = self.metrics_summary
+        width = parent.winfo_width()
+        values = tuple(label.cget("text") for label in self.metric_stat_values)
+        layout = (width, values)
+        if width <= 1 or layout == getattr(self, "_metric_stats_layout", None):
+            return
+        self._metric_stats_layout = layout
+        gap = 10
+        count = len(self.metric_stat_rows)
+        padding = 14 * 2 + 8
+        widest = max(self.fonts["stat"].measure(text) for text in values) + padding
+        columns = count if widest * count + gap * (count - 1) <= width else 1
+        for column in range(count):
+            parent.grid_columnconfigure(
+                column, weight=1 if column < columns else 0,
+                uniform="metric-stats" if column < columns else "",
+            )
+        card_width = (width - gap * (columns - 1)) // columns
+        for index, (card, number) in enumerate(zip(self.metric_stat_rows, self.metric_stat_values)):
+            row, column = divmod(index, columns)
+            card.grid(row=row, column=column, sticky="nsew",
+                      padx=(0 if column == 0 else gap, 0), pady=(0 if row == 0 else gap, 0))
+            wrap = max(1, card_width - padding)
+            for label in card.content.winfo_children():
+                if int(str(label.cget("wraplength"))) != wrap:
+                    label.configure(wraplength=wrap)
 
     def _reflow_metrics_navigation(self, _event: tk.Event[tk.Misc] | None = None) -> None:
         navigation = self.metrics_navigation
@@ -2238,7 +2283,12 @@ class SettingsWindow:
             max(46, max(axis_font.measure(text) for text in axis_labels.values()) + 12),
             max(0, (width - right) // 2),
         )
-        top = 24
+        # The top tick's label is centred on the plot's top edge; leave room
+        # for it, including a narrow axis that wraps it onto two lines.
+        label_lines = max(
+            -(-axis_font.measure(text) // max(1, left - 12)) for text in axis_labels.values()
+        )
+        top = max(24, (axis_font.metrics("linespace") * label_lines) // 2 + 4)
         bottom = max(34, axis_font.metrics("linespace") + 14)
         baseline = height - bottom
         usable_width = max(1, width - left - right)
@@ -3373,7 +3423,38 @@ class SettingsWindow:
         return {slot: self._allowed_accessory(variable.get(), slot)
                 for slot, variable in self.outfit_vars.items()}
 
+    def _try_on_outfit(self, outfit: dict[str, str] | None, label: str = "") -> None:
+        """Show ``outfit`` on the cat stage until the pointer leaves the tile."""
+        self._try_on_frame = None
+        if outfit is not None and self._preview_icon_path:
+            try:
+                image = load_frame(
+                    Path(self._preview_icon_path).parent, self._preview_variant,
+                    "idle", self._rail_art_size(), **outfit,
+                )
+                self._try_on_frame = ImageTk.PhotoImage(image, master=self.window)
+            except (tk.TclError, OSError, ValueError):
+                # The saved outfit's loop keeps running if the preview fails.
+                self._try_on_frame = None
+        if hasattr(self, "rail_brand_subtitle"):
+            trying = self._try_on_frame is not None and label
+            text = f"Trying on {label}" if trying else "companion studio"
+            # One line at the rail's width: wrapping would resize the stage.
+            limit = max(1, self.page_switcher.content.winfo_width() - 8)
+            font = self.fonts["tiny"]
+            while font.measure(text) > limit and len(text) > 2:
+                text = text[:-2].rstrip() + "…"
+            self.rail_brand_subtitle.configure(
+                text=text, foreground=self.ACCENT_DARK if trying else self.MUTED,
+            )
+        if self._try_on_frame is not None:
+            self.rail_preview.itemconfigure(self._rail_preview_image, image=self._try_on_frame)
+            self.rail_preview.itemconfigure(self._rail_preview_placeholder, state="hidden")
+        elif outfit is None:
+            self._display_preview()
+
     def _refresh_outfit_preview(self) -> None:
+        self._try_on_outfit(None)
         self._invalidate_scrollbar_reflow()
         self._preview_errors.clear()
         self._preview_attempts.clear()
@@ -3419,6 +3500,9 @@ class SettingsWindow:
                 self.wardrobe.set_preview(frame)
         rail_frames = self._rail_preview_frames.get(self._preview_variant, {})
         rail_frame = rail_frames.get(pose, rail_frames.get("idle"))
+        if self._try_on_frame is not None:
+            # Hold the try-on pose instead of animating the saved outfit.
+            rail_frame = None
         if rail_frame is not None:
             self.rail_preview.itemconfigure(self._rail_preview_image, image=rail_frame)
             self.rail_preview.itemconfigure(self._rail_preview_placeholder, state="hidden")
@@ -3688,6 +3772,8 @@ class SettingsWindow:
         self._refresh_usage_metrics()
         if self.active_page.get() == "Achievements" and hasattr(self, "achievements"):
             self.achievements.update_progress(metrics, self.unlocked_accessories)
+        elif self.active_page.get() == "Wardrobe" and hasattr(self, "wardrobe"):
+            self.wardrobe.refresh_progress()
 
     def update_achievements(
         self, unlocked: set[str], newly_unlocked: tuple[Accessory, ...] = (),
