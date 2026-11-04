@@ -1,1 +1,99 @@
-<!doctype html><title>Cat Type</title>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Cat Type — Brighten up your day, one keystroke at a time</title>
+  <meta name="description" content="Cat Type is a cute typing companion for Windows and Mac. Dress up your cat, unlock new outfits, and see your typing week at a glance.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="cat.css">
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="wordmark" href="#top"><img src="favicon.png" alt="" width="28" height="28"> Cat Type</a>
+    <a class="quiet-link" href="https://github.com/fungusta/cat-type">GitHub</a>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <h1 id="hero-title">Brighten up your day, one keystroke at a time.</h1>
+        <p class="lede">A cute cat that sits by your cursor and taps along while you type. Dress it up, unlock new outfits, and see your typing week at a glance.</p>
+        <div class="download-block">
+          <a class="pill pill-primary" id="primary-download" href="#download">Get it for Windows or Mac</a>
+          <a class="quiet-link" id="download-secondary" href="#download" hidden></a>
+          <p class="download-note" id="download-note" hidden></p>
+        </div>
+      </div>
+      <div class="stage hero-stage">
+        <div class="cat-slot" id="hero-cat"><img src="assets/cats/gray.svg" alt="" width="240" height="240"></div>
+      </div>
+    </section>
+
+    <section class="band wrap" aria-labelledby="customise-title">
+      <div class="band-copy">
+        <h2 id="customise-title">Make it yours.</h2>
+        <p>Six cats, one wardrobe. Pick a coat, then mix up an outfit. It insists on looking good.</p>
+      </div>
+      <div class="shelf customise">
+        <div class="stage small-stage">
+          <div class="cat-slot" id="customise-cat"><img src="assets/cats/gray.svg" alt="" width="180" height="180"></div>
+        </div>
+        <div class="customise-controls js-only">
+          <div class="chips" id="style-chips" role="group" aria-label="Cat style">
+            <button class="chip" type="button" data-cat="gray" aria-pressed="true"><span class="swatch" style="--swatch:#dedada"></span>Gray</button>
+            <button class="chip" type="button" data-cat="ginger" aria-pressed="false"><span class="swatch" style="--swatch:#f0a35e"></span>Ginger</button>
+            <button class="chip" type="button" data-cat="charcoal" aria-pressed="false"><span class="swatch" style="--swatch:#5b5760"></span>Charcoal</button>
+            <button class="chip" type="button" data-cat="brown-tabby" aria-pressed="false"><span class="swatch" style="--swatch:#a77b56"></span>Brown tabby</button>
+            <button class="chip" type="button" data-cat="white" aria-pressed="false"><span class="swatch" style="--swatch:#ffffff"></span>White</button>
+            <button class="chip" type="button" data-cat="black-white" aria-pressed="false"><span class="swatch swatch-split"></span>Black &amp; white</button>
+          </div>
+          <button class="pill" id="mix-it-up" type="button">Mix it up</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="band band-flip wrap" aria-labelledby="unlock-title">
+      <div class="band-copy">
+        <h2 id="unlock-title">Type more, unlock more.</h2>
+        <p>Every keystroke counts toward something new to wear. Hats come first. Wings take a while.</p>
+      </div>
+      <div class="shelf js-only">
+        <ul class="tiles" id="unlock-tiles" aria-label="Rewards"></ul>
+      </div>
+    </section>
+
+    <section class="band wrap" aria-labelledby="track-title">
+      <div class="band-copy">
+        <h2 id="track-title">See your typing week at a glance.</h2>
+        <p>Keystrokes by hour and day. Only the counts, never what you type.</p>
+      </div>
+      <div class="shelf">
+        <dl class="stats" id="track-stats">
+          <div class="stat"><dt>Today</dt><dd>1,440</dd></div>
+          <div class="stat"><dt>Last 7 days</dt><dd>10,500</dd></div>
+          <div class="stat"><dt>All time</dt><dd>10,500</dd></div>
+        </dl>
+        <div class="chart" id="track-chart" aria-hidden="true"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" id="download">
+    <div class="wrap footer-inner">
+      <h2>Bring the cat home.</h2>
+      <ul class="download-list">
+        <li><a class="pill" href="https://github.com/fungusta/cat-type/releases/latest/download/Cat-Type-Windows-x64.exe">Windows</a></li>
+        <li><a class="pill" href="https://github.com/fungusta/cat-type/releases/latest/download/Cat-Type-macOS-arm64.dmg">Mac, Apple Silicon</a></li>
+        <li><a class="pill" href="https://github.com/fungusta/cat-type/releases/latest/download/Cat-Type-macOS-x64.dmg">Mac, Intel</a></li>
+      </ul>
+      <p class="fine-print">Cat Type never records what you type. <a class="quiet-link" href="https://github.com/fungusta/cat-type">See it on GitHub</a></p>
+    </div>
+  </footer>
+</body>
+</html>
