@@ -1,0 +1,64 @@
+name: Landing page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "assets/vector-cats/**"
+      - "assets/accessories/**"
+      - "cat_accessories.py"
+      - "cat_settings.py"
+      - "scripts/build_site.py"
+      - "tests/test_site_build.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      # The site build reads the app's catalog with the standard library only.
+      - name: Test page logic
+        run: node --test "site/tests/*.test.mjs"
+
+      - name: Test site build
+        run: python -m unittest tests.test_site_build
+
+      - name: Build site
+        run: python -m scripts.build_site
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

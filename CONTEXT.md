@@ -14,7 +14,7 @@
 - **website visual direction** — the landing page shares the app's toybox language: neutral surfaces and dark ink, rounded shelves and pill actions, with Butter Sun reserved for the primary action and unlocked or selected things.
 - **product proof** — real Cat Type artwork and believable app details that show the experience rather than relying on generic marketing imagery.
 - **homepage promise** — a cute typing companion that brightens your day; then three supporting promises, each in its own **feature band**: customize the cat, unlock new clothing and accessories, and track your typing.
-- **primary download** — the main landing-page action, which matches the visitor's computer and downloads that platform's file directly; every other platform stays one click away.
+- **primary download** — the main landing-page action, which matches the visitor's computer and downloads that platform's file directly; every other offered platform stays one click away. The landing page offers Windows and Mac only, for now.
 - **feature band** — one short section of the landing page devoted to a single supporting promise, carried by one picture and one sentence.
 - **motion approach** — the hero cat performs on its own using the existing flat cat artwork; visitors watch rather than type, and the page does not need three.js or a 3D scene.
 - **wave** — a landing-page gesture: the cat lifts one paw and waves to greet the visitor and invite them to download. It is not one of the app's typing poses.

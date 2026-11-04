@@ -5,6 +5,8 @@ animated cat appear while you type. Its paws follow the side of the keyboard
 you use, spacebar taps both paws, fast typing makes it excited, and it fades
 away after you stop.
 
+Meet the cat and download it at [fungusta.github.io/cat-type](https://fungusta.github.io/cat-type/).
+
 Cat Type was inspired by [Bongo Cat on Steam](https://store.steampowered.com/app/3419430/Bongo_Cat/).
 I loved the idea of a tiny companion that reacts as you type and wanted to
 create my own take on it.
