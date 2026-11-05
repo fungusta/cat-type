@@ -23,6 +23,7 @@ import os
 import smtplib
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, replace
@@ -146,8 +147,21 @@ def _get_json(url: str, token: str) -> dict:
     request = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {token}", "Content-Type": "application/json",
         "User-Agent": "cat-type-download-report"})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        try:
+            detail = json.load(error).get("error") or ""
+        except (ValueError, AttributeError):
+            detail = ""
+        endpoint = urllib.parse.urlsplit(url).path.removeprefix("/api/v0")
+        raise GoatCounterError(f"GoatCounter returned HTTP {error.code} for {endpoint}"
+                               + (f": {detail}" if detail else "")) from error
+
+
+class GoatCounterError(Exception):
+    pass
 
 
 def _hour(moment: datetime, extra: timedelta = timedelta()) -> str:
@@ -376,8 +390,7 @@ def add_website(report: Report, env: dict[str, str]) -> Report:
         day = fetch_website(code, token, report.window.start, report.window.end)
         week = fetch_website(code, token, report.week.start, report.week.end) if report.week else None
     except Exception as error:  # noqa: BLE001 - website stats must never stop the download report
-        status = getattr(error, "code", None)
-        reason = f"GoatCounter returned HTTP {status}" if isinstance(status, int) else f"{type(error).__name__}: {error}"
+        reason = str(error) if isinstance(error, GoatCounterError) else f"{type(error).__name__}: {error}"
         print(f"Website stats unavailable: {reason}", file=sys.stderr)
         return with_website(report, error=reason)
     return with_website(report, day=day, week=week)
