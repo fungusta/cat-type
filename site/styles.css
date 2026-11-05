@@ -332,17 +332,6 @@ a:focus-visible, button:focus-visible {
 .download-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .fine-print { font-size: .95rem; }
 
-/* Code signing policy, required by SignPath Foundation on the download page. */
-.signing {
-  display: grid;
-  gap: 6px;
-  max-width: 560px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-  font-size: .9rem;
-}
-.signing h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 800; }
-
 /* Privacy policy and other plain document pages */
 .doc { max-width: 720px; padding-block: 24px 64px; }
 .doc section { margin-top: 36px; }

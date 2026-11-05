@@ -286,16 +286,10 @@ stay hidden and never use the pointer fallback.
 See [`assets/SPRITES.md`](assets/SPRITES.md) to edit the SVG artwork while
 preserving the IDs used to derive each pose.
 
-## Code signing policy
+## Privacy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io/),
-certificate by [SignPath Foundation](https://signpath.org/).
-
-- Committers and reviewers: [fungusta](https://github.com/fungusta)
-
-Privacy: this program will not transfer any information to other networked
-systems unless specifically requested by the user or the person installing or
-operating it, apart from the update checks described in the
+Cat Type never records what you type, and the only network requests it makes
+are update checks. See the
 [privacy policy](https://fungusta.github.io/cat-type/privacy.html).
 
 ## License
