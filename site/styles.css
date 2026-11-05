@@ -109,6 +109,7 @@ a:focus-visible, button:focus-visible {
 .pill:hover { transform: translateY(-2px); box-shadow: var(--lift); }
 .pill:active { transform: translateY(1px); }
 
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .pill-icon { flex: none; margin-inline-start: -4px; }
 
 .pill-primary {
