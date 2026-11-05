@@ -285,3 +285,9 @@ stay hidden and never use the pointer fallback.
 
 See [`assets/SPRITES.md`](assets/SPRITES.md) to edit the SVG artwork while
 preserving the IDs used to derive each pose.
+
+## License
+
+Cat Type, including its original cat and accessory artwork, is released under
+the [MIT License](LICENSE). Bundled third-party libraries keep their own
+licenses.
