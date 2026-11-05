@@ -31,14 +31,16 @@ Non-goals
 
 Anti-goals (the page fails even if it works)
 - It promises something the app does not do. In particular, it must not call
-  typing activity "productivity", and it must not imply focus, task, or goal
-  tracking.
+  typing activity a productivity score, and it must not imply focus, task, or
+  goal tracking. (The Track subline may say it shows your most productive
+  times, by the owner's choice.)
 - It reveals or hints at secret rewards. No secret accessory, and no mystery
   tile or copy saying secrets exist.
 - It looks like a generic SaaS template, or uses art that is not real Cat Type
   artwork.
 - A visitor gives up at an operating-system hurdle nobody warned them about:
-  SmartScreen on Windows, or Input Monitoring on Mac.
+  Input Monitoring on Mac. (Windows SmartScreen goes unmentioned, by the
+  owner's choice; the real fix is code signing.)
 
 ## Page structure
 
@@ -46,7 +48,7 @@ A short scroll, roughly three screens tall on desktop.
 
 1. **Header.** Wordmark and a GitHub link.
 2. **Hero.**
-   - Headline: "Brighten up your day, one keystroke at a time."
+   - Headline: "Brighten up your day, one key at a time."
    - Subline: "A cute cat that sits by your cursor and taps along while you
      type. Dress it up, unlock new outfits, and see your typing week at a
      glance." Its three clauses introduce the three feature bands in order.
@@ -61,7 +63,8 @@ A short scroll, roughly three screens tall on desktop.
 5. **Track band.** A miniature of the app's Metrics card: Today, Last 7 days and
    All time stat tiles, and a 7-day column chart with today's column in Butter
    Sun. Headline: "See your typing week at a glance." Subline: "Keystrokes by
-   hour and day. Only the counts, never what you type."
+   hour and day, so you know your most productive times." (The owner chose
+   this wording, overriding the earlier "typing, not productivity" rule.)
 6. **Footer.** Links to the three offered release files (Windows, Mac Apple
    Silicon, Mac Intel) with plain labels, a link to the GitHub repo, and a line
    saying typed text is never recorded.
@@ -144,7 +147,7 @@ and copy name only Windows and Mac where platforms are named.
 
 | Detected | Primary button | Secondary |
 |---|---|---|
-| Windows | "Download for Windows" → Windows x64 exe | SmartScreen note |
+| Windows | "Download for Windows" → Windows x64 exe | none |
 | macOS | "Download for Mac" → arm64 dmg | Input Monitoring note, and an "Intel Mac?" link → x64 dmg |
 | Linux, phone or unknown | "Get it for Windows or Mac" → scrolls to footer | none |
 
@@ -152,11 +155,8 @@ Detection only changes the label, link and note. The footer always lists the
 three offered files. Before scripts run, or without JavaScript, the page shows
 the "Get it for Windows or Mac" behavior.
 
-The SmartScreen note shows only to Windows visitors, directly under the button,
-in one calm line, along the lines of: "Windows might say it doesn't recognise
-Cat Type yet. Choose More info, then Run anyway. The source is public on
-GitHub." (Not "open source": the repository has no license, so that claim
-would be unsupported. Settled by the designer.)
+Windows visitors get no note. The owner removed the SmartScreen note; the
+lasting fix is signing the Windows build so SmartScreen recognises it.
 macOS builds are notarized, so Gatekeeper needs no note. But on first launch the
 user must open Settings and choose **Enable Input Monitoring**, or the cat never
 reacts to typing (README, "Install on macOS"). So Mac visitors get one calm line

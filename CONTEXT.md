@@ -19,7 +19,7 @@
 - **motion approach** — the hero cat performs on its own using the existing flat cat artwork; visitors watch rather than type, and the page does not need three.js or a 3D scene.
 - **wave** — a landing-page gesture: the cat lifts one paw and waves to greet the visitor and invite them to download. It is not one of the app's typing poses.
 - **starter item** — a visible accessory earned within about a first week of ordinary use: at most 10,000 keystrokes or 7 active days. Secret rewards are never starter items. Only starter items appear in **Mix it up** on the landing page.
-- **typing activity** — what the Track feature band describes: keystroke counts by hour and day, never the text itself. The landing page calls this typing, not productivity.
+- **typing activity** — what the Track feature band describes: keystroke counts by hour and day, never the text itself. The landing page says it shows your most productive times, but never scores productivity or tracks focus, tasks or goals.
 - **unlock showcase** — the Unlock feature band: locker-style tiles for one earned reward and a few locked ones with progress. Secret rewards are neither shown nor hinted at.
 - **customization interaction** — visitors choose a cat style and press **Mix it up** to vary the outfit; they do not manage individual accessories on the landing page. The cat they dress becomes the hero cat.
 - **copy voice** — calm product language with occasional dry cat asides.

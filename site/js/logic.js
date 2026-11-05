@@ -13,7 +13,7 @@ const DOWNLOADS = {
   windows: {
     label: "Download for Windows",
     href: `${RELEASE_BASE}Cat-Type-Windows-x64.exe`,
-    note: "Windows might say it doesn't recognise Cat Type yet. Choose More info, then Run anyway. The source is public on GitHub.",
+    note: null,
     secondary: null,
   },
   mac: {

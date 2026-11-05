@@ -69,7 +69,7 @@ test("test_download_targets", () => {
   const windows = downloadFor("windows");
   assert.equal(windows.label, "Download for Windows");
   assert.equal(windows.href, `${RELEASE_BASE}Cat-Type-Windows-x64.exe`);
-  assert.equal(windows.note, "Windows might say it doesn't recognise Cat Type yet. Choose More info, then Run anyway. The source is public on GitHub.");
+  assert.equal(windows.note, null);
   assert.equal(windows.secondary, null);
 
   const mac = downloadFor("mac");

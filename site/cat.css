@@ -40,13 +40,15 @@
 
 .cat.is-happy { animation: cat-hop 900ms cubic-bezier(.3, .7, .3, 1); }
 
+/* The paw stays planted on the body's base line: it stretches up and sways
+   with a shear, so its bottom edge never leaves the body. */
 @keyframes cat-wave {
   0%, 100% { transform: none; }
-  18% { transform: translateY(-30px) rotate(-14deg); }
-  34% { transform: translateY(-30px) rotate(14deg); }
-  50% { transform: translateY(-30px) rotate(-14deg); }
-  66% { transform: translateY(-30px) rotate(14deg); }
-  82% { transform: translateY(-30px) rotate(0deg); }
+  16% { transform: skewX(-16deg) scaleY(1.3); }
+  32% { transform: skewX(16deg) scaleY(1.3); }
+  48% { transform: skewX(-16deg) scaleY(1.3); }
+  64% { transform: skewX(16deg) scaleY(1.3); }
+  80% { transform: skewX(0deg) scaleY(1.3); }
 }
 
 /* Matches the app's tap pose: the paw compresses toward its base. */
