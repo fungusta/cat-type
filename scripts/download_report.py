@@ -368,7 +368,8 @@ def send_email(env: dict[str, str], recipient: str, subject_line: str, text: str
 
 
 def add_website(report: Report, env: dict[str, str]) -> Report:
-    code, token = env.get("GOATCOUNTER_CODE", "").strip(), env.get("GOATCOUNTER_TOKEN", "")
+    # Pasted secrets can carry stray whitespace.
+    code, token = env.get("GOATCOUNTER_CODE", "").strip(), env.get("GOATCOUNTER_TOKEN", "").strip()
     if not (code and token) or report.window is None:
         return report
     try:
