@@ -13,18 +13,21 @@ const DOWNLOADS = {
   windows: {
     label: "Download for Windows",
     href: `${RELEASE_BASE}Cat-Type-Windows-x64.exe`,
+    icon: "windows",
     note: null,
     secondary: null,
   },
   mac: {
     label: "Download for Mac",
     href: `${RELEASE_BASE}Cat-Type-macOS-arm64.dmg`,
+    icon: "apple",
     note: "On first launch, choose Enable Input Monitoring so your cat can hear you type.",
     secondary: { label: "Intel Mac?", href: `${RELEASE_BASE}Cat-Type-macOS-x64.dmg` },
   },
   other: {
     label: "Get it for Windows or Mac",
     href: "#download",
+    icon: null,
     note: null,
     secondary: null,
   },

@@ -70,18 +70,21 @@ test("test_download_targets", () => {
   assert.equal(windows.label, "Download for Windows");
   assert.equal(windows.href, `${RELEASE_BASE}Cat-Type-Windows-x64.exe`);
   assert.equal(windows.note, null);
+  assert.equal(windows.icon, "windows");
   assert.equal(windows.secondary, null);
 
   const mac = downloadFor("mac");
   assert.equal(mac.label, "Download for Mac");
   assert.equal(mac.href, `${RELEASE_BASE}Cat-Type-macOS-arm64.dmg`);
   assert.equal(mac.note, "On first launch, choose Enable Input Monitoring so your cat can hear you type.");
+  assert.equal(mac.icon, "apple");
   assert.deepEqual(mac.secondary, { label: "Intel Mac?", href: `${RELEASE_BASE}Cat-Type-macOS-x64.dmg` });
 
   const other = downloadFor("other");
   assert.equal(other.label, "Get it for Windows or Mac");
   assert.equal(other.href, "#download");
   assert.equal(other.note, null);
+  assert.equal(other.icon, null);
   assert.equal(other.secondary, null);
 
   assert.equal(RELEASE_BASE, "https://github.com/fungusta/cat-type/releases/latest/download/");
