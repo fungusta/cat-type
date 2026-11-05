@@ -292,7 +292,6 @@ Free code signing provided by [SignPath.io](https://about.signpath.io/),
 certificate by [SignPath Foundation](https://signpath.org/).
 
 - Committers and reviewers: [fungusta](https://github.com/fungusta)
-- Approvers: [fungusta](https://github.com/fungusta)
 
 Privacy: this program will not transfer any information to other networked
 systems unless specifically requested by the user or the person installing or
