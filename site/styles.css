@@ -332,6 +332,28 @@ a:focus-visible, button:focus-visible {
 .download-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 0; padding: 0; list-style: none; }
 .fine-print { font-size: .95rem; }
 
+/* Code signing policy, required by SignPath Foundation on the download page. */
+.signing {
+  display: grid;
+  gap: 6px;
+  max-width: 560px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: .9rem;
+}
+.signing h3 { margin: 0 0 4px; font-size: 1rem; font-weight: 800; }
+
+/* Privacy policy and other plain document pages */
+.doc { max-width: 720px; padding-block: 24px 64px; }
+.doc section { margin-top: 36px; }
+.doc h2 { font-size: 1.35rem; margin-bottom: 10px; }
+.doc p + p { margin-top: 12px; }
+.doc ul { margin: 0 0 12px; padding-left: 1.2em; color: var(--muted); }
+.doc li + li { margin-top: 8px; }
+.doc strong { color: var(--ink); }
+.doc code { font-size: .9em; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
+.doc-updated { font-size: .9rem; }
+
 @media (max-width: 760px) {
   .hero, .band { grid-template-columns: 1fr; gap: 28px; }
   .hero { padding-block: 16px 48px; }

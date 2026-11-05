@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Cat Type — Privacy policy</title>
+  <meta name="description" content="What Cat Type keeps on your computer, what it sends over the network, and how this website handles your visit.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="wordmark" href="./"><img src="favicon.png" alt="" width="28" height="28"> Cat Type</a>
+    <a class="quiet-link" href="https://github.com/fungusta/cat-type">GitHub</a>
+  </header>
+
+  <main class="doc wrap">
+    <h1>Privacy policy</h1>
+    <p class="doc-updated">Last updated 5 November 2026</p>
+
+    <section>
+      <h2>The short version</h2>
+      <p>Cat Type never records what you type. It keeps a few counts and your settings on your own computer, and it has no accounts, ads, analytics or telemetry. The only thing it sends over the network is a check for new versions on GitHub.</p>
+    </section>
+
+    <section>
+      <h2>What Cat Type keeps on your computer</h2>
+      <ul>
+        <li><strong>Keystroke counts.</strong> How many keys you pressed in each hour of each day, so it can show your typing week. Never which keys, never the text, never which app or window you typed in.</li>
+        <li><strong>Your settings and wardrobe.</strong> Your cat style, outfit, size, position and other preferences.</li>
+        <li><strong>Earned rewards.</strong> Which accessories you have unlocked.</li>
+      </ul>
+      <p>These files stay in a <code>Cat Type</code> folder in your user account's app data (<code>%LOCALAPPDATA%</code> on Windows, <code>~/Library/Application Support</code> on macOS). They are never uploaded.</p>
+    </section>
+
+    <section>
+      <h2>How it notices your typing</h2>
+      <ul>
+        <li>The keyboard listener only works out whether a key was on the left or right of the keyboard, so the right paw can tap. It then discards the key straight away.</li>
+        <li>On Windows, Cat Type asks the system's accessibility features where the text cursor is, so the cat can sit beside it. When it detects a password field, the cat stays hidden.</li>
+        <li>On macOS, it remembers only the position and time of your latest click to place the cat. It never asks which app or control you clicked. macOS asks you to allow Input Monitoring before Cat Type can hear any typing.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>What it sends over the network</h2>
+      <p>Only update checks. When the app starts, at most once every 24 hours, and whenever you choose <strong>Check for updates</strong>, Cat Type asks GitHub (<code>api.github.com</code>) for the latest release. If you choose to install an update, it downloads it from GitHub's release servers. These requests carry the app's version number and nothing else about you: no keystrokes, counts, settings or rewards.</p>
+      <p>Like any website, GitHub can see the network address the request comes from. GitHub's handling of that is covered by the <a class="quiet-link" href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">GitHub General Privacy Statement</a>.</p>
+    </section>
+
+    <section>
+      <h2>Removing your data</h2>
+      <p>Uninstall Cat Type (the Windows installer includes an uninstaller; on macOS, drag the app to the Bin), then delete the <code>Cat Type</code> folder described above.</p>
+    </section>
+
+    <section>
+      <h2>This website</h2>
+      <ul>
+        <li>The site is hosted on GitHub Pages, so GitHub receives the usual request details, such as your network address, when you visit.</li>
+        <li>The text font loads from Google Fonts, so Google receives the same kind of request details. See the <a class="quiet-link" href="https://policies.google.com/privacy">Google Privacy Policy</a>.</li>
+        <li>The cat you dress up on the home page is remembered in your browser's local storage, on your device only. It is never sent anywhere.</li>
+        <li>The site sets no cookies and uses no analytics or tracking.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Questions and changes</h2>
+      <p>If this policy changes, the new version will be posted on this page with a new date. For questions, open an issue on <a class="quiet-link" href="https://github.com/fungusta/cat-type/issues">GitHub</a>.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p class="fine-print"><a class="quiet-link" href="./#download">Download Cat Type</a></p>
+    </div>
+  </footer>
+</body>
+</html>
