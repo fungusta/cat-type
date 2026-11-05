@@ -155,7 +155,7 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertTrue(all(url.startswith("https://cat-type.goatcounter.com/api/v0/stats/") for url, _ in calls))
         self.assertIn("start=2026-11-04T01%3A00%3A00Z", calls[0][0])
-        self.assertIn("end=2026-11-05T01%3A00%3A00Z", calls[0][0])
+        self.assertIn("end=2026-11-05T02%3A00%3A00Z", calls[0][0])
         self.assertEqual({token for _, token in calls}, {"tok"})
 
     def test_email_shows_the_website_section(self):

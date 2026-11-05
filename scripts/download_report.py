@@ -150,13 +150,16 @@ def _get_json(url: str, token: str) -> dict:
         return json.load(response)
 
 
-def _hour(moment: datetime) -> str:
-    return moment.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+def _hour(moment: datetime, extra: timedelta = timedelta()) -> str:
+    hour = moment.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0) + extra
+    return hour.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def fetch_website(code: str, token: str, start: datetime, end: datetime, get=_get_json, pause: float = 0.3) -> Website:
     api = f"https://{code}.goatcounter.com/api/v0/stats"
-    query = urllib.parse.urlencode({"start": _hour(start), "end": _hour(end), "limit": 100})
+    # GoatCounter takes whole hours; the end covers the hour in progress so
+    # the latest visits count. The overlap with the next report is minutes.
+    query = urllib.parse.urlencode({"start": _hour(start), "end": _hour(end, timedelta(hours=1)), "limit": 100})
     hits = get(f"{api}/hits?{query}", token)
     time.sleep(pause)  # GoatCounter allows 4 requests a second.
     refs = get(f"{api}/toprefs?{query}", token)
