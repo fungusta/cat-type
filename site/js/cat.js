@@ -72,43 +72,6 @@ function addAccessory(root, accessory, slot) {
   if (frontLayer) insertBeforePawLeft(root, frontLayer);
 }
 
-// The wave lifts the right paw, so give it a forearm reaching down past the
-// body's base line (y = 102), clipped there so the arm meets the edge. The
-// forearm is hidden by CSS until the cat waves.
-const BASE_LINE = 102;
-
-function addWaveArm(root) {
-  const paw = root.querySelector("#paw-right");
-  if (!paw) return;
-  const fill = paw.querySelector('path[fill]:not([fill="none"])')?.getAttribute("fill") ?? "#ffffff";
-  let defs = root.querySelector(":scope > defs");
-  if (!defs) defs = root.insertBefore(document.createElementNS(SVG_NS, "defs"), root.firstChild);
-  const clip = defs.appendChild(document.createElementNS(SVG_NS, "clipPath"));
-  clip.id = "wave-arm-clip";
-  clip.setAttribute("clipPathUnits", "userSpaceOnUse");
-  const area = clip.appendChild(document.createElementNS(SVG_NS, "rect"));
-  for (const [name, value] of Object.entries({ x: -60, y: -60, width: 240, height: BASE_LINE + 60 })) {
-    area.setAttribute(name, value);
-  }
-
-  const frame = document.createElementNS(SVG_NS, "g");
-  frame.setAttribute("clip-path", "url(#wave-arm-clip)");
-  const arm = frame.appendChild(document.createElementNS(SVG_NS, "g"));
-  arm.classList.add("cat-arm-right");
-  paw.replaceWith(frame);
-  arm.append(paw);
-  // Drawn over the paw's bottom edge so the wrist has no seam.
-  const forearm = arm.appendChild(document.createElementNS(SVG_NS, "g"));
-  forearm.classList.add("cat-forearm");
-  const skin = forearm.appendChild(document.createElementNS(SVG_NS, "path"));
-  skin.setAttribute("d", "M85 100.5 H107 V150 H85 Z");
-  skin.setAttribute("fill", fill);
-  skin.setAttribute("stroke", "none");
-  const sides = forearm.appendChild(document.createElementNS(SVG_NS, "path"));
-  sides.setAttribute("d", "M85 100.5 V150 M107 100.5 V150");
-  sides.setAttribute("fill", "none");
-}
-
 // Two cats share a page, so every id and reference gets a per-cat prefix.
 function prefixIds(root, prefix) {
   const renamed = new Map();
@@ -139,7 +102,6 @@ export async function renderCat(container, { cat, outfit = {} }, idPrefix, asset
   root.querySelectorAll(":scope > title, :scope > desc").forEach((node) => node.remove());
   slots.forEach((slot, index) => addAccessory(root, accessories[index], slot));
   for (const [id, className] of Object.entries(PART_CLASSES)) root.querySelector(`#${id}`)?.classList.add(className);
-  addWaveArm(root);
   prefixIds(root, idPrefix);
   root.removeAttribute("width");
   root.removeAttribute("height");
@@ -159,7 +121,6 @@ function play(svg, className, duration) {
   svg[`${className}Timer`] = setTimeout(() => svg.classList.remove(className), duration);
 }
 
-export const wave = (svg) => play(svg, "is-waving", 1600);
 export const burst = (svg) => play(svg, "is-typing", 1300);
 export const blink = (svg) => play(svg, "is-blinking", 160);
 
@@ -175,8 +136,8 @@ export function happy(svg) {
 
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// The hero's gentle routine: hello wave, blinks, a typing burst with the
-// excited face, then a wave that leans toward the download button.
+// The hero's gentle routine: blinks, a typing burst with the excited face,
+// then a happy lean toward the download button.
 export function startHeroLoop(getSvg) {
   const current = typeof getSvg === "function" ? getSvg : () => getSvg;
   const timers = [];
@@ -184,13 +145,12 @@ export function startHeroLoop(getSvg) {
   const blinker = setInterval(() => current() && blink(current()), 3400);
   const cycle = () => {
     if (reducedMotion()) return;
-    at(0, wave);
-    at(4200, burst);
-    at(4200, (svg) => play(svg, "is-excited", 1500));
-    at(7600, (svg) => { play(svg, "is-leaning", 1700); wave(svg); });
+    at(1500, burst);
+    at(1500, (svg) => play(svg, "is-excited", 1500));
+    at(5000, (svg) => { play(svg, "is-leaning", 1700); play(svg, "is-excited", 1700); });
   };
   cycle();
-  const loop = setInterval(cycle, 11000);
+  const loop = setInterval(cycle, 9000);
   return () => {
     timers.forEach(clearTimeout);
     clearInterval(blinker);

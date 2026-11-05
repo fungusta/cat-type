@@ -77,13 +77,15 @@ The cat SVG is inlined so CSS can animate its named parts (`paw-left`,
 are used.
 
 It plays a gentle loop:
-1. On load it **waves** hello: `paw-right` lifts and swings from its base.
-2. It sits and blinks for a few seconds.
-3. A short typing burst (paws dropping one after the other, as the app's tap
-   poses do), then the excited mouth.
-4. It waves again, leaning toward the download button.
+1. It sits and blinks.
+2. A short typing burst (paws dropping one after the other, as the app's tap
+   poses do), with the excited mouth.
+3. It leans toward the download button with the excited mouth.
 
-Interactions: hovering over the cat makes it wave. Clicking it gives a happy
+There is no wave: the owner tried lifted, slanted and raised-arm waves and
+removed it, because the paw art has no arm and every version looked detached.
+
+Interactions: clicking the cat gives a happy
 bounce with a small heart. Hovering or focusing the download button gives the
 excited mouth.
 

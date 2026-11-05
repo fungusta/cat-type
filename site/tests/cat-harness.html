@@ -14,11 +14,11 @@
   <div class="stage" id="a"></div>
   <div class="stage" id="b"></div>
   <script type="module">
-    import { renderCat, wave, burst, happy, startHeroLoop } from "../js/cat.js";
+    import { renderCat, burst, happy, startHeroLoop } from "../js/cat.js";
     const base = "../../build/site/assets/";
     const a = await renderCat(document.querySelector("#a"), { cat: "gray", outfit: { hat: "beanie", neck: "bow-tie" } }, "a", base);
     const b = await renderCat(document.querySelector("#b"), { cat: "white", outfit: { ears: "daisy-clip", glasses: "sunglasses", neck: "bell-collar" } }, "b", base);
-    Object.assign(window, { a, b, wave, burst, happy, startHeroLoop });
+    Object.assign(window, { a, b, burst, happy, startHeroLoop });
     document.body.dataset.ready = "true";
   </script>
 </body>

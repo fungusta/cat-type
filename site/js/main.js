@@ -8,7 +8,7 @@ import {
   storageFrom,
   writeChoice,
 } from "./logic.js";
-import { happy, renderCat, startHeroLoop, wave } from "./cat.js";
+import { happy, renderCat, startHeroLoop } from "./cat.js";
 
 document.documentElement.classList.add("js");
 
@@ -147,7 +147,6 @@ async function start() {
   renderTrack(catalog);
 
   const heroCat = $("#hero-cat");
-  heroCat.addEventListener("mouseenter", () => heroSvg && wave(heroSvg));
   heroCat.addEventListener("click", () => heroSvg && happy(heroSvg));
   const button = $("#primary-download");
   const perk = (on) => heroSvg?.classList.toggle("is-perky", on);

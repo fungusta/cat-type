@@ -30,16 +30,6 @@
 
 .cat.is-blinking .cat-eyes { transform: scaleY(.12); }
 
-/* The waving arm swings from an elbow below the base line, out of view. */
-.cat .cat-arm-right {
-  transform-box: view-box;
-  transform-origin: 96px 128px;
-}
-
-.cat .cat-forearm { display: none; }
-.cat.is-waving .cat-forearm { display: inline; }
-.cat.is-waving .cat-arm-right { animation: cat-wave 1600ms ease-in-out; }
-
 .cat.is-typing .cat-pads { display: none; }
 .cat.is-typing .cat-paw-left { animation: cat-tap 260ms ease-in-out 5; }
 .cat.is-typing .cat-paw-right { animation: cat-tap 260ms ease-in-out 130ms 5; }
@@ -47,16 +37,6 @@
 .cat.is-leaning { transform: rotate(-5deg) translateX(-6px); }
 
 .cat.is-happy { animation: cat-hop 900ms cubic-bezier(.3, .7, .3, 1); }
-
-/* The paw rises on its forearm and waves from the elbow. */
-@keyframes cat-wave {
-  0%, 100% { transform: none; }
-  14% { transform: translateY(-24px) rotate(-12deg); }
-  30% { transform: translateY(-24px) rotate(10deg); }
-  46% { transform: translateY(-24px) rotate(-12deg); }
-  62% { transform: translateY(-24px) rotate(10deg); }
-  80% { transform: translateY(-24px) rotate(0deg); }
-}
 
 /* Matches the app's tap pose: the paw compresses toward its base. */
 @keyframes cat-tap {
@@ -91,8 +71,6 @@
   .cat,
   .cat.is-leaning,
   .cat.is-happy { transform: none; animation: none; transition: none; }
-  .cat.is-waving .cat-forearm { display: none; }
-  .cat.is-waving .cat-arm-right,
   .cat.is-typing .cat-paw-left,
   .cat.is-typing .cat-paw-right { animation: none; }
   .cat-heart { animation-duration: 1ms; }
