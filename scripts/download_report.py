@@ -1,4 +1,4 @@
-"""Email a daily report of Cat Type downloads from GitHub's release counts.
+"""Email a daily report of Cat Type downloads and website visits.
 
 GitHub only keeps a running ``download_count`` for each release asset, so every
 run records a snapshot of the totals and reports the change since the previous
@@ -6,6 +6,10 @@ one. The in-app updater fetches the same packages as people downloading from
 the website, but it also always fetches ``SHA256SUMS.txt`` first, which the
 website never links to. Package downloads minus checksum downloads is
 therefore a fair estimate of new downloads.
+
+Website visitors and download-button clicks come from GoatCounter's API when
+GOATCOUNTER_CODE and GOATCOUNTER_TOKEN are set. GoatCounter counts visitors
+(one per browser session), not raw page views.
 
 Standard library only, so the workflow needs no dependencies.
 """
@@ -18,8 +22,10 @@ import json
 import os
 import smtplib
 import sys
+import time
+import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -86,6 +92,77 @@ class Window:
         return max(0, self.packages - self.updates)
 
 
+SLUG_LABELS = {"windows": "Windows", "mac-arm64": "Mac (Apple Silicon)", "mac-intel": "Mac (Intel)"}
+PLACEMENT_LABELS = {"hero": "Main button", "footer": "Footer"}
+
+
+def _button_label(name: str) -> str:
+    """'download-hero-windows' -> 'Main button · Windows'."""
+    if name.endswith("-see-platforms"):
+        placement = name.removesuffix("-see-platforms")
+        return f"{PLACEMENT_LABELS.get(placement, placement)} · see all platforms"
+    parts = name.split("-", 2)
+    if len(parts) == 3 and parts[0] == "download":
+        return f"{PLACEMENT_LABELS.get(parts[1], parts[1])} · {SLUG_LABELS.get(parts[2], parts[2])}"
+    return name
+
+
+@dataclass(frozen=True)
+class Website:
+    pages: dict[str, int]
+    events: dict[str, int]
+    referrers: list[tuple[str, int]]
+
+    @property
+    def landing_visitors(self) -> int:
+        return sum(count for path, count in self.pages.items() if path.endswith(("/", "/index.html")))
+
+    @property
+    def download_clicks(self) -> int:
+        return sum(count for name, count in self.events.items() if name.startswith("download-"))
+
+    @property
+    def rate(self) -> str:
+        if not self.landing_visitors:
+            return "n/a"
+        return f"{round(100 * self.download_clicks / self.landing_visitors)}%"
+
+    @property
+    def buttons(self) -> list[tuple[str, int]]:
+        # Downloads first, busiest first; other clicks after.
+        ordered = sorted(self.events.items(), key=lambda item: (not item[0].startswith("download-"), -item[1]))
+        return [(_button_label(name), count) for name, count in ordered]
+
+
+def website_from(hits: dict, refs: dict) -> Website:
+    pages = {hit["path"]: hit["count"] for hit in hits.get("hits", []) if not hit.get("event")}
+    events = {hit["path"]: hit["count"] for hit in hits.get("hits", []) if hit.get("event")}
+    referrers = sorted(((stat.get("name") or "Direct or unknown", stat["count"]) for stat in refs.get("stats", [])),
+                       key=lambda item: -item[1])
+    return Website(pages, events, referrers[:5])
+
+
+def _get_json(url: str, token: str) -> dict:
+    request = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}", "Content-Type": "application/json",
+        "User-Agent": "cat-type-download-report"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def _hour(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def fetch_website(code: str, token: str, start: datetime, end: datetime, get=_get_json, pause: float = 0.3) -> Website:
+    api = f"https://{code}.goatcounter.com/api/v0/stats"
+    query = urllib.parse.urlencode({"start": _hour(start), "end": _hour(end), "limit": 100})
+    hits = get(f"{api}/hits?{query}", token)
+    time.sleep(pause)  # GoatCounter allows 4 requests a second.
+    refs = get(f"{api}/toprefs?{query}", token)
+    return website_from(hits, refs)
+
+
 @dataclass(frozen=True)
 class Report:
     at: datetime
@@ -94,6 +171,9 @@ class Report:
     previous_week: Window | None
     daily: list[Window]
     all_time: dict[str, int]
+    website: Website | None = None
+    website_week: Website | None = None
+    website_error: str | None = None
 
     @property
     def all_time_packages(self) -> int:
@@ -128,6 +208,11 @@ def build_report(history: list[dict]) -> Report:
     return Report(at, window, week, previous_week, daily, all_time)
 
 
+def with_website(report: Report, day: Website | None = None, week: Website | None = None,
+                 error: str | None = None) -> Report:
+    return replace(report, website=day, website_week=week, website_error=error)
+
+
 def _day(moment: datetime) -> str:
     return f"{moment:%a} {moment.day} {moment:%b}"
 
@@ -141,6 +226,9 @@ def _span(window: Window) -> str:
 def subject(report: Report) -> str:
     if report.window is None:
         return "Cat Type downloads: tracking started"
+    if report.website is not None:
+        return (f"Cat Type: {report.window.new} new downloads, "
+                f"{report.website.landing_visitors} visitors {_span(report.window)}")
     return f"Cat Type downloads: {report.window.new} new {_span(report.window)}"
 
 
@@ -159,6 +247,23 @@ EXPLANATION = (
 )
 
 
+WEBSITE_EXPLANATION = (
+    "Website numbers come from GoatCounter and count visitors (one per browser session), "
+    "not page views. Each button counts the visitors who pressed it, and the click rate is "
+    "download clicks divided by landing page visitors. Ad blockers hide some visits."
+)
+
+
+def _website_text(site: Website) -> list[str]:
+    lines = [f"  {'Landing page visitors':<30}{site.landing_visitors:>6}",
+             f"  {'Download clicks':<30}{site.download_clicks:>6}",
+             f"  {'Click rate':<30}{site.rate:>6}"]
+    lines += [f"    {label:<28}{count:>6}" for label, count in site.buttons]
+    if site.referrers:
+        lines += ["  Top referrers:"] + [f"    {name:<28}{count:>6}" for name, count in site.referrers]
+    return lines
+
+
 def format_text(report: Report) -> str:
     lines = [subject(report), ""]
     if report.window is None:
@@ -173,13 +278,21 @@ def format_text(report: Report) -> str:
             f"  {'New (estimated)':<22}{window.new:>6}",
             "",
         ]
+    if report.website_error:
+        lines += [f"Website stats unavailable: {report.website_error}", ""]
+    if report.website:
+        lines += ["Website, same period:"] + _website_text(report.website) + [""]
     if report.week:
         lines += [f"Last 7 days: {report.week.new} new, {report.week.packages} packages{_change(report.week, report.previous_week)}", ""]
+    if report.website_week:
+        lines += ["Website, last 7 days:"] + _website_text(report.website_week) + [""]
     if len(report.daily) > 1:
         lines += ["Recent days (new / packages):"]
         lines += [f"  {_day(row.start):<12}{row.new:>4} / {row.packages}" for row in report.daily]
         lines += [""]
     lines += [f"All time: {report.all_time_packages} package downloads across every release.", "", EXPLANATION]
+    if report.website or report.website_week:
+        lines += ["", WEBSITE_EXPLANATION]
     return "\n".join(lines) + "\n"
 
 
@@ -200,16 +313,40 @@ def format_html(report: Report) -> str:
         parts.append('<table style="border-collapse:collapse">')
         parts += [f"<tr><td {cell}>{e(label)}</td><td {num}>{count}</td></tr>" for label, count in rows]
         parts.append(f"<tr><td {cell}><b>New (estimated)</b></td><td {num}><b>{window.new}</b></td></tr></table>")
+    if report.website_error:
+        parts.append(f'<p style="color:#a33">Website stats unavailable: {e(report.website_error)}</p>')
+    if report.website:
+        parts.append(_website_html("Website, same period", report.website, cell, num))
     if report.week:
         parts.append(f"<p><b>Last 7 days:</b> {report.week.new} new, {report.week.packages} packages"
                      f"{e(_change(report.week, report.previous_week))}</p>")
+    if report.website_week:
+        parts.append(_website_html("Website, last 7 days", report.website_week, cell, num))
     if len(report.daily) > 1:
         parts.append(f'<table style="border-collapse:collapse"><tr><th {cell}>Day</th><th {num}>New</th><th {num}>Packages</th></tr>')
         parts += [f"<tr><td {cell}>{e(_day(row.start))}</td><td {num}>{row.new}</td><td {num}>{row.packages}</td></tr>"
                   for row in report.daily]
         parts.append("</table>")
     parts.append(f"<p>All time: {report.all_time_packages} package downloads across every release.</p>")
-    parts.append(f'<p style="color:#888;font-size:12px">{e(EXPLANATION)}</p></div>')
+    parts.append(f'<p style="color:#888;font-size:12px">{e(EXPLANATION)}</p>')
+    if report.website or report.website_week:
+        parts.append(f'<p style="color:#888;font-size:12px">{e(WEBSITE_EXPLANATION)}</p>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
+def _website_html(title: str, site: Website, cell: str, num: str) -> str:
+    e = html.escape
+    indent = 'style="padding:4px 12px 4px 28px;border-bottom:1px solid #eee"'
+    rows = [("Landing page visitors", site.landing_visitors), ("Download clicks", site.download_clicks),
+            ("Click rate", site.rate)]
+    parts = [f'<h3 style="margin:16px 0 4px">{e(title)}</h3><table style="border-collapse:collapse">']
+    parts += [f"<tr><td {cell}>{e(label)}</td><td {num}>{value}</td></tr>" for label, value in rows]
+    parts += [f"<tr><td {indent}>{e(label)}</td><td {num}>{count}</td></tr>" for label, count in site.buttons]
+    parts.append("</table>")
+    if site.referrers:
+        listed = ", ".join(f"{e(name)} ({count})" for name, count in site.referrers)
+        parts.append(f'<p style="margin:8px 0 0">Top referrers: {listed}</p>')
     return "".join(parts)
 
 
@@ -227,6 +364,21 @@ def send_email(env: dict[str, str], recipient: str, subject_line: str, text: str
         server.send_message(message)
 
 
+def add_website(report: Report, env: dict[str, str]) -> Report:
+    code, token = env.get("GOATCOUNTER_CODE", "").strip(), env.get("GOATCOUNTER_TOKEN", "")
+    if not (code and token) or report.window is None:
+        return report
+    try:
+        day = fetch_website(code, token, report.window.start, report.window.end)
+        week = fetch_website(code, token, report.week.start, report.week.end) if report.week else None
+    except Exception as error:  # noqa: BLE001 - website stats must never stop the download report
+        status = getattr(error, "code", None)
+        reason = f"GoatCounter returned HTTP {status}" if isinstance(status, int) else f"{type(error).__name__}: {error}"
+        print(f"Website stats unavailable: {reason}", file=sys.stderr)
+        return with_website(report, error=reason)
+    return with_website(report, day=day, week=week)
+
+
 def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> int:
     env = dict(os.environ) if env is None else env
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -238,7 +390,7 @@ def main(argv: list[str] | None = None, env: dict[str, str] | None = None) -> in
     history = json.loads(args.history.read_text()) if args.history.exists() else []
     history.append({"at": now().isoformat(timespec="seconds"),
                     "totals": totals(fetch_releases(args.repo, env.get("GITHUB_TOKEN")))})
-    report = build_report(history)
+    report = add_website(build_report(history), env)
     text = format_text(report)
     print(text)
     if summary := env.get("GITHUB_STEP_SUMMARY"):

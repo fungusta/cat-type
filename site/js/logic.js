@@ -33,6 +33,20 @@ const DOWNLOADS = {
   },
 };
 
+const DOWNLOAD_SLUGS = {
+  "Cat-Type-Windows-x64.exe": "windows",
+  "Cat-Type-macOS-arm64.dmg": "mac-arm64",
+  "Cat-Type-macOS-x64.dmg": "mac-intel",
+};
+
+// GoatCounter click-event name for a download link, e.g. "download-hero-windows".
+// The hero button on other devices only scrolls to the platform list.
+export function downloadEvent(placement, href) {
+  if (!href.startsWith(RELEASE_BASE)) return `${placement}-see-platforms`;
+  const slug = DOWNLOAD_SLUGS[href.slice(RELEASE_BASE.length)];
+  return slug ? `download-${placement}-${slug}` : null;
+}
+
 // Only Windows and non-touch Macs get a direct download. iPadOS sends a
 // desktop "Macintosh" agent, so a touch screen rules a Mac out.
 export function platformFor({ userAgent = "", maxTouchPoints = 0 } = {}) {

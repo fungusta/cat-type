@@ -5,6 +5,7 @@ import {
   DEFAULT_CHOICE,
   RELEASE_BASE,
   createRenderTickets,
+  downloadEvent,
   downloadFor,
   storageFrom,
   nextOutfit,
@@ -88,6 +89,15 @@ test("test_download_targets", () => {
   assert.equal(other.secondary, null);
 
   assert.equal(RELEASE_BASE, "https://github.com/fungusta/cat-type/releases/latest/download/");
+});
+
+test("test_download_events_name_the_placement_and_platform", () => {
+  assert.equal(downloadEvent("hero", downloadFor("windows").href), "download-hero-windows");
+  assert.equal(downloadEvent("hero", downloadFor("mac").href), "download-hero-mac-arm64");
+  assert.equal(downloadEvent("hero", downloadFor("mac").secondary.href), "download-hero-mac-intel");
+  assert.equal(downloadEvent("footer", `${RELEASE_BASE}Cat-Type-macOS-x64.dmg`), "download-footer-mac-intel");
+  assert.equal(downloadEvent("hero", downloadFor("other").href), "hero-see-platforms");
+  assert.equal(downloadEvent("hero", `${RELEASE_BASE}Cat-Type-Linux-x64.tar.gz`), null);
 });
 
 test("test_next_outfit_never_repeats", () => {

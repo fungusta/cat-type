@@ -1,6 +1,6 @@
 name: Download report
 
-# Emails yesterday's download counts. GitHub only keeps running totals, so each
+# Emails yesterday's download counts and, with GoatCounter set up, website visits. GitHub only keeps running totals, so each
 # run saves a snapshot on the orphan `download-stats` branch to diff against.
 on:
   schedule:
@@ -48,6 +48,8 @@ jobs:
           SMTP_HOST: ${{ vars.SMTP_HOST }}
           SMTP_PORT: ${{ vars.SMTP_PORT }}
           SMTP_FROM: ${{ vars.SMTP_FROM }}
+          GOATCOUNTER_CODE: ${{ vars.GOATCOUNTER_CODE }}
+          GOATCOUNTER_TOKEN: ${{ secrets.GOATCOUNTER_TOKEN }}
         run: python -m scripts.download_report --history stats/history.json
 
       - name: Save snapshot

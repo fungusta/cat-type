@@ -70,6 +70,36 @@ class SiteBuildTests(unittest.TestCase):
                     self.assertNotIn(hidden, text, path)
         json.loads((out / "catalog.json").read_text(encoding="utf-8"))
 
+    def test_without_a_goatcounter_code_pages_carry_no_analytics(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        out = self.module().build_site(Path(directory.name) / "site", goatcounter_code="")
+        for page in out.glob("*.html"):
+            text = page.read_text(encoding="utf-8")
+            self.assertNotIn("gc.zgo.at", text, page)
+            self.assertNotIn("data-goatcounter=", text, page)
+            self.assertNotIn(self.module().ANALYTICS_MARKER, text, page)
+
+    def test_goatcounter_code_adds_the_script_to_every_page(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        out = self.module().build_site(Path(directory.name) / "site", goatcounter_code="cat-type")
+        pages = list(out.glob("*.html"))
+        self.assertEqual({page.name for page in pages}, {"index.html", "privacy.html"})
+        for page in pages:
+            self.assertIn('data-goatcounter="https://cat-type.goatcounter.com/count"',
+                          page.read_text(encoding="utf-8"), page)
+
+    def test_rejects_a_goatcounter_code_that_could_break_the_page(self):
+        with self.assertRaises(ValueError):
+            self.module().analytics_tag('x"><script>')
+
+    def test_every_download_link_is_counted_as_a_click(self):
+        text = (Path(__file__).resolve().parents[1] / "site" / "index.html").read_text(encoding="utf-8")
+        for name in ("download-footer-windows", "download-footer-mac-arm64", "download-footer-mac-intel"):
+            self.assertIn(f'data-goatcounter-click="{name}"', text)
+        self.assertEqual(text.count("releases/latest/download/"), 3)
+
     def test_build_copies_all_six_cats_and_excludes_site_tests(self):
         out = self.build()
         self.assertEqual(len(list((out / "assets" / "cats").glob("*.svg"))), 6)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -21,6 +23,17 @@ EQUIPPED_ID = "beanie"
 # One pretend first-week user, oldest day first and today last. The Unlock
 # and Track bands both read from it so their numbers always agree.
 PRETEND_WEEK = (1180, 1620, 940, 1850, 1410, 2060, 1440)
+ANALYTICS_MARKER = "<!-- analytics -->"
+
+
+def analytics_tag(code: str) -> str:
+    """GoatCounter's script for a site code, or nothing when no code is set."""
+    if not code:
+        return ""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,49}", code):
+        raise ValueError(f"Invalid GoatCounter site code: {code!r}")
+    return (f'<script data-goatcounter="https://{code}.goatcounter.com/count" '
+            'async src="https://gc.zgo.at/count.js"></script>')
 
 
 def starter_items() -> tuple[Accessory, ...]:
@@ -66,8 +79,11 @@ def catalog() -> dict:
     }
 
 
-def build_site(out_dir: Path = PROJECT_ROOT / "build" / "site") -> Path:
+def build_site(out_dir: Path = PROJECT_ROOT / "build" / "site", goatcounter_code: str | None = None) -> Path:
     data = catalog()
+    if goatcounter_code is None:
+        goatcounter_code = os.environ.get("GOATCOUNTER_CODE", "").strip()
+    tag = analytics_tag(goatcounter_code)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     shutil.copytree(PROJECT_ROOT / "site", out_dir, ignore=shutil.ignore_patterns("tests"))
@@ -81,6 +97,9 @@ def build_site(out_dir: Path = PROJECT_ROOT / "build" / "site") -> Path:
         if ACCESSORY_BY_ID[item_id].hidden:
             raise ValueError(f"Secret accessory cannot be published: {item_id}")
         shutil.copy2(PROJECT_ROOT / "assets" / "accessories" / f"{item_id}.svg", accessories)
+    for page in out_dir.glob("*.html"):
+        text = page.read_text(encoding="utf-8")
+        page.write_text(text.replace(ANALYTICS_MARKER, tag), encoding="utf-8")
     (out_dir / "catalog.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     return out_dir
 

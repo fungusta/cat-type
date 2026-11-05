@@ -1,21 +1,37 @@
 # Daily download report
 
-`.github/workflows/download-report.yml` emails a summary of Cat Type downloads every day at 09:00 Singapore time (GitHub may start scheduled runs late). It reads each release asset's `download_count` from the GitHub API. The website stays a static page with no analytics, so the privacy policy is unchanged.
+`.github/workflows/download-report.yml` emails a summary of Cat Type downloads and website visits every day at 09:00 Singapore time (GitHub may start scheduled runs late).
 
 ## What the email shows
 
-- Package downloads per platform since the previous run, plus the last 7 days compared with the 7 before.
-- **New (estimated)**: package downloads minus `SHA256SUMS.txt` downloads. The in-app updater always fetches that checksum file before a package, and the website never links to it, so the difference approximates downloads by new people.
-- Counts include downloads from the GitHub releases page and any bots. Nothing can tell which website button was used.
+**Downloads** come from each GitHub release asset's `download_count`.
 
-GitHub only keeps running totals, so every run appends a snapshot to `history.json` on the orphan `download-stats` branch and reports the change since the previous snapshot. The first run only records a baseline. A missed or failed run makes the next email cover the whole gap, because the snapshot is saved only after the email sends.
+- Package downloads per platform since the previous run, plus the last 7 days compared with the 7 before.
+- **New (estimated)**: package downloads minus `SHA256SUMS.txt` downloads. The in-app updater always fetches that checksum file before a package, and the website never links to it, so the difference approximates downloads by new people. Per-platform counts still include updates.
+- Counts include downloads from the GitHub releases page and any bots.
+
+**Website** numbers come from [GoatCounter](https://www.goatcounter.com), for the same period and for the last 7 days.
+
+- Landing page visitors, download clicks per button and platform, the click rate (download clicks ÷ landing page visitors), and the top referrers.
+- GoatCounter counts visitors, one per browser session, not raw page views. Ad blockers hide some visits.
+- Click events are named `download-<placement>-<platform>`: placement `hero` (the main button and its "Intel Mac?" link) or `footer`, and platform `windows`, `mac-arm64` or `mac-intel`. `hero-see-platforms` is the main button on devices with no direct download, which only scrolls to the platform list.
+
+GitHub only keeps running download totals, so every run appends a snapshot to `history.json` on the orphan `download-stats` branch and reports the change since the previous snapshot. The first run only records a baseline. A missed or failed run makes the next email cover the whole gap, because the snapshot is saved only after the email sends. If GoatCounter can't be reached, the email still goes out and says the website stats were unavailable.
 
 ## Setup
 
-1. Turn on 2-Step Verification for the Gmail account, then create an app password at <https://myaccount.google.com/apppasswords>.
-2. In the repository's **Settings → Secrets and variables → Actions**, add secrets `SMTP_USERNAME` (the Gmail address) and `SMTP_PASSWORD` (the app password). Optionally add a variable `REPORT_TO` to send to a different address.
-3. Run the **Download report** workflow once by hand (**Actions → Download report → Run workflow**) to record the baseline. Daily emails start the next morning.
+In the repository's **Settings → Secrets and variables → Actions**:
 
-Without the secrets, the workflow still records snapshots and shows the report in the run summary. To use a provider other than Gmail, set repository variables `SMTP_HOST`, `SMTP_PORT` (implicit TLS, default 465) and `SMTP_FROM`.
+| Name | Kind | Value |
+| --- | --- | --- |
+| `SMTP_USERNAME` | Secret | The Gmail address that sends the report |
+| `SMTP_PASSWORD` | Secret | A Gmail [app password](https://myaccount.google.com/apppasswords) |
+| `GOATCOUNTER_CODE` | Variable | The GoatCounter site code, e.g. `cattype` for `cattype.goatcounter.com` |
+| `GOATCOUNTER_TOKEN` | Secret | A GoatCounter API key that can read statistics |
+| `REPORT_TO` | Variable (optional) | A different recipient address |
+
+`GOATCOUNTER_CODE` also turns on the counting script: the **Landing page** workflow adds it to every page when the site is built. Without it, the site carries no analytics. After setting it, re-run **Landing page** to publish the script.
+
+To use a mail provider other than Gmail, set repository variables `SMTP_HOST`, `SMTP_PORT` (implicit TLS, default 465) and `SMTP_FROM`.
 
 To preview locally without emailing or saving: `python -m scripts.download_report --history build/history.json --dry-run`

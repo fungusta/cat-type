@@ -118,6 +118,62 @@ class FormatTests(unittest.TestCase):
         self.assertIn("tracking started", dr.subject(report))
 
 
+HITS = {"more": False, "hits": [
+    {"path": "/cat-type/", "count": 40, "event": False},
+    {"path": "/cat-type/privacy.html", "count": 3, "event": False},
+    {"path": "download-hero-windows", "count": 5, "event": True},
+    {"path": "download-footer-mac-intel", "count": 1, "event": True},
+    {"path": "hero-see-platforms", "count": 2, "event": True},
+]}
+REFS = {"more": False, "stats": [{"name": "reddit.com", "count": 10}, {"name": "", "count": 20}]}
+
+
+class WebsiteTests(unittest.TestCase):
+    def test_summarises_landing_visitors_download_clicks_and_rate(self):
+        site = dr.website_from(HITS, REFS)
+        self.assertEqual(site.landing_visitors, 40)
+        self.assertEqual(site.pages, {"/cat-type/": 40, "/cat-type/privacy.html": 3})
+        self.assertEqual(site.download_clicks, 6)
+        self.assertEqual(site.rate, "15%")
+        self.assertEqual(site.buttons, [("Main button · Windows", 5), ("Footer · Mac (Intel)", 1),
+                                        ("Main button · see all platforms", 2)])
+        self.assertEqual(site.referrers, [("Direct or unknown", 20), ("reddit.com", 10)])
+
+    def test_rate_is_unavailable_without_visitors(self):
+        site = dr.website_from({"hits": []}, {"stats": []})
+        self.assertEqual(site.rate, "n/a")
+
+    def test_fetch_queries_whole_utc_hours_with_the_token(self):
+        calls = []
+
+        def get(url, token):
+            calls.append((url, token))
+            return HITS if "/stats/hits" in url else REFS
+
+        start = datetime(2026, 11, 4, 9, 7, tzinfo=SGT)
+        dr.fetch_website("cat-type", "tok", start, NOW, get=get, pause=0)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all(url.startswith("https://cat-type.goatcounter.com/api/v0/stats/") for url, _ in calls))
+        self.assertIn("start=2026-11-04T01%3A00%3A00Z", calls[0][0])
+        self.assertIn("end=2026-11-05T01%3A00%3A00Z", calls[0][0])
+        self.assertEqual({token for _, token in calls}, {"tok"})
+
+    def test_email_shows_the_website_section(self):
+        history = [snapshot(NOW - timedelta(days=1), windows=10, sums=4), snapshot(NOW, windows=16, sums=6)]
+        report = dr.with_website(dr.build_report(history), day=dr.website_from(HITS, REFS), week=None)
+        text = dr.format_text(report)
+        self.assertIn("Landing page visitors", text)
+        self.assertIn("Main button · Windows", text)
+        self.assertIn("reddit.com", text)
+        self.assertIn("Main button · Windows", dr.format_html(report))
+        self.assertEqual(dr.subject(report), "Cat Type: 4 new downloads, 40 visitors on Wed 4 Nov")
+
+    def test_email_says_when_website_stats_were_unavailable(self):
+        report = dr.with_website(dr.build_report([snapshot(NOW - timedelta(days=1)), snapshot(NOW)]),
+                                 error="GoatCounter returned HTTP 401")
+        self.assertIn("Website stats unavailable: GoatCounter returned HTTP 401", dr.format_text(report))
+
+
 class MainTests(unittest.TestCase):
     def run_main(self, history, env, releases):
         directory = tempfile.TemporaryDirectory()
@@ -148,6 +204,15 @@ class MainTests(unittest.TestCase):
         env = {"SMTP_USERNAME": "me@example.com", "SMTP_PASSWORD": "x", "REPORT_TO": "you@example.com"}
         _, _, sent = self.run_main(None, env, [])
         self.assertEqual(sent[0][1], "you@example.com")
+
+    def test_goatcounter_failure_does_not_stop_the_report(self):
+        env = {"SMTP_USERNAME": "me@example.com", "SMTP_PASSWORD": "x",
+               "GOATCOUNTER_CODE": "cat-type", "GOATCOUNTER_TOKEN": "tok"}
+        with patch.object(dr, "fetch_website", side_effect=OSError("down")):
+            code, history, sent = self.run_main([snapshot(NOW - timedelta(days=1))], env, [])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(history), 2)
+        self.assertIn("Website stats unavailable", sent[0][3])
 
     def test_without_smtp_it_still_records_the_snapshot(self):
         code, history, sent = self.run_main(None, {}, [])

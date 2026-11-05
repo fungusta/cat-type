@@ -1,6 +1,7 @@
 import {
   DEFAULT_CHOICE,
   createRenderTickets,
+  downloadEvent,
   downloadFor,
   nextOutfit,
   platformFor,
@@ -34,12 +35,15 @@ export function renderDownload(nav = navigator) {
   const label = document.createTextNode(download.label);
   button.replaceChildren(...(download.icon ? [platformIcon(download.icon), label] : [label]));
   button.href = download.href;
+  // GoatCounter reads the event name when the click happens.
+  button.dataset.goatcounterClick = downloadEvent("hero", download.href);
   const note = $("#download-note");
   note.textContent = download.note ?? "";
   note.hidden = !download.note;
   const secondary = $("#download-secondary");
   secondary.textContent = download.secondary?.label ?? "";
   secondary.href = download.secondary?.href ?? "#download";
+  secondary.dataset.goatcounterClick = downloadEvent("hero", secondary.href);
   secondary.hidden = !download.secondary;
 }
 
