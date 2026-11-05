@@ -1,0 +1,60 @@
+name: Download report
+
+# Emails yesterday's download counts. GitHub only keeps running totals, so each
+# run saves a snapshot on the orphan `download-stats` branch to diff against.
+on:
+  schedule:
+    - cron: "0 1 * * *" # 09:00 Singapore; GitHub may start scheduled runs late.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: download-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Test report
+        run: python -m unittest tests.test_download_report
+
+      - name: Load snapshot history
+        run: |
+          if git ls-remote --exit-code --heads origin download-stats >/dev/null; then
+            git fetch --no-tags --depth=1 origin download-stats:download-stats
+            git worktree add stats download-stats
+          else
+            git worktree add --detach stats
+            git -C stats checkout --quiet --orphan download-stats
+            git -C stats rm -r --quiet --cached .
+            git -C stats clean -fdxq
+          fi
+
+      - name: Build and email report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          REPORT_TO: ${{ vars.REPORT_TO }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+          SMTP_FROM: ${{ vars.SMTP_FROM }}
+        run: python -m scripts.download_report --history stats/history.json
+
+      - name: Save snapshot
+        working-directory: stats
+        run: |
+          git add history.json
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898341+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "Record download counts"
+          git push origin download-stats
