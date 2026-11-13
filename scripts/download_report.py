@@ -169,11 +169,15 @@ def _hour(moment: datetime, extra: timedelta = timedelta()) -> str:
     return hour.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def fetch_website(code: str, token: str, start: datetime, end: datetime, get=_get_json, pause: float = 0.3) -> Website:
-    api = f"https://{code}.goatcounter.com/api/v0/stats"
+def stats_query(start: datetime, end: datetime) -> str:
     # GoatCounter takes whole hours; the end covers the hour in progress so
     # the latest visits count. The overlap with the next report is minutes.
-    query = urllib.parse.urlencode({"start": _hour(start), "end": _hour(end, timedelta(hours=1)), "limit": 100})
+    return urllib.parse.urlencode({"start": _hour(start), "end": _hour(end, timedelta(hours=1)), "limit": 100})
+
+
+def fetch_website(code: str, token: str, start: datetime, end: datetime, get=_get_json, pause: float = 0.3) -> Website:
+    api = f"https://{code}.goatcounter.com/api/v0/stats"
+    query = stats_query(start, end)
     hits = get(f"{api}/hits?{query}", token)
     time.sleep(pause)  # GoatCounter allows 4 requests a second.
     refs = get(f"{api}/toprefs?{query}", token)
