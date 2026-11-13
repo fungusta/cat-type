@@ -139,6 +139,17 @@ class WebsiteTests(unittest.TestCase):
                                         ("Main button · see all platforms", 2)])
         self.assertEqual(site.referrers, [("Direct or unknown", 20), ("reddit.com", 10)])
 
+    def test_landing_page_counts_however_goatcounter_writes_the_path(self):
+        # GoatCounter drops the trailing slash: the browser sends /cat-type/, the API returns /cat-type.
+        for path in ("/cat-type", "/cat-type/", "/cat-type/index.html", "/", "/index.html"):
+            site = dr.website_from({"hits": [{"path": path, "count": 7, "event": False}]}, {"stats": []})
+            self.assertEqual(site.landing_visitors, 7, path)
+
+    def test_other_pages_are_not_the_landing_page(self):
+        hits = {"hits": [{"path": path, "count": 1, "event": False}
+                         for path in ("/cat-type/privacy.html", "/privacy.html", "/cat-type/docs/")]}
+        self.assertEqual(dr.website_from(hits, {"stats": []}).landing_visitors, 0)
+
     def test_rate_is_unavailable_without_visitors(self):
         site = dr.website_from({"hits": []}, {"stats": []})
         self.assertEqual(site.rate, "n/a")
