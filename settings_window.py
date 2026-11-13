@@ -434,6 +434,10 @@ class SettingsWindow:
         self.window.resizable(True, True)
         self.window.configure(background=self.BACKGROUND)
         self.window.protocol("WM_DELETE_WINDOW", self._close_from_chrome)
+        self._windowing_system = str(self.window.tk.call("tk", "windowingsystem"))
+        if self._windowing_system == "aqua":
+            # Tk only accepts an appearance once the native window exists.
+            self.window.bind("<Map>", self._keep_light_title_bar, add="+")
         self._configure_fonts()
         if icon_path:
             try:
@@ -818,6 +822,22 @@ class SettingsWindow:
         if not self._window_chrome.hwnd:
             self.title_bar.drag_move(event)
 
+    def _keep_light_title_bar(self, event=None) -> None:
+        """Keep the native macOS title bar light above the cream window.
+
+        In Dark Mode Aqua would otherwise draw a charcoal bar, where the
+        Windows themed title bar shares the window's light surface.
+        """
+        if event is not None and event.widget is not self.window:
+            return
+        try:
+            self.window.tk.call(
+                "::tk::unsupported::MacWindowStyle", "appearance",
+                self.window._w, "aqua",
+            )
+        except tk.TclError:
+            pass  # Older Tk keeps the system appearance.
+
     def _sync_window_chrome(self, event) -> None:
         if event.widget is self.window and not getattr(self, "_chrome_failed", False):
             self._window_chrome.minimum_size = self.window.minsize()
@@ -898,6 +918,15 @@ class SettingsWindow:
             self._on_mouse_wheel,
             add="+",
         )
+        try:
+            # Tk 8.7+ reports macOS trackpad travel separately from wheels.
+            self.window.bind(
+                "<TouchpadScroll>",
+                self._on_touchpad_scroll,
+                add="+",
+            )
+        except tk.TclError:
+            pass
         self.window.bind(
             "<Button-4>",
             self._on_mouse_wheel,
@@ -3445,6 +3474,57 @@ class SettingsWindow:
             5: 1,
         }.get(getattr(event, "num", None), 0)
 
+    # Classic Aqua reports scrolling in lines; macOS treats a line as 10 pt.
+    AQUA_LINE_PIXELS = 10
+
+    @classmethod
+    def _wheel_scroll_pixels(
+        cls,
+        event: tk.Event[tk.Misc],
+        windowing_system: str,
+        tk_version: float,
+    ) -> int | None:
+        """Return pixel travel where Tk reports raw macOS line deltas.
+
+        Tk 8.6 on macOS sends a trackpad swipe as many small wheel events.
+        Unit scrolling would move a tenth of the page for each one. Other
+        platforms and Tk 9 Aqua send notches of 120 and keep unit scrolling.
+        """
+        if windowing_system != "aqua" or tk_version >= 8.7:
+            return None
+        delta = int(getattr(event, "delta", 0) or 0)
+        return -delta * cls.AQUA_LINE_PIXELS if delta else None
+
+    @staticmethod
+    def _touchpad_scroll_pixels(packed_delta: int) -> int:
+        """Decode Tk's ``<TouchpadScroll>`` delta into downward pixel travel."""
+        delta_y = packed_delta & 0xFFFF
+        if delta_y >= 0x8000:
+            delta_y -= 0x10000
+        return -delta_y
+
+    def _content_overflows(self) -> bool:
+        bounds = self.scroll_canvas.bbox("all")
+        return (
+            bounds is not None
+            and bounds[3] - bounds[1] > self.scroll_canvas.winfo_height()
+        )
+
+    def _scroll_content_by_pixels(self, pixels: int) -> None:
+        bounds = self.scroll_canvas.bbox("all")
+        top = self.scroll_canvas.yview()[0]
+        self.scroll_canvas.yview_moveto(top + pixels / (bounds[3] - bounds[1]))
+
+    def _on_touchpad_scroll(self, event: tk.Event[tk.Misc]) -> str | None:
+        if not self._event_is_over_scroll_content(getattr(event, "widget", None)):
+            return None
+        if not self._content_overflows():
+            return None
+        pixels = self._touchpad_scroll_pixels(int(getattr(event, "delta", 0) or 0))
+        if pixels:
+            self._scroll_content_by_pixels(pixels)
+        return "break"
+
     def _event_is_over_scroll_content(
         self,
         widget: tk.Misc | None,
@@ -3464,12 +3544,14 @@ class SettingsWindow:
             getattr(event, "widget", None)
         ):
             return None
-        bounds = self.scroll_canvas.bbox("all")
-        if (
-            bounds is None
-            or bounds[3] - bounds[1] <= self.scroll_canvas.winfo_height()
-        ):
+        if not self._content_overflows():
             return None
+        pixels = self._wheel_scroll_pixels(
+            event, getattr(self, "_windowing_system", ""), tk.TkVersion,
+        )
+        if pixels is not None:
+            self._scroll_content_by_pixels(pixels)
+            return "break"
         units = self._wheel_scroll_units(event)
         if not units:
             return None

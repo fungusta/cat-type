@@ -310,6 +310,60 @@ class SettingsWindowScrollingTests(unittest.TestCase):
             with self.subTest(event=event):
                 self.assertEqual(wheel_units(event), expected)
 
+    def test_classic_aqua_wheel_scrolls_by_line_distance(self) -> None:
+        # Tk 8.6 on macOS reports wheel and trackpad travel in lines: about
+        # one per event, many events per swipe. Each becomes a short step.
+        pixels = SettingsWindow._wheel_scroll_pixels
+        self.assertEqual(pixels(SimpleNamespace(delta=1), "aqua", 8.6), -10)
+        self.assertEqual(pixels(SimpleNamespace(delta=-3), "aqua", 8.6), 30)
+        self.assertIsNone(pixels(SimpleNamespace(delta=0), "aqua", 8.6))
+        # Windows, X11 and Tk 9 Aqua keep notch-based unit scrolling.
+        self.assertIsNone(pixels(SimpleNamespace(delta=-120), "win32", 8.6))
+        self.assertIsNone(pixels(SimpleNamespace(delta=-120), "aqua", 9.0))
+
+    def test_touchpad_deltas_decode_to_pixel_travel(self) -> None:
+        def packed(dx: int, dy: int) -> int:
+            return (dx << 16) | (dy & 0xFFFF)
+
+        pixels = SettingsWindow._touchpad_scroll_pixels
+        self.assertEqual(pixels(packed(5, -12)), 12)
+        self.assertEqual(pixels(packed(-3, 7)), -7)
+        self.assertEqual(pixels(packed(4, 0)), 0)
+
+    def test_aqua_wheel_moves_content_by_pixels(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        settings_window._windowing_system = "aqua"
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 1000)
+        canvas.winfo_height.return_value = 400
+        canvas.yview.return_value = (0.5, 0.9)
+        canvas.master = None
+        settings_window.scroll_canvas = canvas
+        event = SimpleNamespace(widget=canvas, delta=-2, num=None)
+
+        with patch("settings_window.tk.TkVersion", 8.6):
+            result = settings_window._on_mouse_wheel(event)
+
+        canvas.yview_moveto.assert_called_once()
+        self.assertAlmostEqual(canvas.yview_moveto.call_args.args[0], 0.52)
+        canvas.yview_scroll.assert_not_called()
+        self.assertEqual(result, "break")
+
+    def test_touchpad_scroll_moves_content_by_pixels(self) -> None:
+        settings_window = SettingsWindow.__new__(SettingsWindow)
+        canvas = Mock()
+        canvas.bbox.return_value = (0, 0, 700, 1000)
+        canvas.winfo_height.return_value = 400
+        canvas.yview.return_value = (0.2, 0.6)
+        canvas.master = None
+        settings_window.scroll_canvas = canvas
+        event = SimpleNamespace(widget=canvas, delta=(0 << 16) | (-50 & 0xFFFF))
+
+        result = settings_window._on_touchpad_scroll(event)
+
+        self.assertAlmostEqual(canvas.yview_moveto.call_args.args[0], 0.25)
+        self.assertEqual(result, "break")
+
     def test_wheel_scrolls_overflowing_content_under_pointer(self) -> None:
         settings_window = SettingsWindow.__new__(SettingsWindow)
         canvas = Mock()
@@ -2711,6 +2765,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.settings_window.save_status_label.winfo_reqwidth()
             + (self.settings_window.save_status_surface._padding * 2),
         )
+
+    @unittest.skipUnless(sys.platform == "darwin", "macOS native title bar")
+    def test_macos_title_bar_stays_light_in_dark_mode(self) -> None:
+        view = self.settings_window
+        view.window.deiconify()
+        view.window.update()
+        appearance = view.window.tk.call(
+            "::tk::unsupported::MacWindowStyle", "appearance", view.window._w,
+        )
+        self.assertEqual(appearance, "aqua")
 
     @unittest.skipUnless(sys.platform == "win32", "Windows custom frame")
     def test_window_edges_show_resize_cursor_and_start_native_resize(self) -> None:
