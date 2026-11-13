@@ -40,6 +40,7 @@ TEST_MODULES = (
     "tests.test_package_smoke",
     "tests.test_site_build",
     "tests.test_download_report",
+    "tests.test_goatcounter_check",
     "tests.test_release_version_check",
     "tests.test_auto_update",
     "tests.test_update_controller",

@@ -35,3 +35,10 @@ In the repository's **Settings → Secrets and variables → Actions**:
 To use a mail provider other than Gmail, set repository variables `SMTP_HOST`, `SMTP_PORT` (implicit TLS, default 465) and `SMTP_FROM`.
 
 To preview locally without emailing or saving: `python -m scripts.download_report --history build/history.json --dry-run`
+
+## When the website stats are missing or zero
+
+`scripts/goatcounter_check.py` sends the report's GoatCounter requests, plus simpler ones, and prints each status with GoatCounter's error or a summary of the counts. It checks whether the token is valid, whether it can see the site, whether the site has recorded any visits, and whether the report's hour-based queries behave differently from plain dates. It never prints the token.
+
+- On GitHub: run the **GoatCounter check** workflow from the Actions tab. It uses the same `GOATCOUNTER_CODE` and `GOATCOUNTER_TOKEN`. The repository is public, so its log, with paths and counts, is too.
+- Locally: `python -m scripts.goatcounter_check` asks for the API key, or reads `GOATCOUNTER_TOKEN`.
