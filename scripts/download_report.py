@@ -108,6 +108,16 @@ def _button_label(name: str) -> str:
     return name
 
 
+def _is_landing(path: str) -> bool:
+    """The site's front page: '/' on a custom domain, '/cat-type' on GitHub Pages.
+
+    GoatCounter drops the trailing slash the browser sends, so '/cat-type/'
+    comes back as '/cat-type'. Other pages are files ('privacy.html') or deeper.
+    """
+    page = path.removesuffix("index.html").rstrip("/")
+    return "/" not in page[1:] and "." not in page
+
+
 @dataclass(frozen=True)
 class Website:
     pages: dict[str, int]
@@ -116,7 +126,7 @@ class Website:
 
     @property
     def landing_visitors(self) -> int:
-        return sum(count for path, count in self.pages.items() if path.endswith(("/", "/index.html")))
+        return sum(count for path, count in self.pages.items() if _is_landing(path))
 
     @property
     def download_clicks(self) -> int:
