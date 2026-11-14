@@ -1,0 +1,17 @@
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/nunito-latin-700-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 800;
+  font-display: block;
+  src: url("fonts/nunito-latin-800-normal.woff2") format("woff2");
+}
+
+html, body { margin: 0; background: #fff9f3; }

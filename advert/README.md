@@ -17,7 +17,11 @@ Run every command from this folder. You need Node and FFmpeg (`brew install ffmp
 
 ## Snapshots
 
-`hyperframes snapshot` writes to `<project>/.hyperframes/artifacts/snapshots/<unique dir>/` by default, so `npm run snap` puts stills under `build/.hyperframes/artifacts/snapshots/`. Choose the folder with `-o <dir>` (also `--output=<dir>`), e.g. `npx hyperframes snapshot build --at 0.5,1.5 -o renders/snaps`. Stills are named `frame-NN-at-<seconds>s.png`, plus a `contact-sheet.jpg`. By default it also adds an end-of-timeline frame; pass `--no-end` to capture only the `--at` times.
+`hyperframes snapshot` writes to `<project>/.hyperframes/artifacts/snapshots/<unique dir>/` by default, so `npm run snap` puts stills under `build/.hyperframes/artifacts/snapshots/`. Choose the folder with `-o <dir>` (also `--output=<dir>`), e.g. `npm run snap -- 0.5,1.5 -o renders/snaps`. Stills are named `frame-NN-at-<seconds>s.png`, plus a `contact-sheet.jpg`. On its own, `hyperframes snapshot` also adds an end-of-timeline frame; `npm run snap` passes `--no-end`, so it captures only the `--at` times.
+
+## Rendering on a machine with little free memory
+
+`npm run render` uses several Chrome workers. If the render fails or the machine runs out of memory, render with one worker: `npm run render -- --workers 1`.
 
 ## Driving the frame from the timeline
 
@@ -35,4 +39,4 @@ HyperFrames also waits for asynchronous setup: the script may `await` loads befo
 
 ## Telemetry
 
-HyperFrames telemetry is turned off: `npx hyperframes telemetry disable` was run once (it writes `"telemetryEnabled": false` to `~/.hyperframes/config.json`), and commands are run with `DO_NOT_TRACK=1` in the environment (`HYPERFRAMES_NO_TELEMETRY=1` also works). Check with `npx hyperframes telemetry status`. Do not run `hyperframes publish`, `auth`, `cloud`, `lambda` or `feedback`.
+HyperFrames telemetry must stay off. On a fresh clone, before the first HyperFrames command, run `npx hyperframes telemetry disable` (it writes `"telemetryEnabled": false` to `~/.hyperframes/config.json`); check with `npx hyperframes telemetry status`. The npm scripts also set `DO_NOT_TRACK=1`, and any HyperFrames command run by hand should too (`HYPERFRAMES_NO_TELEMETRY=1` also works). Do not run `hyperframes publish`, `auth`, `cloud`, `lambda` or `feedback`.

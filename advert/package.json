@@ -5,8 +5,8 @@
   "scripts": {
     "test": "node --test tests/",
     "build": "node scripts/build.mjs",
-    "snap": "hyperframes snapshot build --at",
-    "render": "hyperframes render build -o out/cat-type-advert.mp4 --fps 60 --quality high"
+    "snap": "DO_NOT_TRACK=1 hyperframes snapshot build --no-end --at",
+    "render": "DO_NOT_TRACK=1 hyperframes render build -o out/cat-type-advert.mp4 --fps 60 --quality high"
   },
   "devDependencies": {
     "@fontsource/nunito": "^5.3.0",
