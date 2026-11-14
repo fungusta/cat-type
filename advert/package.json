@@ -1,0 +1,17 @@
+{
+  "name": "cat-type-advert",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/",
+    "build": "node scripts/build.mjs",
+    "snap": "hyperframes snapshot build --at",
+    "render": "hyperframes render build -o out/cat-type-advert.mp4 --fps 60 --quality high"
+  },
+  "devDependencies": {
+    "@fontsource/nunito": "^5.3.0",
+    "esbuild": "^0.28.2",
+    "gsap": "^3.15.1",
+    "hyperframes": "0.9.45"
+  }
+}
