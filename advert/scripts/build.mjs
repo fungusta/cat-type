@@ -14,6 +14,7 @@ import { SYNTHS } from "../src/sfx-synth.mjs";
 const advertDir = fileURLToPath(new URL("../", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 const srcDir = join(advertDir, "src");
+const defaultOutDir = resolve(advertDir, "build");
 const modulesDir = join(advertDir, "node_modules");
 const RECORDED_SOUNDS = ["key-1", "key-2", "key-3", "key-4", "key-5", "key-6", "space"];
 const FONTS = ["nunito-latin-700-normal.woff2", "nunito-latin-800-normal.woff2"];
@@ -41,10 +42,10 @@ export function assertPublishable(looks, extraIds, catalog) {
 }
 
 /** Builds the project into outDir (default advert/build) and returns its path. */
-export async function build({ outDir = join(advertDir, "build") } = {}) {
+export async function build({ outDir = defaultOutDir } = {}) {
+  assertSafeOutDir(outDir);
   assertPublishable(LOOKS, UNLOCKS.map((unlock) => unlock.id), readCatalog(repoRoot));
   const out = resolve(outDir);
-  assertSafeOutDir(out);
   const copies = plannedCopies();
   for (const [from] of copies) if (!existsSync(from)) throw new Error(`missing source file ${from}`);
 
@@ -59,14 +60,16 @@ export async function build({ outDir = join(advertDir, "build") } = {}) {
   return out;
 }
 
-/** Refuses any outDir that is not strictly inside advert/ or the OS temp directory. */
-function assertSafeOutDir(out) {
-  const inside = (base) => {
-    const path = relative(resolve(base), out);
+/** Throws unless outDir is exactly advert/build or a folder strictly inside the OS temp directory. Touches no files. */
+export function assertSafeOutDir(outDir) {
+  const out = resolve(outDir);
+  const temp = resolve(tmpdir());
+  const inTemp = (() => {
+    const path = relative(temp, out);
     return path !== "" && !path.startsWith("..") && !isAbsolute(path);
-  };
-  if (!inside(advertDir) && !inside(tmpdir())) {
-    throw new Error(`refusing to empty ${out}: outDir must be inside ${advertDir} or ${tmpdir()}`);
+  })();
+  if (out !== defaultOutDir && !inTemp) {
+    throw new Error(`refusing to empty ${out}: outDir must be ${defaultOutDir} or a folder inside ${temp}`);
   }
 }
 

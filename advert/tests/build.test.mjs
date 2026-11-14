@@ -5,7 +5,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readCatalog, assertPublishable, build } from "../scripts/build.mjs";
+import { readCatalog, assertPublishable, assertSafeOutDir, build } from "../scripts/build.mjs";
 import { LOOKS, UNLOCKS } from "../src/timeline.mjs";
 import { parseWav } from "../src/mix.mjs";
 
@@ -50,8 +50,20 @@ test("build writes a complete project", async () => {
   assert.match(await readFile(join(outDir, "index.html"), "utf8"), /data-composition-id="advert"/);
 });
 
-test("build refuses to empty a folder outside advert/ and the temp directory", async () => {
-  await assert.rejects(build({ outDir: repoRoot }), /refus/i);
-  await assert.rejects(build({ outDir: fileURLToPath(new URL("../", import.meta.url)) }), /refus/i);
-  await assert.rejects(build({ outDir: join(repoRoot, "assets") }), /refus/i);
+const advertDir = fileURLToPath(new URL("../", import.meta.url));
+
+test("the output-folder guard refuses anything but advert/build or a temp subfolder", () => {
+  for (const outDir of [
+    repoRoot,
+    advertDir,
+    join(advertDir, "src"),
+    join(advertDir, "sfx"),
+    tmpdir(),
+    `${join(advertDir, "build")}/../src`,
+  ]) assert.throws(() => assertSafeOutDir(outDir), /refusing/, outDir);
+});
+
+test("the output-folder guard allows advert/build and a temp subfolder", () => {
+  assertSafeOutDir(join(advertDir, "build"));
+  assertSafeOutDir(join(tmpdir(), "advert-guard"));
 });
