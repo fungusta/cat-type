@@ -12,7 +12,7 @@
 // HyperFrames shows and hides the clips (#scene-stage and the .card sections) by their data-start.
 
 import { renderCat } from "../../site/js/cat.js";
-import { CARDS, DURATION, LOOKS, LOOK_CHANGES, SCENES as TIMES, TYPED_TEXT, UNLOCKS, frameState, presses } from "./timeline.mjs";
+import { CARDS, DURATION, LOOKS, LOOK_CHANGES, SCENES as TIMES, TYPED_TEXT, UNLOCKS, WIDTH, frameState, presses } from "./timeline.mjs";
 
 // Camera scale for the wide opening shot; 1 is the close shot the CSS lays out.
 const CAMERA_WIDE = 0.6;
@@ -33,6 +33,8 @@ const TYPED_LINE_SCENES = new Set(["arrive", "type"]);
 const PADLOCK = '<svg class="badge-lock" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"/></svg>';
 const TICK = '<svg class="badge-tick" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5l3 3 6-7"/></svg>';
 const TILE_ART_PAD = 6;
+// Clear space each word card keeps on either side of the frame.
+const CARD_MARGIN = 120;
 
 let looks = [];
 let typed = null;
@@ -96,6 +98,7 @@ async function setup() {
   if (!document.fonts.check('800 72px "Nunito"') || !document.fonts.check('700 24px "Nunito"')) {
     throw new Error("Nunito did not load");
   }
+  assertCardsFit();
 }
 
 /** Puts each card's words into its section, checking the section's clip timing matches CARDS. */
@@ -106,6 +109,19 @@ function fillCards() {
       throw new Error(`#${card.id} must be a .card clip with data-start="${card.start}" data-duration="${card.duration}"`);
     }
     section.querySelector(".card-text").textContent = card.text;
+  }
+}
+
+/** Throws, naming the card, if any card's words are wider than the frame less CARD_MARGIN a side. */
+function assertCardsFit() {
+  const limit = WIDTH - 2 * CARD_MARGIN;
+  const context = document.createElement("canvas").getContext("2d");
+  for (const card of CARDS) {
+    const text = document.querySelector(`#${card.id} .card-text`);
+    const style = getComputedStyle(text);
+    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const width = context.measureText(text.textContent).width;
+    if (width > limit) throw new Error(`#${card.id} "${card.text}" is ${Math.ceil(width)} px wide; cards must fit in ${limit} px`);
   }
 }
 
