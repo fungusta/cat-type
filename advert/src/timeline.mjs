@@ -61,15 +61,23 @@ export const UNLOCKS = [
   { t: 17.4, id: "dragon-wings", name: "Dragon wings", target: 500000 },
 ];
 
+const WEEK = [1180, 1620, 940, 1850, 1410, 2060, 1440];
+// today and last7 follow from the bars, so they cannot disagree with them.
 export const STATS = {
-  week: [1180, 1620, 940, 1850, 1410, 2060, 1440],
+  week: WEEK,
   labels: ["M", "T", "W", "T", "F", "S", "Today"],
-  today: 1440,
-  last7: 10500,
+  today: WEEK.at(-1),
+  last7: WEEK.reduce((sum, value) => sum + value, 0),
   allTime: 510500,
 };
 
 export const END = { title: "Cat Type", line: "Get it for Windows or Mac", url: "fungusta.github.io/cat-type" };
+
+// Picture beats that also carry a sound (s). stage.js tweens on them and SCENE_CUES places the sound on them.
+// The cat pops up in the opening shot.
+export const ARRIVE_POP = 0.9;
+// The end scene: the cat pops in, the words follow, the cat hops with a heart.
+export const END_BEATS = { cat: 23.1, title: 23.4, line: 23.9, url: 24.3, hop: 25.0 };
 
 // Keyboard halves, copied from cat_type.py (LEFT_/RIGHT_PORTABLE_CHARACTERS).
 const LEFT_CHARACTERS = new Set("`~12345!@#$%qwertasdfgzxcvb");
@@ -90,13 +98,8 @@ const TYPE_SPAN = 4.1;
 const UNLOCK_KEYS = { start: 14.2, step: 0.08, last: 17.6 };
 const TRACK_KEYS = { start: 19.3, step: 0.14, last: 22.6 };
 
-// Counter: straight lines through these points.
-const COUNTER_POINTS = [
-  [14, 0],
-  [15.0, 50000],
-  [16.2, 100000],
-  [17.4, 500000],
-];
+// Counter: straight lines from 0 at the start of the unlock scene through each unlock's target.
+const COUNTER_POINTS = [[SCENES.unlock[0], 0], ...UNLOCKS.map((unlock) => [unlock.t, unlock.target])];
 
 // Stats and bars.
 const STATS_FROM = 19.4;
@@ -108,10 +111,11 @@ const BAR_GROW = 0.35;
 // Sounds.
 const KEY_SOUNDS = 6;
 const KEY_GAIN = { type: 0.8, unlock: 0.5, track: 0.3 };
+const [CUSTOMISE_FROM, CUSTOMISE_TO] = SCENES.customise;
 const SCENE_CUES = [
-  { sound: "pop", gain: 0.9, times: [0.9, 23.1] },
-  { sound: "whoosh", gain: 0.7, times: [7, 13, 18] },
-  { sound: "swap", gain: 0.8, times: [8.6, 9.5, 10.4, 11.2, 11.9] },
+  { sound: "pop", gain: 0.9, times: [ARRIVE_POP, END_BEATS.cat] },
+  { sound: "whoosh", gain: 0.7, times: CARDS.map((card) => card.start) },
+  { sound: "swap", gain: 0.8, times: LOOK_CHANGES.filter((change) => change.t > CUSTOMISE_FROM && change.t < CUSTOMISE_TO).map((change) => change.t) },
   { sound: "chime", gain: 0.8, times: UNLOCKS.map((unlock) => unlock.t) },
   { sound: "tick", gain: 0.5, times: STATS.week.map((_, i) => BAR_START + BAR_STAGGER * i) },
 ];

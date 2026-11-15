@@ -13,11 +13,13 @@
 // HyperFrames shows and hides the clips (#scene-stage and the .card sections) by their data-start.
 
 import { renderCat } from "../../site/js/cat.js";
-import { CARDS, DURATION, END, LOOKS, LOOK_CHANGES, SCENES as TIMES, STATS, TYPED_TEXT, UNLOCKS, WIDTH, frameState, presses } from "./timeline.mjs";
+import { ARRIVE_POP, CARDS, DURATION, END, END_BEATS, LOOKS, LOOK_CHANGES, SCENES as TIMES, STATS, TYPED_TEXT, UNLOCKS, WIDTH, frameState, presses } from "./timeline.mjs";
 
 // Camera scale for the wide opening shot; 1 is the close shot the CSS lays out.
 const CAMERA_WIDE = 0.6;
 const CAMERA_CLOSE = 1;
+// When the camera starts pushing in (s); no sound marks it.
+const CAMERA_PUSH = 1.4;
 
 const CARET_BLINK = 0.5;
 const TYPE_START = presses().find((press) => press.scene === "type").t;
@@ -38,8 +40,6 @@ const TICK = '<svg class="badge-tick" viewBox="0 0 16 16" aria-hidden="true"><pa
 const TILE_ART_PAD = 6;
 // Clear space each word card keeps on either side of the frame.
 const CARD_MARGIN = 120;
-// The end scene's beats (s): the cat pops in, the words follow, the cat hops with a heart.
-const END_BEATS = { cat: 23.1, title: 23.4, line: 23.9, url: 24.3, hop: 25.0 };
 
 let looks = [];
 let typed = null;
@@ -263,8 +263,8 @@ function arriveScene(tl) {
   for (let t = start, on = true; t < TYPE_START; t += CARET_BLINK, on = !on) {
     tl.set("#caret", { opacity: on ? 1 : 0 }, t);
   }
-  tl.fromTo("#cat-rig", { scale: 0 }, { scale: 1, duration: 0.35, ease: "back.out(2.2)" }, 0.9);
-  tl.fromTo("#camera", { scale: CAMERA_WIDE }, { scale: CAMERA_CLOSE, duration: 0.8, ease: "power2.inOut" }, 1.4);
+  tl.fromTo("#cat-rig", { scale: 0 }, { scale: 1, duration: 0.35, ease: "back.out(2.2)" }, ARRIVE_POP);
+  tl.fromTo("#camera", { scale: CAMERA_WIDE }, { scale: CAMERA_CLOSE, duration: 0.8, ease: "power2.inOut" }, CAMERA_PUSH);
 }
 
 /** Scene 2 (2-7 s): the sentence types itself (applyFrame); the caret stops blinking and follows it. */

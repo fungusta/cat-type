@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DURATION, LOOKS, LOOK_CHANGES, TYPED_TEXT, frameState, pawFor, presses, soundCues } from "../src/timeline.mjs";
+import { ARRIVE_POP, CARDS, DURATION, END_BEATS, LOOKS, LOOK_CHANGES, SCENES, STATS, TYPED_TEXT, UNLOCKS, frameState, pawFor, presses, soundCues } from "../src/timeline.mjs";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
 
@@ -88,10 +88,20 @@ test("every press has a sound cue at the same time", () => {
 
 test("scene sounds sit on their beats and inside the video", () => {
   const at = (sound) => soundCues().filter((cue) => cue.sound === sound).map((cue) => cue.t);
-  assert.deepEqual(at("whoosh"), [7, 13, 18]);
-  assert.deepEqual(at("pop"), [0.9, 23.1]);
-  assert.deepEqual(at("swap"), [8.6, 9.5, 10.4, 11.2, 11.9]);
-  assert.deepEqual(at("chime"), [15.0, 16.2, 17.4]);
+  const [customiseFrom, customiseTo] = SCENES.customise;
+  assert.deepEqual(at("whoosh"), CARDS.map((card) => card.start));
+  assert.deepEqual(at("swap"), LOOK_CHANGES.filter((change) => change.t > customiseFrom && change.t < customiseTo).map((change) => change.t));
+  assert.deepEqual(at("chime"), UNLOCKS.map((unlock) => unlock.t));
+  assert.deepEqual(at("pop"), [ARRIVE_POP, END_BEATS.cat]);
   assert.equal(at("tick").length, 7);
   assert.ok(soundCues().every((cue) => cue.t >= 0 && cue.t <= DURATION - 0.7 && cue.gain > 0 && cue.gain <= 1));
+});
+
+test("the counter shows each unlock's target at its moment", () => {
+  for (const unlock of UNLOCKS) assert.equal(frameState(unlock.t).counter, unlock.target, unlock.id);
+});
+
+test("today and last 7 days follow from the bars", () => {
+  assert.equal(STATS.today, STATS.week.at(-1));
+  assert.equal(STATS.last7, STATS.week.reduce((sum, value) => sum + value, 0));
 });
