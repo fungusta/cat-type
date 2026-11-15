@@ -107,6 +107,7 @@ async function setup() {
     endCard: document.getElementById("end-card"),
   };
   document.getElementById("typed-ghost").textContent = TYPED_TEXT;
+  assertDurations();
   fillCards();
   document.getElementById("end-title").textContent = END.title;
   document.getElementById("end-line").textContent = END.line;
@@ -120,6 +121,16 @@ async function setup() {
   }
   assertCardsFit();
   assertStatsFit();
+}
+
+/** Throws, naming it, unless the root, #scene-stage and #soundtrack each last DURATION seconds. */
+function assertDurations() {
+  for (const id of ["root", "scene-stage", "soundtrack"]) {
+    const element = document.getElementById(id);
+    if (!element || Number(element.dataset.duration) !== DURATION) {
+      throw new Error(`#${id} must have data-duration="${DURATION}" (DURATION in timeline.mjs)`);
+    }
+  }
 }
 
 /** Puts each card's words into its section, checking the section's clip timing matches CARDS. */

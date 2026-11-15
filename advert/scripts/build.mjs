@@ -18,16 +18,22 @@ const defaultOutDir = resolve(advertDir, "build");
 const modulesDir = join(advertDir, "node_modules");
 const RECORDED_SOUNDS = ["key-1", "key-2", "key-3", "key-4", "key-5", "key-6", "space"];
 const FONTS = ["nunito-latin-700-normal.woff2", "nunito-latin-800-normal.woff2"];
-const ACCESSORY_LINE = /Accessory\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*"([^"]+)"/;
+// One Accessory("id", "name", "slot", ...) call, across lines, up to its closing parenthesis.
+const ACCESSORY_CALL = /\bAccessory\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*"([^"]+)"[^)]*\)/g;
+
+/** Parses cat_accessories.py text into id -> { slot, hidden }; throws if it finds no accessories. */
+export function parseCatalog(text) {
+  const catalog = new Map();
+  for (const match of text.matchAll(ACCESSORY_CALL)) {
+    catalog.set(match[1], { slot: match[2], hidden: /\bhidden\s*=\s*True\b/.test(match[0]) });
+  }
+  if (catalog.size === 0) throw new Error("found no Accessory(...) entries in cat_accessories.py");
+  return catalog;
+}
 
 /** Reads the accessory catalog from cat_accessories.py: id -> { slot, hidden }. */
 export function readCatalog(root) {
-  const catalog = new Map();
-  for (const line of readFileSync(join(root, "cat_accessories.py"), "utf8").split("\n")) {
-    const match = line.match(ACCESSORY_LINE);
-    if (match) catalog.set(match[1], { slot: match[2], hidden: line.includes("hidden=True") });
-  }
-  return catalog;
+  return parseCatalog(readFileSync(join(root, "cat_accessories.py"), "utf8"));
 }
 
 /** Throws when an accessory is unknown, secret, or worn in a slot other than its own. */
@@ -47,7 +53,9 @@ export async function build({ outDir = defaultOutDir } = {}) {
   assertPublishable(LOOKS, UNLOCKS.map((unlock) => unlock.id), readCatalog(repoRoot));
   const out = resolve(outDir);
   const copies = plannedCopies();
-  for (const [from] of copies) if (!existsSync(from)) throw new Error(`missing source file ${from}`);
+  for (const from of [...copies.map(([source]) => source), ...RECORDED_SOUNDS.map(recordedSound)]) {
+    if (!existsSync(from)) throw new Error(`missing source file ${from}`);
+  }
 
   await rm(out, { recursive: true, force: true });
   for (const [from, to] of copies) {
@@ -87,11 +95,16 @@ function plannedCopies() {
   ];
 }
 
+/** The path of a recorded sound in advert/sfx/. */
+function recordedSound(name) {
+  return join(advertDir, "sfx", `${name}.wav`);
+}
+
 /** Mixes every cue over the advert's duration into one PCM16 mono WAV. */
 async function soundtrack() {
   const sounds = Object.fromEntries(Object.entries(SYNTHS).map(([name, synth]) => [name, synth()]));
   for (const name of RECORDED_SOUNDS) {
-    const file = join(advertDir, "sfx", `${name}.wav`);
+    const file = recordedSound(name);
     sounds[name] = parseWav(await readFile(file), file);
   }
   return encodeWav(mixCues(soundCues(), sounds, { sampleRate: SAMPLE_RATE, duration: DURATION }), SAMPLE_RATE);

@@ -24,31 +24,33 @@ Almost everything you might want to change is a constant near the top of `src/ti
 | The words on the three butter-yellow cards | `CARDS` (`text`) | Each card has a `start` and `duration`. If you move a card, also change the matching `<section class="clip card">` `data-start` / `data-duration` in `src/index.html`; the page stops with an error naming the card if they disagree. |
 | The sentence the cat types (2.3–6.4 s) | `TYPED_TEXT` | It is always typed over the same 4.1 s, so a longer sentence types faster. It is one line at 72 px with no width check, so take stills at 6.5 s to see it fits. Spaces make both paws tap. |
 | The end card | `END` (`title`, `line`, `url`) | |
-| The outfits | `LOOKS` | Each look is a cat colour (`gray`, `ginger`, `black-white`: files in `assets/vector-cats/`) and an outfit of `hat`, `glasses`, `neck`, `back` or `ears` slots. Accessory ids are the first column of `cat_accessories.py` (files in `assets/accessories/`). The build stops if an id is unknown, is a secret (`hidden=True`) one, or is worn in the wrong slot. |
-| Which outfit is worn when, and in what order | `LOOK_CHANGES` | A list of `{ t, look }`: from time `t` the cat wears that look until the next entry. Keep it in time order. The swap sounds are listed separately (see Sounds). |
-| The three unlocks (14–18 s) | `UNLOCKS` | `t`, accessory `id`, the name shown, and the keystroke `target`. The keystroke counter's path is `COUNTER_POINTS` further down. |
-| The stats (19–23 s) | `STATS` | The seven daily bars (`week`, `labels`) and the three totals. The page stops with an error if a total is too wide for its box. |
-| Scene timing | `SCENES` | Start and end of each scene. Typing, counter, bar and sound timings sit below it (`TYPE_START`, `TYPE_SPAN`, `UNLOCK_KEYS`, `TRACK_KEYS`, `COUNTER_POINTS`, `STATS_FROM`, `STATS_TO`, `BAR_START`, `BAR_STAGGER`, `BAR_GROW`). Changing the total length (`DURATION`, 27) also needs the `data-duration="27"` values in `src/index.html`. |
+| The outfits | `LOOKS` | Each look is a cat colour (`gray`, `ginger`, `black-white`, `brown-tabby`, `charcoal` or `white`: files in `assets/vector-cats/`) and an outfit of `hat`, `glasses`, `neck`, `back` or `ears` slots. Accessory ids are the first column of `cat_accessories.py` (files in `assets/accessories/`). The build stops if an id is unknown, is a secret (`hidden=True`) one, or is worn in the wrong slot. |
+| Which outfit is worn when, and in what order | `LOOK_CHANGES` | A list of `{ t, look }`: from time `t` the cat wears that look until the next entry. Keep it in time order. Each change strictly inside the customise scene (8–13 s) gets a squash and a swap sound automatically. |
+| The three unlocks (14–18 s) | `UNLOCKS` | `t`, accessory `id`, the name shown, and the keystroke `target`. The keystroke counter climbs from 0 at the start of the unlock scene through each `target` at its `t` (`COUNTER_POINTS` follows automatically), and each unlock gets a chime. |
+| The stats (19–23 s) | `STATS` | The seven daily bars (`week`, `labels`) and the all-time total; `today` (the last bar) and `last7` (the sum of the bars) follow from `week` automatically. The page stops with an error if a total is too wide for its box. |
+| Scene timing | `SCENES` | Start and end of each scene. Typing, bar and beat timings sit below it (`TYPE_START`, `TYPE_SPAN`, `UNLOCK_KEYS`, `TRACK_KEYS`, `STATS_FROM`, `STATS_TO`, `BAR_START`, `BAR_STAGGER`, `BAR_GROW`, `ARRIVE_POP`, `END_BEATS`). Changing the total length (`DURATION`, 27) also needs the three `data-duration="27"` values in `src/index.html`; the page stops with an error naming the element if one disagrees. |
 
 ### Word card text size
 
-The three word cards share one text size (150 px, `.card-text` in `src/advert.css`), so they look alike. When the page loads, it measures each card line and each end-card line; if one is wider than the frame less 120 px a side, the snapshot or render stops with an error such as `#card-track "..." is <width> px wide; cards must fit in 1680 px`. Shorten the words (or lower the shared size for all cards) rather than squeezing one card.
+The three word cards share one text size (150 px, `.card-text` in `src/advert.css`), so they look alike. When the page loads, it measures each card line and each end-card line; if one is wider than the frame less 120 px a side, the snapshot or render stops with an error such as `#card-track "..." is <width> px wide; cards must fit in 1680 px` (a render exits with code 1 and writes no video). Shorten the words (or lower the shared size for all cards) rather than squeezing one card.
 
 ### Sounds
 
-The soundtrack is mixed by `npm run build` into `build/sfx/soundtrack.wav` from the cue lists in `src/timeline.mjs`, so the sounds always match the pictures.
+The soundtrack is mixed by `npm run build` into `build/sfx/soundtrack.wav` from the cue lists in `src/timeline.mjs`. Every sound is placed from the same constant the picture uses, so moving a beat moves its sound too.
 
 | Sound | File | Where its timing and volume live |
 | --- | --- | --- |
 | Key clicks (one per paw tap) | `sfx/key-1.wav` … `sfx/key-6.wav`, taken in turn | Follows the paw taps automatically. Volume per scene: `KEY_GAIN` (`type`, `unlock`, `track`). |
 | Space bar (both paws) | `sfx/space.wav` | Every space in `TYPED_TEXT`; volume `KEY_GAIN.type`. |
-| Pop (cat arrives, end card) | made in `src/sfx-synth.mjs` (`pop`) | `SCENE_CUES`, `pop` times `[0.9, 23.1]`. |
-| Whoosh (each word card) | `src/sfx-synth.mjs` (`whoosh`) | `SCENE_CUES`, `whoosh` times `[7, 13, 18]`: keep them in step with `CARDS`. |
-| Swap (outfit changes) | `src/sfx-synth.mjs` (`swap`) | `SCENE_CUES`, `swap` times: keep them in step with `LOOK_CHANGES`. |
+| Pop (cat arrives, end card) | made in `src/sfx-synth.mjs` (`pop`) | Follows `ARRIVE_POP` and `END_BEATS.cat` automatically (the same constants the cat's pop-in tweens use). |
+| Whoosh (each word card) | `src/sfx-synth.mjs` (`whoosh`) | Follows each card's `CARDS` `start` automatically. |
+| Swap (outfit changes) | `src/sfx-synth.mjs` (`swap`) | Follows the `LOOK_CHANGES` inside the customise scene automatically. |
 | Chime (each unlock) | `src/sfx-synth.mjs` (`chime`) | Follows `UNLOCKS` automatically. |
 | Tick (each stats bar) | `src/sfx-synth.mjs` (`tick`) | Follows `BAR_START` and `BAR_STAGGER` automatically. |
 
-Each `SCENE_CUES` row also has a `gain` (1 is the sound's own level). To swap a key click, replace the file with a 48000 Hz mono 16-bit WAV (the build refuses anything else) and note its source in `SOUNDS.md`. If the mix gets too loud it is scaled down as a whole, so nothing clips.
+When a scene moves, these still have to move by hand: `SCENES`, `CARDS` plus the matching clip attributes in `src/index.html`, `LOOK_CHANGES`, `UNLOCKS`, the key schedules (`TYPE_START`, `UNLOCK_KEYS`, `TRACK_KEYS`), `END_BEATS`, and `CAT_SPOTS` in `src/stage.js` if a layout changes; then check stills.
+
+Each `SCENE_CUES` row has a `gain` (1 is the sound's own level). To swap a key click, replace the file with a 48000 Hz mono 16-bit WAV (the build refuses anything else) and note its source in `SOUNDS.md`. If the mix gets too loud it is scaled down as a whole, so nothing clips.
 
 ### Rebuild, preview and re-render
 

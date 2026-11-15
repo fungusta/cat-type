@@ -31,6 +31,13 @@ test("names an unknown sound", () => {
   assert.throws(() => mixCues([{ t: 0, sound: "nope", gain: 1 }], {}, { sampleRate: 48000, duration: 1 }), /nope/);
 });
 
+test("a missing or NaN t or gain stops the mix, naming the sound", () => {
+  const options = { sampleRate: 48000, duration: 1 };
+  for (const cue of [{ t: Number.NaN, gain: 1 }, { t: 0, gain: Number.NaN }, { t: 0 }, { gain: 1 }, { t: 0, gain: Infinity }]) {
+    assert.throws(() => mixCues([{ sound: "a", ...cue }], { a: sound }, options), /sound "a"/, JSON.stringify(cue));
+  }
+});
+
 test("a WAV survives encode then parse", () => {
   const back = parseWav(encodeWav(sound, 48000), "round-trip");
   assert.ok([...back].every((value, i) => Math.abs(value - sound[i]) < 1 / 32000));

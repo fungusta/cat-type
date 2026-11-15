@@ -45,6 +45,7 @@ export function mixCues(cues, sounds, { sampleRate, duration }) {
   for (const { t, sound, gain } of cues) {
     const samples = sounds[sound];
     if (!samples) throw new Error(`unknown sound "${sound}"`);
+    if (!Number.isFinite(t) || !Number.isFinite(gain)) throw new Error(`sound "${sound}" needs a finite t and gain, got t=${t} gain=${gain}`);
     const start = Math.round(t * sampleRate);
     const end = Math.min(out.length, start + samples.length);
     for (let i = Math.max(0, start); i < end; i++) out[i] += samples[i - start] * gain;

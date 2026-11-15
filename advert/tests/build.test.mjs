@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readCatalog, assertPublishable, assertSafeOutDir, build } from "../scripts/build.mjs";
+import { readCatalog, parseCatalog, assertPublishable, assertSafeOutDir, build } from "../scripts/build.mjs";
 import { LOOKS, UNLOCKS } from "../src/timeline.mjs";
 import { parseWav } from "../src/mix.mjs";
 
@@ -22,6 +22,27 @@ test("the advert's own looks are publishable", () => {
   assertPublishable(LOOKS, UNLOCKS.map((unlock) => unlock.id), catalog);
 });
 
+test("the catalog parser reads hidden=True on a continuation line", () => {
+  const text = [
+    "ACCESSORIES = (",
+    '    Accessory("crown", "Crown", "hat", "Keyboard Royalty", "keystrokes", 100_000),',
+    '    Accessory("moon-pendant", "Moon pendant", "neck", "Night Owl",',
+    '              "night_keystrokes", 1_000,',
+    "              hidden=True),",
+    '    Accessory("bow-tie", "Bow tie", "neck", "Helping Paw", "keystrokes", 5_000),',
+    ")",
+  ].join("\n");
+  const parsed = parseCatalog(text);
+  assert.deepEqual(parsed.get("crown"), { slot: "hat", hidden: false });
+  assert.deepEqual(parsed.get("moon-pendant"), { slot: "neck", hidden: true });
+  assert.deepEqual(parsed.get("bow-tie"), { slot: "neck", hidden: false });
+  assert.equal(parsed.size, 3);
+});
+
+test("a catalog with no accessories stops the build", () => {
+  assert.throws(() => parseCatalog("ACCESSORIES = ()\n"), /no Accessory/);
+});
+
 test("a secret accessory stops the build", () => {
   assert.throws(() => assertPublishable({ x: { cat: "gray", outfit: { neck: "moon-pendant" } } }, [], catalog), /moon-pendant/);
 });
@@ -34,8 +55,9 @@ test("an accessory in the wrong slot stops the build", () => {
   assert.throws(() => assertPublishable({ x: { cat: "gray", outfit: { hat: "sunglasses" } } }, [], catalog), /sunglasses/);
 });
 
-test("build writes a complete project", async () => {
+test("build writes a complete project", async (t) => {
   const outDir = await mkdtemp(join(tmpdir(), "advert-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
   await build({ outDir });
   for (const file of [
     "index.html", "advert.css", "js/advert.js", "js/gsap.min.js",
@@ -58,6 +80,12 @@ test("the output-folder guard refuses anything but advert/build or a temp subfol
     advertDir,
     join(advertDir, "src"),
     join(advertDir, "sfx"),
+    join(advertDir, "scripts"),
+    join(advertDir, "tests"),
+    join(advertDir, "node_modules"),
+    join(advertDir, "out"),
+    join(advertDir, "build-evil"),
+    join(advertDir, "build/nested"),
     tmpdir(),
     `${join(advertDir, "build")}/../src`,
   ]) assert.throws(() => assertSafeOutDir(outDir), /refusing/, outDir);
