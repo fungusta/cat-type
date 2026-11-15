@@ -3,16 +3,17 @@
 //
 // Two layers set what is on screen:
 // - applyFrame(t) sets everything that frameState(t) and the current scene decide (look, paws,
-//   face, typed text, where the cat stands, what part of the stage shows, counter, tiles).
+//   face, typed text, where the cat stands, what part of the stage shows, counter, tiles,
+//   stats and bars).
 //   A frame driver tween re-runs it on every seek, so frames can be asked for in any order.
-// - Scene functions add their own tweens (camera, pops, caret, squashes) to the timeline at
+// - Scene functions add their own tweens (camera, pops, caret, squashes, hop, heart) to the timeline at
 //   fixed times. GSAP only tweens elements and properties that applyFrame never sets.
 // To add a scene, write a function that takes the timeline and add it to SCENES below.
 //
 // HyperFrames shows and hides the clips (#scene-stage and the .card sections) by their data-start.
 
 import { renderCat } from "../../site/js/cat.js";
-import { CARDS, DURATION, LOOKS, LOOK_CHANGES, SCENES as TIMES, TYPED_TEXT, UNLOCKS, WIDTH, frameState, presses } from "./timeline.mjs";
+import { CARDS, DURATION, END, LOOKS, LOOK_CHANGES, SCENES as TIMES, STATS, TYPED_TEXT, UNLOCKS, WIDTH, frameState, presses } from "./timeline.mjs";
 
 // Camera scale for the wide opening shot; 1 is the close shot the CSS lays out.
 const CAMERA_WIDE = 0.6;
@@ -26,6 +27,8 @@ const HOME = { x: 0, y: 0, scale: 1 };
 const CAT_SPOTS = {
   customise: { x: 0, y: 73, scale: 1.35 },
   unlock: { x: -440, y: 73, scale: 1 },
+  track: { x: 780, y: 380, scale: 0.4 },
+  end: { x: 0, y: -97, scale: 0.6 },
 };
 const TYPED_LINE_SCENES = new Set(["arrive", "type"]);
 
@@ -35,6 +38,8 @@ const TICK = '<svg class="badge-tick" viewBox="0 0 16 16" aria-hidden="true"><pa
 const TILE_ART_PAD = 6;
 // Clear space each word card keeps on either side of the frame.
 const CARD_MARGIN = 120;
+// The end scene's beats (s): the cat pops in, the words follow, the cat hops with a heart.
+const END_BEATS = { cat: 23.1, title: 23.4, line: 23.9, url: 24.3, hop: 25.0 };
 
 let looks = [];
 let typed = null;
@@ -53,6 +58,8 @@ export function applyFrame(t) {
   applyCat(state, scene);
   applyTypedLine(state, scene);
   applyUnlockUi(state, scene);
+  applyTrackUi(state, scene);
+  stage.endCard.style.visibility = scene === "end" ? "visible" : "hidden";
 }
 
 function applyCat(state, scene) {
@@ -79,6 +86,12 @@ function applyUnlockUi(state, scene) {
   for (const tile of stage.tiles) tile.classList.toggle("is-unlocked", state.unlocked.includes(tile.dataset.id));
 }
 
+function applyTrackUi(state, scene) {
+  stage.trackUi.style.visibility = scene === "track" ? "visible" : "hidden";
+  for (const stat of stage.stats) stat.textContent = state.stats[stat.dataset.stat].toLocaleString("en");
+  stage.barFills.forEach((fill, i) => { fill.style.transform = `scaleY(${state.bars[i]})`; });
+}
+
 /** Renders the cats, fills the cards and tiles, and waits for the fonts. */
 async function setup() {
   typed = document.getElementById("typed");
@@ -88,9 +101,16 @@ async function setup() {
     unlockUi: document.getElementById("unlock-ui"),
     counter: document.getElementById("counter"),
     tiles: [],
+    trackUi: document.getElementById("track-ui"),
+    stats: [...document.querySelectorAll("#stats dd[data-stat]")],
+    barFills: renderBars(),
+    endCard: document.getElementById("end-card"),
   };
   document.getElementById("typed-ghost").textContent = TYPED_TEXT;
   fillCards();
+  document.getElementById("end-title").textContent = END.title;
+  document.getElementById("end-line").textContent = END.line;
+  document.getElementById("end-url").textContent = END.url;
   const [rendered, tiles] = await Promise.all([renderLooks(), renderTiles()]);
   looks = rendered;
   stage.tiles = tiles;
@@ -99,6 +119,7 @@ async function setup() {
     throw new Error("Nunito did not load");
   }
   assertCardsFit();
+  assertStatsFit();
 }
 
 /** Puts each card's words into its section, checking the section's clip timing matches CARDS. */
@@ -112,17 +133,48 @@ function fillCards() {
   }
 }
 
-/** Throws, naming the card, if any card's words are wider than the frame less CARD_MARGIN a side. */
+/** The advance width of text in element's computed font, plus its side padding when asked. */
+function textWidth(element, text = element.textContent, withPadding = false) {
+  const style = getComputedStyle(element);
+  const context = document.createElement("canvas").getContext("2d");
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const padding = withPadding ? parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) + parseFloat(style.borderLeftWidth) * 2 : 0;
+  return context.measureText(text).width + padding;
+}
+
+/** Throws, naming it, if a card's words or an end-card line are wider than the frame less CARD_MARGIN a side. */
 function assertCardsFit() {
   const limit = WIDTH - 2 * CARD_MARGIN;
-  const context = document.createElement("canvas").getContext("2d");
-  for (const card of CARDS) {
-    const text = document.querySelector(`#${card.id} .card-text`);
-    const style = getComputedStyle(text);
-    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const width = context.measureText(text.textContent).width;
-    if (width > limit) throw new Error(`#${card.id} "${card.text}" is ${Math.ceil(width)} px wide; cards must fit in ${limit} px`);
+  const lines = [
+    ...CARDS.map((card) => [card.id, document.querySelector(`#${card.id} .card-text`)]),
+    ...["end-title", "end-line", "end-url"].map((id) => [id, document.getElementById(id)]),
+  ];
+  for (const [id, element] of lines) {
+    const width = textWidth(element, element.textContent, true);
+    if (width > limit) throw new Error(`#${id} "${element.textContent}" is ${Math.ceil(width)} px wide; cards must fit in ${limit} px`);
   }
+}
+
+/** Throws if a stat's final number would be wider than its block. */
+function assertStatsFit() {
+  for (const stat of stage.stats) {
+    const text = STATS[stat.dataset.stat].toLocaleString("en");
+    const width = textWidth(stat, text);
+    if (width > stat.clientWidth) throw new Error(`stat "${text}" is ${Math.ceil(width)} px wide; its block holds ${stat.clientWidth} px`);
+  }
+}
+
+/** One .bar per STATS.labels entry in #chart (the last is today's, in butter); returns the fills. */
+function renderBars() {
+  const chart = document.getElementById("chart");
+  return STATS.labels.map((label, i) => {
+    const bar = document.createElement("div");
+    bar.className = i === STATS.labels.length - 1 ? "bar bar-today" : "bar";
+    bar.innerHTML = '<div class="bar-fill"></div><p class="bar-label"></p>';
+    bar.querySelector(".bar-label").textContent = label;
+    chart.append(bar);
+    return bar.querySelector(".bar-fill");
+  });
 }
 
 /** One .look per LOOKS key in #cat-rig, each dressed by renderCat. */
@@ -235,7 +287,46 @@ function unlockScene(tl) {
   }
 }
 
-const SCENES = [cardWords, arriveScene, typeScene, customiseScene, unlockScene];
+/** Scene 8 (19-23 s): the card rises in; the numbers count and the bars grow (applyFrame). */
+function trackScene(tl) {
+  const [start] = TIMES.track;
+  tl.fromTo("#track-card", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: "power2.out" }, start);
+}
+
+/**
+ * Scene 9 (23-27 s): the brand cat pops in, the words follow, then the cat hops (site cat-hop) and a
+ * heart rises and fades (site cat-heart). Every step is a fromTo from the previous step's end, so a
+ * seek to any time, either way, shows the right pose. Nothing moves after 26.2 s.
+ */
+function endScene(tl) {
+  const quiet = { immediateRender: false };
+  const cat = '.look[data-look="brand"]';
+  tl.fromTo(cat, { scale: 0 }, { scale: 1, duration: 0.35, ease: "back.out(2.2)" }, END_BEATS.cat);
+  tl.fromTo("#end-title", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: "power2.out" }, END_BEATS.title);
+  tl.fromTo("#end-line", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.35, ease: "back.out(2)" }, END_BEATS.line);
+  tl.fromTo("#end-url", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.3, ease: "power2.out" }, END_BEATS.url);
+
+  // cat-hop: 900 ms, keyframes at 30%, 55%, 75%; heights scaled to the cat's size here.
+  const hop = [
+    [0.3, { y: -36, scaleX: 1.03, scaleY: 0.98 }, "power2.out"],
+    [0.55, { y: 0, scaleX: 1.02, scaleY: 0.97 }, "power2.in"],
+    [0.75, { y: -10, scaleX: 1, scaleY: 1 }, "power1.out"],
+    [1, { y: 0, scaleX: 1, scaleY: 1 }, "power1.in"],
+  ];
+  let from = { y: 0, scaleX: 1, scaleY: 1 };
+  let at = 0;
+  for (const [until, pose, ease] of hop) {
+    tl.fromTo(cat, { ...from }, { ...pose, ...quiet, duration: 0.9 * (until - at), ease }, END_BEATS.hop + 0.9 * at);
+    [from, at] = [pose, until];
+  }
+
+  // cat-heart: over 1 s the heart rises and grows (easing out), fading in for the first quarter and out after.
+  const heartMid = { y: -20, scale: 0.82, opacity: 1 };
+  tl.fromTo("#heart", { y: 30, scale: 0.6, opacity: 0 }, { ...heartMid, duration: 0.25, ease: "power1.out" }, END_BEATS.hop);
+  tl.fromTo("#heart", { ...heartMid }, { y: -50, scale: 1.1, opacity: 0, ...quiet, duration: 0.75, ease: "power2.out" }, END_BEATS.hop + 0.25);
+}
+
+const SCENES = [cardWords, arriveScene, typeScene, customiseScene, unlockScene, trackScene, endScene];
 
 async function main() {
   await setup();
