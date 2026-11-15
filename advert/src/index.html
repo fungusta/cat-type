@@ -10,13 +10,25 @@
   <div id="root" data-composition-id="advert" data-start="0" data-duration="27" data-width="1920" data-height="1080">
     <div id="scene-stage" class="clip" data-start="0" data-duration="27" data-track-index="0">
       <div id="camera">
-        <div id="cat-rig"></div>
+        <div id="cat-spot">
+          <div id="cat-rig"></div>
+        </div>
         <div id="typed-line">
           <span id="typed-ghost" aria-hidden="true"></span>
           <span id="typed-live"><span id="typed"></span><span id="caret"></span></span>
         </div>
       </div>
+      <div id="unlock-ui">
+        <div id="counter-block">
+          <p id="counter">0</p>
+          <p id="counter-label">keystrokes</p>
+        </div>
+        <ul id="tiles"></ul>
+      </div>
     </div>
+    <section class="clip card" id="card-customise" data-start="7" data-duration="1" data-track-index="1"><p class="card-text"></p></section>
+    <section class="clip card" id="card-unlock" data-start="13" data-duration="1" data-track-index="1"><p class="card-text"></p></section>
+    <section class="clip card" id="card-track" data-start="18" data-duration="1" data-track-index="1"><p class="card-text"></p></section>
     <audio id="soundtrack" src="sfx/soundtrack.wav" data-start="0" data-duration="27" data-track-index="9" data-volume="1"></audio>
   </div>
   <script src="js/gsap.min.js"></script>

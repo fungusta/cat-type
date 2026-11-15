@@ -18,6 +18,12 @@
   --cream: #fff9f3;
   --ink: #302a33;
   --butter: #f2d66b;
+  --butter-soft: #fff1b8;
+  --butter-ink: #5c4a1f;
+  --muted: #575059;
+  --track: #ece5de;
+  --chip: #f5f0ea;
+  --border: #e8e1da;
 }
 
 html, body { margin: 0; background: var(--cream); }
@@ -46,6 +52,13 @@ html, body { margin: 0; background: var(--cream); }
   width: 1920px;
   height: 1080px;
   transform-origin: 960px 540px;
+}
+
+/* stage.js moves and scales this per scene, about the cat's centre (x 960, y 467 at camera 1). */
+#cat-spot {
+  position: absolute;
+  inset: 0;
+  transform-origin: 960px 467px;
 }
 
 /* The cat artwork fills y 13-102 of its 120-unit box: a 700 px box shows a cat about 520 px tall. */
@@ -102,6 +115,112 @@ html, body { margin: 0; background: var(--cream); }
   border-radius: 4px;
   background: var(--ink);
 }
+
+/* Word cards: full-frame butter over the stage; HyperFrames shows each for its clip. */
+.card {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: var(--butter);
+}
+
+.card-text {
+  margin: 0;
+  font-size: 180px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Unlock scene (14-18 s): the cat stands on the left (stage.js); counter and tiles fill the right. */
+#unlock-ui {
+  position: absolute;
+  top: 0;
+  left: 960px;
+  width: 860px;
+  height: 1080px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 64px;
+  visibility: hidden;
+}
+
+#counter-block { text-align: center; }
+
+#counter {
+  margin: 0;
+  font-size: 120px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+#counter-label {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 40px;
+  font-weight: 700;
+}
+
+/* Tiles, after the website's accessory locker: locked = grey, faded, padlock; unlocked = butter-soft, tick. */
+#tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 260px);
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 36px 16px 30px;
+  border: 3px solid var(--border);
+  border-radius: 36px;
+  background: var(--track);
+}
+
+.tile-art { width: 140px; height: 140px; }
+.tile-art svg { display: block; width: 100%; height: 100%; }
+
+.tile-name {
+  margin: 0;
+  color: var(--muted);
+  font-size: 32px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tile-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.tile-badge svg { width: 22px; height: 22px; }
+.tile .badge-tick { display: none; }
+.tile:not(.is-unlocked) .tile-art { filter: grayscale(1); opacity: .45; }
+
+.tile.is-unlocked { border-color: var(--butter); background: var(--butter-soft); }
+.tile.is-unlocked .tile-name { color: var(--ink); }
+.tile.is-unlocked .tile-badge { background: var(--butter); color: var(--butter-ink); }
+.tile.is-unlocked .badge-lock { display: none; }
+.tile.is-unlocked .badge-tick { display: block; }
 
 /* Static cat rules restated from site/cat.css: paws squash toward their base; the face follows .is-excited. */
 .cat .cat-paw-left,

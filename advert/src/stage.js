@@ -2,27 +2,58 @@
 // renderer seeks frame by frame. Bundled as an IIFE; GSAP is the global from js/gsap.min.js.
 //
 // Two layers set what is on screen:
-// - applyFrame(t) sets everything that frameState(t) decides (look, paws, face, typed text).
+// - applyFrame(t) sets everything that frameState(t) and the current scene decide (look, paws,
+//   face, typed text, where the cat stands, what part of the stage shows, counter, tiles).
 //   A frame driver tween re-runs it on every seek, so frames can be asked for in any order.
-// - Scene functions add their own tweens (camera, pops, caret) to the timeline at fixed times.
+// - Scene functions add their own tweens (camera, pops, caret, squashes) to the timeline at
+//   fixed times. GSAP only tweens elements and properties that applyFrame never sets.
 // To add a scene, write a function that takes the timeline and add it to SCENES below.
+//
+// HyperFrames shows and hides the clips (#scene-stage and the .card sections) by their data-start.
 
 import { renderCat } from "../../site/js/cat.js";
-import { DURATION, LOOKS, SCENES as TIMES, TYPED_TEXT, frameState } from "./timeline.mjs";
+import { CARDS, DURATION, LOOKS, LOOK_CHANGES, SCENES as TIMES, TYPED_TEXT, UNLOCKS, frameState, presses } from "./timeline.mjs";
 
 // Camera scale for the wide opening shot; 1 is the close shot the CSS lays out.
-export const CAMERA_WIDE = 0.6;
-export const CAMERA_CLOSE = 1;
+const CAMERA_WIDE = 0.6;
+const CAMERA_CLOSE = 1;
 
 const CARET_BLINK = 0.5;
-const TYPE_START = 2.3;
+const TYPE_START = presses().find((press) => press.scene === "type").t;
+
+// Where #cat-spot puts the cat in each scene, as a move (px) and a scale about the cat's centre.
+const HOME = { x: 0, y: 0, scale: 1 };
+const CAT_SPOTS = {
+  customise: { x: 0, y: 73, scale: 1.35 },
+  unlock: { x: -440, y: 73, scale: 1 },
+};
+const TYPED_LINE_SCENES = new Set(["arrive", "type"]);
+
+// The website's padlock and a matching tick, for the tile badges.
+const PADLOCK = '<svg class="badge-lock" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 7V5a3 3 0 0 1 6 0v2h.5A1.5 1.5 0 0 1 13 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 3 13.5v-5A1.5 1.5 0 0 1 4.5 7H5Zm1.5 0h3V5a1.5 1.5 0 0 0-3 0v2Z"/></svg>';
+const TICK = '<svg class="badge-tick" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5l3 3 6-7"/></svg>';
+const TILE_ART_PAD = 6;
 
 let looks = [];
 let typed = null;
+let stage = {};
 
-/** Sets every frameState-driven property for time t. Reads no previous DOM state. */
+/** The SCENES key whose [start, end) holds t; the last scene from its end on. */
+export function sceneAt(t) {
+  const names = Object.keys(TIMES);
+  return names.find((name) => t >= TIMES[name][0] && t < TIMES[name][1]) ?? names.at(-1);
+}
+
+/** Sets every frameState- and scene-driven property for time t. Reads no previous DOM state. */
 export function applyFrame(t) {
   const state = frameState(t);
+  const scene = sceneAt(t);
+  applyCat(state, scene);
+  applyTypedLine(state, scene);
+  applyUnlockUi(state, scene);
+}
+
+function applyCat(state, scene) {
   const pressed = state.pawLeft > 0 || state.pawRight > 0;
   for (const look of looks) {
     look.element.style.visibility = look.key === state.look ? "visible" : "hidden";
@@ -31,16 +62,57 @@ export function applyFrame(t) {
     for (const pads of look.pads) pads.style.display = pressed ? "none" : "";
     look.svg.classList.toggle("is-excited", state.excited);
   }
+  const spot = CAT_SPOTS[scene] ?? HOME;
+  stage.catSpot.style.transform = `translate(${spot.x}px, ${spot.y}px) scale(${spot.scale})`;
+}
+
+function applyTypedLine(state, scene) {
+  stage.typedLine.style.visibility = TYPED_LINE_SCENES.has(scene) ? "visible" : "hidden";
   typed.textContent = TYPED_TEXT.slice(0, state.typedChars);
 }
 
-/** Renders one .look per LOOKS key into #cat-rig and waits for the fonts. */
-async function setup() {
-  const rig = document.getElementById("cat-rig");
-  typed = document.getElementById("typed");
-  document.getElementById("typed-ghost").textContent = TYPED_TEXT;
+function applyUnlockUi(state, scene) {
+  stage.unlockUi.style.visibility = scene === "unlock" ? "visible" : "hidden";
+  stage.counter.textContent = state.counter.toLocaleString("en");
+  for (const tile of stage.tiles) tile.classList.toggle("is-unlocked", state.unlocked.includes(tile.dataset.id));
+}
 
-  const pending = Object.entries(LOOKS).map(([key, look]) => {
+/** Renders the cats, fills the cards and tiles, and waits for the fonts. */
+async function setup() {
+  typed = document.getElementById("typed");
+  stage = {
+    catSpot: document.getElementById("cat-spot"),
+    typedLine: document.getElementById("typed-line"),
+    unlockUi: document.getElementById("unlock-ui"),
+    counter: document.getElementById("counter"),
+    tiles: [],
+  };
+  document.getElementById("typed-ghost").textContent = TYPED_TEXT;
+  fillCards();
+  const [rendered, tiles] = await Promise.all([renderLooks(), renderTiles()]);
+  looks = rendered;
+  stage.tiles = tiles;
+  await Promise.all([document.fonts.load('800 160px "Nunito"'), document.fonts.load('700 160px "Nunito"')]);
+  if (!document.fonts.check('800 72px "Nunito"') || !document.fonts.check('700 24px "Nunito"')) {
+    throw new Error("Nunito did not load");
+  }
+}
+
+/** Puts each card's words into its section, checking the section's clip timing matches CARDS. */
+function fillCards() {
+  for (const card of CARDS) {
+    const section = document.getElementById(card.id);
+    if (!section || Number(section.dataset.start) !== card.start || Number(section.dataset.duration) !== card.duration) {
+      throw new Error(`#${card.id} must be a .card clip with data-start="${card.start}" data-duration="${card.duration}"`);
+    }
+    section.querySelector(".card-text").textContent = card.text;
+  }
+}
+
+/** One .look per LOOKS key in #cat-rig, each dressed by renderCat. */
+function renderLooks() {
+  const rig = document.getElementById("cat-rig");
+  return Promise.all(Object.entries(LOOKS).map(([key, look]) => {
     const element = document.createElement("div");
     element.className = "look";
     element.dataset.look = key;
@@ -53,9 +125,41 @@ async function setup() {
       pawRight: svg.querySelector(".cat-paw-right"),
       pads: [...svg.querySelectorAll(".cat-pads")],
     }));
-  });
-  looks = await Promise.all(pending);
-  await Promise.all([document.fonts.load('800 160px "Nunito"'), document.fonts.load('700 160px "Nunito"')]);
+  }));
+}
+
+/** One .tile[data-id] per UNLOCKS entry: the accessory's own art, its name and a badge. */
+function renderTiles() {
+  const list = document.getElementById("tiles");
+  return Promise.all(UNLOCKS.map(async (unlock) => {
+    const tile = document.createElement("li");
+    tile.className = "tile";
+    tile.dataset.id = unlock.id;
+    tile.innerHTML = `<div class="tile-art"></div><p class="tile-name"></p><span class="tile-badge">${PADLOCK}${TICK}</span>`;
+    tile.querySelector(".tile-name").textContent = unlock.name;
+    list.append(tile);
+    await inlineAccessory(tile.querySelector(".tile-art"), unlock.id);
+    return tile;
+  }));
+}
+
+/** Inlines assets/accessories/<id>.svg without ids (so none clash with the cats') and crops it to its art. */
+async function inlineAccessory(holder, id) {
+  const url = `assets/accessories/${id}.svg`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not load ${url}`);
+  const svg = new DOMParser().parseFromString(await response.text(), "image/svg+xml").documentElement;
+  svg.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  svg.querySelectorAll("title, desc").forEach((element) => element.remove());
+  svg.setAttribute("aria-hidden", "true");
+  const inline = document.importNode(svg, true);
+  holder.append(inline);
+  const box = inline.getBBox();
+  if (!box.width || !box.height) throw new Error(`Could not measure ${url}`);
+  const pad = TILE_ART_PAD;
+  inline.setAttribute("viewBox", `${box.x - pad} ${box.y - pad} ${box.width + pad * 2} ${box.height + pad * 2}`);
+  inline.removeAttribute("width");
+  inline.removeAttribute("height");
 }
 
 /** One tween over the whole advert whose setter calls applyFrame on every seek. */
@@ -66,6 +170,23 @@ function frameDriver(tl) {
     set t(value) { current = value; applyFrame(value); },
   };
   tl.fromTo(clock, { t: 0 }, { t: DURATION, duration: DURATION, ease: "none" }, 0);
+}
+
+/**
+ * A quick squeeze and settle that starts and ends at rest, so seeking either way leaves no residue.
+ * immediateRender is off so building the timeline does not leave the target squeezed before `at`.
+ */
+function pop(tl, target, at, squeezed, settle) {
+  const quiet = { immediateRender: false };
+  tl.fromTo(target, { scaleX: 1, scaleY: 1 }, { ...squeezed, ...quiet, duration: 0.07, ease: "power2.out" }, at);
+  tl.fromTo(target, squeezed, { scaleX: 1, scaleY: 1, ...quiet, duration: settle, ease: "back.out(3)" }, at + 0.07);
+}
+
+/** Each card's words rise about 40 px and fade in as its clip starts. */
+function cardWords(tl) {
+  for (const card of CARDS) {
+    tl.fromTo(`#${card.id} .card-text`, { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.25, ease: "power2.out" }, card.start);
+  }
 }
 
 /** Scene 1 (0-2 s): a blinking caret, the cat pops up, the camera pushes in. */
@@ -83,7 +204,22 @@ function typeScene(tl) {
   tl.set("#caret", { opacity: 1 }, TYPE_START);
 }
 
-const SCENES = [arriveScene, typeScene];
+/** Scene 4 (8-13 s): the cat, centred and large (applyFrame), squashes as each outfit lands. */
+function customiseScene(tl) {
+  const [start, end] = TIMES.customise;
+  for (const change of LOOK_CHANGES.filter((change) => change.t > start && change.t < end)) {
+    pop(tl, "#cat-rig", change.t, { scaleX: 1.12, scaleY: 0.88 }, 0.18);
+  }
+}
+
+/** Scene 6 (14-18 s): the counter climbs (applyFrame); each tile pops as it unlocks. */
+function unlockScene(tl) {
+  for (const unlock of UNLOCKS) {
+    pop(tl, `.tile[data-id="${unlock.id}"]`, unlock.t, { scaleX: 1.12, scaleY: 1.12 }, 0.25);
+  }
+}
+
+const SCENES = [cardWords, arriveScene, typeScene, customiseScene, unlockScene];
 
 async function main() {
   await setup();
@@ -98,4 +234,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error);
+  throw error;
 });
