@@ -54,7 +54,7 @@ export async function build({ outDir = defaultOutDir } = {}) {
     await mkdir(dirname(join(out, to)), { recursive: true });
     await copyFile(from, join(out, to));
   }
-  await esbuild.build({ entryPoints: [join(srcDir, "stage.js")], bundle: true, format: "iife", outfile: join(out, "js/advert.js"), logLevel: "silent" });
+  await esbuild.build({ entryPoints: [join(srcDir, "stage.js")], bundle: true, format: "iife", outfile: join(out, "js/advert.js"), supported: { "template-literal": false }, logLevel: "warning" });
   await mkdir(join(out, "sfx"), { recursive: true });
   await writeFile(join(out, "sfx/soundtrack.wav"), await soundtrack());
   return out;
