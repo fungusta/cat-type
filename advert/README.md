@@ -15,6 +15,54 @@ Run every command from this folder. You need Node and FFmpeg (`brew install ffmp
 
 `build/`, `out/`, `renders/` and `node_modules/` are generated and never committed.
 
+## Changing the advert
+
+Almost everything you might want to change is a constant near the top of `src/timeline.mjs`. Times are in seconds from the start of the video (0 to 27). After any change, rebuild and look at stills before re-rendering (see "Rebuild, preview and re-render" below).
+
+| To change | Edit | Notes |
+| --- | --- | --- |
+| The words on the three butter-yellow cards | `CARDS` (`text`) | Each card has a `start` and `duration`. If you move a card, also change the matching `<section class="clip card">` `data-start` / `data-duration` in `src/index.html`; the page stops with an error naming the card if they disagree. |
+| The sentence the cat types (2.3–6.4 s) | `TYPED_TEXT` | It is always typed over the same 4.1 s, so a longer sentence types faster. It is one line at 72 px with no width check, so take stills at 6.5 s to see it fits. Spaces make both paws tap. |
+| The end card | `END` (`title`, `line`, `url`) | |
+| The outfits | `LOOKS` | Each look is a cat colour (`gray`, `ginger`, `black-white`: files in `assets/vector-cats/`) and an outfit of `hat`, `glasses`, `neck`, `back` or `ears` slots. Accessory ids are the first column of `cat_accessories.py` (files in `assets/accessories/`). The build stops if an id is unknown, is a secret (`hidden=True`) one, or is worn in the wrong slot. |
+| Which outfit is worn when, and in what order | `LOOK_CHANGES` | A list of `{ t, look }`: from time `t` the cat wears that look until the next entry. Keep it in time order. The swap sounds are listed separately (see Sounds). |
+| The three unlocks (14–18 s) | `UNLOCKS` | `t`, accessory `id`, the name shown, and the keystroke `target`. The keystroke counter's path is `COUNTER_POINTS` further down. |
+| The stats (19–23 s) | `STATS` | The seven daily bars (`week`, `labels`) and the three totals. The page stops with an error if a total is too wide for its box. |
+| Scene timing | `SCENES` | Start and end of each scene. Typing, counter, bar and sound timings sit below it (`TYPE_START`, `TYPE_SPAN`, `UNLOCK_KEYS`, `TRACK_KEYS`, `COUNTER_POINTS`, `STATS_FROM`, `STATS_TO`, `BAR_START`, `BAR_STAGGER`, `BAR_GROW`). Changing the total length (`DURATION`, 27) also needs the `data-duration="27"` values in `src/index.html`. |
+
+### Word card text size
+
+The three word cards share one text size (150 px, `.card-text` in `src/advert.css`), so they look alike. When the page loads, it measures each card line and each end-card line; if one is wider than the frame less 120 px a side, the snapshot or render stops with an error such as `#card-track "..." is <width> px wide; cards must fit in 1680 px`. Shorten the words (or lower the shared size for all cards) rather than squeezing one card.
+
+### Sounds
+
+The soundtrack is mixed by `npm run build` into `build/sfx/soundtrack.wav` from the cue lists in `src/timeline.mjs`, so the sounds always match the pictures.
+
+| Sound | File | Where its timing and volume live |
+| --- | --- | --- |
+| Key clicks (one per paw tap) | `sfx/key-1.wav` … `sfx/key-6.wav`, taken in turn | Follows the paw taps automatically. Volume per scene: `KEY_GAIN` (`type`, `unlock`, `track`). |
+| Space bar (both paws) | `sfx/space.wav` | Every space in `TYPED_TEXT`; volume `KEY_GAIN.type`. |
+| Pop (cat arrives, end card) | made in `src/sfx-synth.mjs` (`pop`) | `SCENE_CUES`, `pop` times `[0.9, 23.1]`. |
+| Whoosh (each word card) | `src/sfx-synth.mjs` (`whoosh`) | `SCENE_CUES`, `whoosh` times `[7, 13, 18]`: keep them in step with `CARDS`. |
+| Swap (outfit changes) | `src/sfx-synth.mjs` (`swap`) | `SCENE_CUES`, `swap` times: keep them in step with `LOOK_CHANGES`. |
+| Chime (each unlock) | `src/sfx-synth.mjs` (`chime`) | Follows `UNLOCKS` automatically. |
+| Tick (each stats bar) | `src/sfx-synth.mjs` (`tick`) | Follows `BAR_START` and `BAR_STAGGER` automatically. |
+
+Each `SCENE_CUES` row also has a `gain` (1 is the sound's own level). To swap a key click, replace the file with a 48000 Hz mono 16-bit WAV (the build refuses anything else) and note its source in `SOUNDS.md`. If the mix gets too loud it is scaled down as a whole, so nothing clips.
+
+### Rebuild, preview and re-render
+
+1. `npm test` — the timeline checks.
+2. `npm run build` — rebuilds `build/` (page, artwork, soundtrack). Stops with a message if an outfit uses an unknown or secret accessory.
+3. `npm run snap -- 6.5,7.5,13.5 -o renders/check` — stills at the seconds you name, plus `contact-sheet.jpg`, in `renders/check/`. Open them to check the change before a full render.
+4. `npm run render` — writes `out/cat-type-advert.mp4` (about 1.5 minutes on an 8 GB Mac; see the low-memory note below).
+5. Optional sound check: `ffmpeg -y -i out/cat-type-advert.mp4 -ar 48000 -ac 1 -c:a pcm_s16le out/audio.wav && node scripts/check-sync.mjs out/audio.wav 1.5` prints when the first key click is heard after 1.5 s; it should be about `2.300`, when the first paw goes down. `node scripts/check-sync.mjs out/audio.wav 23.0` should print about `23.100` (the end-card pop).
+
+### Not done yet
+
+- An upright, phone-shaped (9:16) version. The advert is 1920x1080 only.
+- Music. The soundtrack is sound effects only.
+
 ## Snapshots
 
 `hyperframes snapshot` writes to `<project>/.hyperframes/artifacts/snapshots/<unique dir>/` by default, so `npm run snap` puts stills under `build/.hyperframes/artifacts/snapshots/`. Choose the folder with `-o <dir>` (also `--output=<dir>`), e.g. `npm run snap -- 0.5,1.5 -o renders/snaps`. Stills are named `frame-NN-at-<seconds>s.png`, plus a `contact-sheet.jpg`. On its own, `hyperframes snapshot` also adds an end-of-timeline frame; `npm run snap` passes `--no-end`, so it captures only the `--at` times.
