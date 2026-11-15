@@ -14,4 +14,102 @@
   src: url("fonts/nunito-latin-800-normal.woff2") format("woff2");
 }
 
-html, body { margin: 0; background: #fff9f3; }
+:root {
+  --cream: #fff9f3;
+  --ink: #302a33;
+  --butter: #f2d66b;
+}
+
+html, body { margin: 0; background: var(--cream); }
+
+#root {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: "Nunito", sans-serif;
+}
+
+/* Scene 1-2 stage. Layout is given at the close camera (scale 1); stage.js scales #camera. */
+#scene-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+#camera {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 960px 540px;
+}
+
+/* The cat artwork fills y 13-102 of its 120-unit box: a 700 px box shows a cat about 520 px tall. */
+#cat-rig {
+  position: absolute;
+  left: 610px;
+  top: 132px;
+  width: 700px;
+  height: 700px;
+  transform-origin: 50% 85%;
+}
+
+.look {
+  position: absolute;
+  inset: 0;
+}
+
+.look .cat {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* The ghost holds the whole sentence so the line is centred on its final width; the live text types over it from the left. */
+#typed-line {
+  position: absolute;
+  top: 780px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: pre;
+}
+
+#typed-ghost,
+#typed-live {
+  grid-area: 1 / 1;
+}
+
+#typed-ghost {
+  visibility: hidden;
+  padding-right: 14px;
+}
+
+#caret {
+  display: inline-block;
+  width: 7px;
+  height: 0.86em;
+  margin-left: 6px;
+  vertical-align: -0.1em;
+  border-radius: 4px;
+  background: var(--ink);
+}
+
+/* Static cat rules restated from site/cat.css: paws squash toward their base; the face follows .is-excited. */
+.cat .cat-paw-left,
+.cat .cat-paw-right {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.cat .cat-mouth-excited { display: none; }
+.cat.is-excited .cat-mouth-idle { display: none; }
+.cat.is-excited .cat-mouth-excited { display: inline; }
