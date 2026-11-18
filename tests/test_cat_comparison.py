@@ -139,14 +139,14 @@ class PreviewTests(unittest.TestCase):
         except tk.TclError as error:
             self.skipTest(f"Tk display unavailable: {error}")
         try:
-            self.assertEqual(preview.cat.get(), "White")
+            self.assertEqual(preview.cat.get(), "Maru")
             preview.size_percent.set(175)
             preview.show_pose("tap-left")
             white_image = preview.root.tk.call(
                 str(preview.image), "data", "-format", "ppm"
             )
 
-            preview.cat.set("Ginger tabby")
+            preview.cat.set("Donut")
             preview.root.update()
             ginger_image = preview.root.tk.call(
                 str(preview.image), "data", "-format", "ppm"

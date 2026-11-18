@@ -56,8 +56,9 @@ effect as you edit. Size changes save after a short pause while dragging.
 Close the settings window whenever you're done:
 
 - Enable or pause the typing companion.
-- Choose gray, ginger, charcoal, brown-tabby, white, or black-and-white, or
-  cycle through all of them.
+- Choose Mushroom (gray tabby), Donut (ginger tabby), Peanut (blue-cream),
+  Leo (brown tabby), Maru (white), or Allie (tuxedo), or cycle through all
+  of them.
 - Change the cat size from 60% to 175%.
 - Choose which corner of the caret or pointer the cat prefers.
 - Adjust how long the cat remains and how quickly it fades.

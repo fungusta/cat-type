@@ -29,12 +29,12 @@ from cat_type import AnimationState, classify_portable_key
 
 ASSETS_ROOT = Path(getattr(sys, "_MEIPASS", PROJECT_ROOT)) / "assets"
 CAT_LABELS = {
-    "gray": "Gray tabby",
-    "ginger": "Ginger tabby",
-    "charcoal": "Charcoal",
-    "brown-tabby": "Brown tabby",
-    "white": "White",
-    "black-white": "Black & white",
+    "gray": "Mushroom",
+    "ginger": "Donut",
+    "charcoal": "Peanut",
+    "brown-tabby": "Leo",
+    "white": "Maru",
+    "black-white": "Allie",
 }
 CAT_BY_LABEL = {label: variant for variant, label in CAT_LABELS.items()}
 TK_KEY_ALIASES = {

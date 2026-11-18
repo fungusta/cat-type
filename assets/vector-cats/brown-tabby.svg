@@ -1,34 +1,50 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
-  <title>Brown tabby cat — editable idle pose</title>
-  <desc>Editable brown tabby cat with a continuous head, ear and body outline. Inner-ear fills, face, paws and toe beans are separate editable parts.</desc>
+  <title>Leo — editable idle pose</title>
+  <desc>Editable brown mackerel tabby (Leo) with a continuous head, ear and body outline: forehead "M", dark eye lines, cheek swirls and a brick-pink nose. Inner-ear fills, face, paws and toe beans are separate editable parts.</desc>
   <defs>
     <clipPath id="body-clip">
       <path d="M6.85 102 C4.145 81.167 5.824 60.333 19.85 39.5 C20.233 32.5 21.204 25.5 23.85 18.5 C25.6366 13.7737 30.9171 16.7184 33.5801 18.6487 C37.2201 21.2872 40.8597 25.9281 44.5 27.85 C55.167 24.737 65.833 25.157 76.5 27.85 C79.8797 24.7339 83.2601 20.4953 86.6401 18.2995 C89.6936 16.3157 93.1739 14.4051 95.15 18.5 C98.528 25.5 98.635 32.5 99.483 39.5 C113.55 60.333 114.432 81.167 112.15 102 Z" />
     </clipPath>
+    <clipPath id="paw-left-clip">
+      <path d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" />
+    </clipPath>
+    <clipPath id="paw-right-clip">
+      <path d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" />
+    </clipPath>
   </defs>
   <g stroke="#171717" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
     <g id="body">
-      <path fill="#8a7259" d="M6.85 102 C4.145 81.167 5.824 60.333 19.85 39.5 C20.233 32.5 21.204 25.5 23.85 18.5 C25.6366 13.7737 30.9171 16.7184 33.5801 18.6487 C37.2201 21.2872 40.8597 25.9281 44.5 27.85 C55.167 24.737 65.833 25.157 76.5 27.85 C79.8797 24.7339 83.2601 20.4953 86.6401 18.2995 C89.6936 16.3157 93.1739 14.4051 95.15 18.5 C98.528 25.5 98.635 32.5 99.483 39.5 C113.55 60.333 114.432 81.167 112.15 102 Z" stroke="none" />
+      <path fill="#9a8264" d="M6.85 102 C4.145 81.167 5.824 60.333 19.85 39.5 C20.233 32.5 21.204 25.5 23.85 18.5 C25.6366 13.7737 30.9171 16.7184 33.5801 18.6487 C37.2201 21.2872 40.8597 25.9281 44.5 27.85 C55.167 24.737 65.833 25.157 76.5 27.85 C79.8797 24.7339 83.2601 20.4953 86.6401 18.2995 C89.6936 16.3157 93.1739 14.4051 95.15 18.5 C98.528 25.5 98.635 32.5 99.483 39.5 C113.55 60.333 114.432 81.167 112.15 102 Z" stroke="none" />
       <g id="body-markings" clip-path="url(#body-clip)" stroke="none">
-        <path d="M44 25 L49 25 C49 29 48 31 49 33 L47 36 L49 38 L47 41 L49 44 L47 47 Q43 45 44 41 L42 43 L43 38 L41 36 L44 33 Z" fill="#665544" />
-        <path d="M56 25 L63 25 L63 32 L68 34 L63 36 Q63 42 60 48 Q58 43 57 37 L52 36 L52 34 L57 33 Z" fill="#665544" />
-        <path d="M69 25 L74 25 L73 32 L76 35 L74 38 L76 41 L74 43 Q75 46 72 48 L70 43 L68 46 L69 40 L67 37 L70 34 Z" fill="#665544" />
-        <path d="M9 57 C16 57 22 58 26 61 C21 62 15 62 9 61 Z" fill="#665544" />
-        <path d="M9 57 C16 57 22 58 26 61 C21 62 15 62 9 61 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
-        <path d="M6 66 C14 66 20 66 25 65 C20 69 12 71 6 70 Z" fill="#665544" />
-        <path d="M6 66 C14 66 20 66 25 65 C20 69 12 71 6 70 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
-        <path d="M5 80 C12 79 16 79 20 78 C17 81 10 84 5 84 Z" fill="#665544" />
-        <path d="M5 80 C12 79 16 79 20 78 C17 81 10 84 5 84 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
-        <path d="M5 90 C11 90 14 90 18 89 C14 92 9 94 5 94 Z" fill="#665544" />
-        <path d="M5 90 C11 90 14 90 18 89 C14 92 9 94 5 94 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
-        <path d="M29 78 C37 81 45 85 51 89 C43 88 35 84 29 81 Z" fill="#665544" />
-        <path d="M29 78 C37 81 45 85 51 89 C43 88 35 84 29 81 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
-        <path d="M34 91 C41 92 46 93 50 95 L34 95 Z" fill="#665544" />
-        <path d="M34 91 C41 92 46 93 50 95 L34 95 Z" fill="#665544" transform="translate(120 0) scale(-1 1)" />
+        <!-- Forehead "M": a centre stripe tapering toward the nose, two inner legs,
+             and outer legs that sweep down into the arches over each eye -->
+        <path d="M58.3 25 L61.7 25 C61.8 32 61.2 40 60 47.4 C58.8 40 58.2 32 58.3 25 Z" fill="#4d3c2c" />
+        <path d="M51.6 25.4 L54.4 25 C54.8 31.4 55.6 37.6 57 43.4 C54.2 40.4 52.2 33.8 51.6 25.4 Z" fill="#4d3c2c" />
+        <path d="M51.6 25.4 L54.4 25 C54.8 31.4 55.6 37.6 57 43.4 C54.2 40.4 52.2 33.8 51.6 25.4 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <path d="M43.8 27.6 L46.9 26.8 C47.5 33 48.7 39 50.6 44.6 C46 45.6 40.2 47.6 34.2 51.6 C38.4 46.4 43.4 43.6 47.1 42.8 C45.3 38 44.2 33 43.8 27.6 Z" fill="#4d3c2c" />
+        <path d="M43.8 27.6 L46.9 26.8 C47.5 33 48.7 39 50.6 44.6 C46 45.6 40.2 47.6 34.2 51.6 C38.4 46.4 43.4 43.6 47.1 42.8 C45.3 38 44.2 33 43.8 27.6 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <!-- Dark "mascara" line from the outer corner of each eye toward the ear -->
+        <path d="M39 61.2 C33.4 61.6 27.6 62.8 20.4 66.2 C27.6 65.9 33.2 64.9 38.6 64.2 Z" fill="#4d3c2c" />
+        <path d="M39 61.2 C33.4 61.6 27.6 62.8 20.4 66.2 C27.6 65.9 33.2 64.9 38.6 64.2 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <!-- A shorter cheek swirl below it -->
+        <path d="M37.4 69.8 C33.2 70.9 28.8 72.7 24.4 75.4 C29.4 75.5 33.8 73.9 38 72 Z" fill="#4d3c2c" />
+        <path d="M37.4 69.8 C33.2 70.9 28.8 72.7 24.4 75.4 C29.4 75.5 33.8 73.9 38 72 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <!-- Mackerel stripes down the sides, varied in length and taper -->
+        <path d="M8.6 56.4 C15.8 56.6 21.8 57.8 26.6 60.6 C21 61.8 14.6 61.8 8.6 61 Z" fill="#4d3c2c" />
+        <path d="M8.6 56.4 C15.8 56.6 21.8 57.8 26.6 60.6 C21 61.8 14.6 61.8 8.6 61 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <path d="M6.4 67.4 C11 67.2 14.6 67.4 17.8 68.4 C14.4 70.2 10.2 70.8 6.4 70.6 Z" fill="#4d3c2c" />
+        <path d="M6.4 67.4 C11 67.2 14.6 67.4 17.8 68.4 C14.4 70.2 10.2 70.8 6.4 70.6 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <path d="M5 79.6 C12.2 78.8 17.2 78.6 21.6 77.8 C18.2 81.2 10.8 83.8 5 84 Z" fill="#4d3c2c" />
+        <path d="M5 79.6 C12.2 78.8 17.2 78.6 21.6 77.8 C18.2 81.2 10.8 83.8 5 84 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <path d="M5 90.2 C10.2 90 13.6 89.8 16.6 89.2 C13.6 92 9 93.8 5 94 Z" fill="#4d3c2c" />
+        <path d="M5 90.2 C10.2 90 13.6 89.8 16.6 89.2 C13.6 92 9 93.8 5 94 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <!-- Chest necklace stripes between the paws -->
+        <path d="M38 85.4 C45.6 82.2 52.8 81.2 60 81.6 C67.2 81.2 74.4 82.2 82 85.4 C74.4 84.6 67.2 84.1 60 84.3 C52.8 84.1 45.6 84.6 38 85.4 Z" fill="#4d3c2c" />
+        <path d="M38 94 C45.6 91 52.8 90.2 60 90.6 C67.2 90.2 74.4 91 82 94 C74.4 93.3 67.2 92.9 60 93.1 C52.8 92.9 45.6 93.3 38 94 Z" fill="#4d3c2c" />
       </g>
       <g id="ears" stroke="none">
-        <path id="ear-inner-left" fill="#8c6456" d="M24.2455 33.2186 C24.9881 29.256 25.0469 24.8738 27.0019 21.0968 C27.148 20.8146 27.7793 20.3508 27.9531 20.4228 C30.2794 21.3868 34.9818 25.4681 38.4267 28.1795 C38.684 28.382 38.6853 28.812 38.421 28.8463 C34.884 29.306 29.1931 30.9019 24.9837 33.5002 C24.6692 33.6943 24.19 33.5146 24.2455 33.2186 Z" />
-        <path id="ear-inner-right" fill="#8c6456" d="M95.2389 33.2442 C94.4211 29.3037 94.2152 24.9481 92.2933 21.1886 C92.1497 20.9077 91.5554 20.4449 91.3987 20.5159 C89.3013 21.4674 85.1357 25.5101 82.0744 28.195 C81.8457 28.3956 81.8595 28.8229 82.1027 28.8578 C85.3585 29.3248 90.6266 30.9275 94.5725 33.522 C94.8673 33.7159 95.3 33.5386 95.2389 33.2442 Z" />
+        <path id="ear-inner-left" fill="#c19486" d="M24.2455 33.2186 C24.9881 29.256 25.0469 24.8738 27.0019 21.0968 C27.148 20.8146 27.7793 20.3508 27.9531 20.4228 C30.2794 21.3868 34.9818 25.4681 38.4267 28.1795 C38.684 28.382 38.6853 28.812 38.421 28.8463 C34.884 29.306 29.1931 30.9019 24.9837 33.5002 C24.6692 33.6943 24.19 33.5146 24.2455 33.2186 Z" />
+        <path id="ear-inner-right" fill="#c19486" d="M95.2389 33.2442 C94.4211 29.3037 94.2152 24.9481 92.2933 21.1886 C92.1497 20.9077 91.5554 20.4449 91.3987 20.5159 C89.3013 21.4674 85.1357 25.5101 82.0744 28.195 C81.8457 28.3956 81.8595 28.8229 82.1027 28.8578 C85.3585 29.3248 90.6266 30.9275 94.5725 33.522 C94.8673 33.7159 95.3 33.5386 95.2389 33.2442 Z" />
       </g>
       <path fill="none" d="M6.85 102 C4.145 81.167 5.824 60.333 19.85 39.5 C20.233 32.5 21.204 25.5 23.85 18.5 C25.6366 13.7737 30.9171 16.7184 33.5801 18.6487 C37.2201 21.2872 40.8597 25.9281 44.5 27.85 C55.167 24.737 65.833 25.157 76.5 27.85 C79.8797 24.7339 83.2601 20.4953 86.6401 18.2995 C89.6936 16.3157 93.1739 14.4051 95.15 18.5 C98.528 25.5 98.635 32.5 99.483 39.5 C113.55 60.333 114.432 81.167 112.15 102 Z" id="outline" />
     </g>
@@ -37,6 +53,7 @@
         <ellipse cx="42" cy="62" rx="4.2" ry="4.6" />
         <ellipse cx="78" cy="62" rx="4.2" ry="4.6" />
       </g>
+      <path id="nose" fill="#c47f74" stroke-width="1.3" d="M57.5 62.9 L62.5 62.9 Q63.3 63 62.8 63.7 L60.6 65.9 Q60 66.4 59.4 65.9 L57.2 63.7 Q56.7 63 57.5 62.9 Z" />
       <g id="mouth">
         <g id="mouth-idle" fill="none" stroke-width="2.2">
           <path d="M52 66 Q51 71 56 70 Q59 70 60 66 Q61 70 64 70 Q69 71 68 66" />
@@ -48,8 +65,13 @@
       </g>
     </g>
     <g id="paw-left">
-      <path fill="#8a7259" d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" />
-      <g id="pads-left" fill="#42382d" stroke="none">
+      <path fill="#a68d6f" d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" stroke="none" />
+      <g id="paw-left-markings" clip-path="url(#paw-left-clip)" stroke="none">
+        <path d="M11 93 C17 92.4 23 93.4 27 96 C21 96.6 15 96.4 11 95.6 Z" fill="#5d4a38" />
+        <path d="M11 98.6 C18 98 25 98.8 31 101 L11 101 Z" fill="#5d4a38" />
+      </g>
+      <path fill="none" d="M13 102 C12 96 12 89 15 82 C18 76 25 73 30 76 C37 80 40 91 35 102 Z" />
+      <g id="pads-left" fill="#3b2f27" stroke="none">
         <ellipse cx="25" cy="89" rx="3.8" ry="3.2" />
         <ellipse cx="19.5" cy="85" rx="1.8" ry="2" transform="rotate(-22 19.5 85)" />
         <ellipse cx="24" cy="81.4" rx="1.8" ry="2" />
@@ -57,8 +79,13 @@
       </g>
     </g>
     <g id="paw-right">
-      <path fill="#8a7259" d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" />
-      <g id="pads-right" fill="#42382d" stroke="none">
+      <path fill="#a68d6f" d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" stroke="none" />
+      <g id="paw-right-markings" clip-path="url(#paw-right-clip)" stroke="none">
+        <path d="M11 93 C17 92.4 23 93.4 27 96 C21 96.6 15 96.4 11 95.6 Z" fill="#5d4a38" transform="translate(120 0) scale(-1 1)" />
+        <path d="M11 98.6 C18 98 25 98.8 31 101 L11 101 Z" fill="#5d4a38" transform="translate(120 0) scale(-1 1)" />
+      </g>
+      <path fill="none" d="M85 102 C80 91 83 80 90 76 C95 73 102 76 105 82 C108 89 108 96 107 102 Z" />
+      <g id="pads-right" fill="#3b2f27" stroke="none">
         <ellipse cx="95" cy="89" rx="3.8" ry="3.2" />
         <ellipse cx="101" cy="85" rx="1.8" ry="2" transform="rotate(22 101 85)" />
         <ellipse cx="96" cy="81.4" rx="1.8" ry="2" />

@@ -32,12 +32,12 @@ from window_chrome import ThemedTitleBar, NativeWindowChrome
 
 CAT_STYLE_LABELS = {
     "Mix it up": "alternate",
-    "Gray tabby": "gray",
-    "Ginger tabby": "ginger",
-    "Charcoal": "charcoal",
-    "Brown tabby": "brown-tabby",
-    "White": "white",
-    "Black & white": "black-white",
+    "Mushroom": "gray",
+    "Donut": "ginger",
+    "Peanut": "charcoal",
+    "Leo": "brown-tabby",
+    "Maru": "white",
+    "Allie": "black-white",
 }
 PLACEMENT_LABELS = {
     "Above · right": "above-right",

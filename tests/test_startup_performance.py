@@ -176,7 +176,7 @@ class StartupReviewRegressionTests(unittest.TestCase):
         self.assertTrue(observed)
         self.assertEqual(observed[0][1], 0)
         self.assertTrue(observed[0][2])
-        self.assertTrue(any('White' in text for text in observed[0][0]))
+        self.assertTrue(any('Maru' in text for text in observed[0][0]))
         # Aqua can dispatch the child's Map before updating its toplevel's
         # mapped flag. Check ancestor visibility after the event loop settles;
         # the child-map snapshot still proves the shell precedes rendering.

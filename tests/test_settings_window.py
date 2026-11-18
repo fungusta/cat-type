@@ -1132,7 +1132,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
 
         view.window.geometry("1200x600")
         view.window.update()
-        self.assertEqual(view.cat_style_buttons["Gray tabby"].grid_info()["column"], 1)
+        self.assertEqual(view.cat_style_buttons["Mushroom"].grid_info()["column"], 1)
 
     def test_setting_action_text_fits_its_face_at_default_and_large_scaling(self) -> None:
         def assert_text_fits(button):
@@ -1277,16 +1277,16 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Above · right",
             "All time",
             "All-time keystrokes",
-            "Black & white",
-            "Brown tabby",
+            "Allie",
+            "Leo",
             "Close",
-            "Charcoal",
+            "Peanut",
             "Check for updates",
             "Columns",
             "Favorite spot",
             "Where your typing companion settles in.",
-            "Ginger tabby",
-            "Gray tabby",
+            "Donut",
+            "Mushroom",
             "Hang around",
             "How long the cat stays after typing.",
             "Let the cat fade away gently.",
@@ -1307,7 +1307,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Start Cat Type when I sign in",
             "Have the companion ready when your day starts.",
             "Today",
-            "White",
+            "Maru",
             f"Version {APP_VERSION}" + (" · Beta" if IS_BETA_BUILD else ""),
             "View",
             "keystrokes",
@@ -2381,7 +2381,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_narrow_layout_can_scroll_to_every_cat_style_choice(self) -> None:
         self.settings_window.window.geometry("700x480")
         self.settings_window.window.update()
-        last_button = self.settings_window.cat_style_buttons["Black & white"]
+        last_button = self.settings_window.cat_style_buttons["Allie"]
         fully_visible = False
         for step in range(21):
             self.settings_window.scroll_canvas.yview_moveto(step / 20)
@@ -2564,15 +2564,15 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             for label, button in self.settings_window.cat_style_buttons.items()
         }
 
-        self.settings_window.cat_style_buttons["Ginger tabby"].invoke()
+        self.settings_window.cat_style_buttons["Donut"].invoke()
         self.settings_window.window.update()
 
-        self.assertEqual(self.settings_window.cat_style.get(), "Ginger tabby")
+        self.assertEqual(self.settings_window.cat_style.get(), "Donut")
         for label, button in self.settings_window.cat_style_buttons.items():
             with self.subTest(label=label):
                 expected = (
                     self.settings_window.FOCUS
-                    if label == "Ginger tabby"
+                    if label == "Donut"
                     else self.settings_window.BORDER
                 )
                 self.assertEqual(button.cget("highlightbackground"), expected)
@@ -2620,17 +2620,17 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             tuple(self.settings_window.cat_style_buttons),
             (
                 "Mix it up",
-                "Gray tabby",
-                "Ginger tabby",
-                "Charcoal",
-                "Brown tabby",
-                "White",
-                "Black & white",
+                "Mushroom",
+                "Donut",
+                "Peanut",
+                "Leo",
+                "Maru",
+                "Allie",
             ),
         )
 
     def test_non_white_cat_choice_is_applied_automatically(self) -> None:
-        self.settings_window.cat_style_buttons["Black & white"].invoke()
+        self.settings_window.cat_style_buttons["Allie"].invoke()
 
         saved_settings = self.on_save.call_args.args[0]
         self.assertEqual(saved_settings.cat_style, "black-white")
@@ -2642,7 +2642,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             self.assertFalse(store.path.exists())
             cases = (
                 ("enabled", False, False),
-                ("cat_style", "Black & white", "black-white"),
+                ("cat_style", "Allie", "black-white"),
                 ("size_percent", 125, 125),
                 ("hold_seconds", 2.0, 2.0),
                 ("fade_seconds", 1.5, 1.5),
