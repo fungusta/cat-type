@@ -218,5 +218,16 @@
    "Cat-Type-Linux-arm64.tar.gz": 66,
    "SHA256SUMS.txt": 114
   }
+ },
+ {
+  "at": "2026-11-20T16:16:31+08:00",
+  "totals": {
+   "Cat-Type-Windows-x64.exe": 119,
+   "Cat-Type-macOS-arm64.dmg": 75,
+   "Cat-Type-macOS-x64.dmg": 66,
+   "Cat-Type-Linux-x64.tar.gz": 131,
+   "Cat-Type-Linux-arm64.tar.gz": 66,
+   "SHA256SUMS.txt": 114
+  }
  }
 ]
