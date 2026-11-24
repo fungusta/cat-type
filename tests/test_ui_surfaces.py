@@ -160,6 +160,29 @@ class RewardMarkTests(unittest.TestCase):
         self.assertEqual(icon.cget("text"), "Metrics · New")
         self.assertTrue(str(super(ui_surfaces.RoundedChoice, icon).cget("text")).endswith("Metrics · New"))
 
+    def test_choice_never_enters_the_native_active_state(self):
+        # Tk's class bindings switch a pressed or re-entered button to its
+        # "active" state; on macOS that draws a dark bevel over the pill face.
+        root = tk.Tk()
+        self.addCleanup(root.destroy)
+        rail = tk.Frame(root, background="#FFFFFF")
+        rail.pack()
+        chosen = []
+        variable = tk.StringVar(master=root)
+        choice = ui_surfaces.RoundedChoice(rail, text="Metrics", variable=variable, value="Metrics",
+                                           indicatoron=False, command=lambda: chosen.append(1))
+        choice.pack()
+        root.update()
+        choice.event_generate("<Enter>", x=5, y=5)
+        choice.event_generate("<Button-1>", x=5, y=5)
+        self.assertNotEqual(choice.cget("state"), "active")
+        choice.event_generate("<Leave>", x=-5, y=-5)
+        choice.event_generate("<Enter>", x=5, y=5)
+        self.assertNotEqual(choice.cget("state"), "active")
+        choice.event_generate("<ButtonRelease-1>", x=5, y=5)
+        self.assertEqual(variable.get(), "Metrics")
+        self.assertEqual(chosen, [1])
+
     def test_choices_wrap_into_rows_without_sharing_column_widths(self):
         root = tk.Tk()
         self.addCleanup(root.destroy)

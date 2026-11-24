@@ -443,7 +443,25 @@ class RoundedChoice(tk.Radiobutton):
         self.bind("<ButtonRelease-1>", lambda _event: self._set_pressed(False), add="+")
         self.bind("<FocusIn>", lambda _event: self._set_focus(True), add="+")
         self.bind("<FocusOut>", lambda _event: self._set_focus(False), add="+")
+        self._keep_native_state_calm()
         self._render()
+
+    def _keep_native_state_calm(self) -> None:
+        """Stop Tk's class bindings leaving the button in its "active" state.
+
+        The face image already draws hover and press, but Tk still switches a
+        pressed (or re-entered while pressed) button to "active", and macOS
+        draws a dark bevel along the top and left edges in that state, even
+        with no border. A tag that runs after the class bindings resets it;
+        press tracking and invoke-on-release stay with Tk.
+        """
+        tag = "RoundedChoiceCalm"
+        script = 'if {[%W cget -state] eq "active"} {%W configure -state normal}'
+        for sequence in ("<Button-1>", "<Enter>"):
+            self.bind_class(tag, sequence, script)
+        tags = list(self.bindtags())
+        tags.insert(tags.index(self.winfo_class()) + 1, tag)
+        self.bindtags(tuple(tags))
 
     def _label(self) -> str:
         if self._label_var is not None:
