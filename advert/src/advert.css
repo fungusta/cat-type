@@ -1,0 +1,337 @@
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url("fonts/nunito-latin-700-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Nunito";
+  font-style: normal;
+  font-weight: 800;
+  font-display: block;
+  src: url("fonts/nunito-latin-800-normal.woff2") format("woff2");
+}
+
+:root {
+  --cream: #fff9f3;
+  --ink: #302a33;
+  --butter: #f2d66b;
+  --butter-soft: #fff1b8;
+  --butter-ink: #5c4a1f;
+  --muted: #575059;
+  --track: #ece5de;
+  --chip: #f5f0ea;
+  --border: #e8e1da;
+}
+
+html, body { margin: 0; background: var(--cream); }
+
+#root {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: "Nunito", sans-serif;
+}
+
+/* Scene 1-2 stage. Layout is given at the close camera (scale 1); stage.js scales #camera. */
+#scene-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+#camera {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 960px 540px;
+}
+
+/* stage.js moves and scales this per scene, about the cat's centre (x 960, y 467 at camera 1). */
+#cat-spot {
+  position: absolute;
+  inset: 0;
+  transform-origin: 960px 467px;
+}
+
+/* The cat artwork fills y 13-102 of its 120-unit box: a 700 px box shows a cat about 520 px tall. */
+#cat-rig {
+  position: absolute;
+  left: 610px;
+  top: 132px;
+  width: 700px;
+  height: 700px;
+  transform-origin: 50% 85%;
+}
+
+/* The end scene pops and hops the brand look about its feet. */
+.look {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 85%;
+}
+
+.look .cat {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* The ghost holds the whole sentence so the line is centred on its final width; the live text types over it from the left. */
+#typed-line {
+  position: absolute;
+  top: 780px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: pre;
+}
+
+#typed-ghost,
+#typed-live {
+  grid-area: 1 / 1;
+}
+
+#typed-ghost {
+  visibility: hidden;
+  padding-right: 14px;
+}
+
+#caret {
+  display: inline-block;
+  width: 7px;
+  height: 0.86em;
+  margin-left: 6px;
+  vertical-align: -0.1em;
+  border-radius: 4px;
+  background: var(--ink);
+}
+
+/* Word cards: full-frame butter over the stage; HyperFrames shows each for its clip. */
+.card {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: var(--butter);
+}
+
+.card-text {
+  margin: 0;
+  font-size: 150px;
+  font-weight: 800;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Unlock scene (14-18 s): the cat stands on the left (stage.js); counter and tiles fill the right. */
+#unlock-ui {
+  position: absolute;
+  top: 0;
+  left: 960px;
+  width: 860px;
+  height: 1080px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 64px;
+  visibility: hidden;
+}
+
+#counter-block { text-align: center; }
+
+#counter {
+  margin: 0;
+  font-size: 120px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+#counter-label {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 40px;
+  font-weight: 700;
+}
+
+/* Tiles, after the website's accessory locker: locked = grey, faded, padlock; unlocked = butter-soft, tick. */
+#tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 260px);
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 36px 16px 30px;
+  border: 3px solid var(--border);
+  border-radius: 36px;
+  background: var(--track);
+}
+
+.tile-art { width: 140px; height: 140px; }
+.tile-art svg { display: block; width: 100%; height: 100%; }
+
+.tile-name {
+  margin: 0;
+  color: var(--muted);
+  font-size: 32px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tile-badge {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--chip);
+  color: var(--muted);
+}
+
+.tile-badge svg { width: 22px; height: 22px; }
+.tile .badge-tick { display: none; }
+.tile:not(.is-unlocked) .tile-art { filter: grayscale(1); opacity: .45; }
+
+.tile.is-unlocked { border-color: var(--butter); background: var(--butter-soft); }
+.tile.is-unlocked .tile-name { color: var(--ink); }
+.tile.is-unlocked .tile-badge { background: var(--butter); color: var(--butter-ink); }
+.tile.is-unlocked .badge-lock { display: none; }
+.tile.is-unlocked .badge-tick { display: block; }
+
+/* Track scene (19-23 s): a white card after the website's Track band; the cat taps in the lower right (stage.js). */
+#track-ui {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  visibility: hidden;
+}
+
+#track-card {
+  box-sizing: border-box;
+  width: 1200px;
+  padding: 56px;
+  border: 2px solid var(--border);
+  border-radius: 28px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(92, 74, 31, .10), 0 4px 12px rgba(48, 42, 51, .06);
+}
+
+#stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  margin: 0 0 56px;
+}
+
+.stat {
+  padding: 28px 32px;
+  border-radius: 28px;
+  background: #fbf7f2;
+}
+
+.stat dt { color: var(--muted); font-size: 34px; font-weight: 700; }
+.stat dd { margin: 6px 0 0; font-size: 72px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+#chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 28px;
+  height: 340px;
+}
+
+.bar { display: grid; grid-template-rows: 1fr auto; gap: 16px; height: 100%; }
+.bar-fill { border-radius: 20px 20px 8px 8px; background: var(--track); transform-origin: 50% 100%; }
+.bar-today .bar-fill { background: var(--butter); }
+.bar-label { margin: 0; color: var(--muted); font-size: 32px; font-weight: 700; text-align: center; }
+
+/* End card (23-27 s): the cat stands at centre-top (stage.js); title, pill and URL stack under it. */
+#end-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 550px;
+  visibility: hidden;
+}
+
+#end-title {
+  margin: 0;
+  font-size: 160px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+#end-line {
+  margin: 48px 0 0;
+  padding: 22px 52px;
+  border: 3px solid #e6c650;
+  border-radius: 999px;
+  background: var(--butter);
+  color: var(--butter-ink);
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+#end-url {
+  margin: 40px 0 0;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* Rises and fades above the cat's head (stage.js tweens it from 25 s). */
+#heart {
+  position: absolute;
+  left: 50%;
+  top: 70px;
+  margin-left: -60px;
+  width: 120px;
+  color: #ef6f95;
+  font-size: 110px;
+  line-height: 1;
+  text-align: center;
+  opacity: 0;
+}
+
+/* Static cat rules restated from site/cat.css: paws squash toward their base; the face follows .is-excited. */
+.cat .cat-paw-left,
+.cat .cat-paw-right {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+
+.cat .cat-mouth-excited { display: none; }
+.cat.is-excited .cat-mouth-idle { display: none; }
+.cat.is-excited .cat-mouth-excited { display: inline; }
