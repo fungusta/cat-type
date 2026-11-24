@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
   <title>Leo — editable idle pose</title>
-  <desc>Editable brown mackerel tabby (Leo) with a continuous head, ear and body outline: forehead "M", dark eye lines, cheek swirls and a brick-pink nose. Inner-ear fills, face, paws and toe beans are separate editable parts.</desc>
+  <desc>Editable brown mackerel tabby (Leo) with a continuous head, ear and body outline: forehead "M", cream eye rings, dark eye lines, cheek swirls and a brick-pink nose. Inner-ear fills, face, paws and toe beans are separate editable parts.</desc>
   <defs>
     <clipPath id="body-clip">
       <path d="M6.85 102 C4.145 81.167 5.824 60.333 19.85 39.5 C20.233 32.5 21.204 25.5 23.85 18.5 C25.6366 13.7737 30.9171 16.7184 33.5801 18.6487 C37.2201 21.2872 40.8597 25.9281 44.5 27.85 C55.167 24.737 65.833 25.157 76.5 27.85 C79.8797 24.7339 83.2601 20.4953 86.6401 18.2995 C89.6936 16.3157 93.1739 14.4051 95.15 18.5 C98.528 25.5 98.635 32.5 99.483 39.5 C113.55 60.333 114.432 81.167 112.15 102 Z" />
@@ -23,6 +23,9 @@
         <path d="M51.6 25.4 L54.4 25 C54.8 31.4 55.6 37.6 57 43.4 C54.2 40.4 52.2 33.8 51.6 25.4 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
         <path d="M43.8 27.6 L46.9 26.8 C47.5 33 48.7 39 50.6 44.6 C46 45.6 40.2 47.6 34.2 51.6 C38.4 46.4 43.4 43.6 47.1 42.8 C45.3 38 44.2 33 43.8 27.6 Z" fill="#4d3c2c" />
         <path d="M43.8 27.6 L46.9 26.8 C47.5 33 48.7 39 50.6 44.6 C46 45.6 40.2 47.6 34.2 51.6 C38.4 46.4 43.4 43.6 47.1 42.8 C45.3 38 44.2 33 43.8 27.6 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />
+        <!-- Pale cream rings around the eyes -->
+        <ellipse cx="42" cy="62" rx="6.8" ry="7.1" fill="#d4c2a5" />
+        <ellipse cx="78" cy="62" rx="6.8" ry="7.1" fill="#d4c2a5" />
         <!-- Dark "mascara" line from the outer corner of each eye toward the ear -->
         <path d="M39 61.2 C33.4 61.6 27.6 62.8 20.4 66.2 C27.6 65.9 33.2 64.9 38.6 64.2 Z" fill="#4d3c2c" />
         <path d="M39 61.2 C33.4 61.6 27.6 62.8 20.4 66.2 C27.6 65.9 33.2 64.9 38.6 64.2 Z" fill="#4d3c2c" transform="translate(120 0) scale(-1 1)" />

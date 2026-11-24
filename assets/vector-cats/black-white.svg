@@ -23,6 +23,7 @@
         <ellipse cx="42" cy="62" rx="4.2" ry="4.6" />
         <ellipse cx="78" cy="62" rx="4.2" ry="4.6" />
       </g>
+      <path id="nose" fill="#e48a98" stroke-width="1.3" d="M57.5 62.9 L62.5 62.9 Q63.3 63 62.8 63.7 L60.6 65.9 Q60 66.4 59.4 65.9 L57.2 63.7 Q56.7 63 57.5 62.9 Z" />
       <g id="mouth">
         <g id="mouth-idle" fill="none" stroke-width="2.2">
           <path d="M52 66 Q51 71 56 70 Q59 70 60 66 Q61 70 64 70 Q69 71 68 66" />
