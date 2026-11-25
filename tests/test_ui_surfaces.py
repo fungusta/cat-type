@@ -2,6 +2,8 @@ import tkinter as tk
 import unittest
 from unittest.mock import patch
 
+from PIL import Image, ImageColor
+
 import ui_surfaces
 from ui_surfaces import MOTION_FAST_MS, RoundedAction, Tween, render_soft_pill
 
@@ -182,6 +184,36 @@ class RewardMarkTests(unittest.TestCase):
         choice.event_generate("<ButtonRelease-1>", x=5, y=5)
         self.assertEqual(variable.get(), "Metrics")
         self.assertEqual(chosen, [1])
+
+    def test_badge_sits_after_the_label_and_becomes_a_dot_when_compact(self):
+        root = tk.Tk()
+        self.addCleanup(root.destroy)
+        rail = tk.Frame(root, background="#FFFFFF")
+        rail.pack()
+        selected = tk.StringVar(master=root, value="Settings")
+        choice = ui_surfaces.RoundedChoice(rail, text="Achievements", variable=selected,
+                                           value="Achievements", icon="achievements")
+        choice.pack()
+        root.update()
+        plain_width = choice._size[0]
+        choice.set_badge("NEW")
+        self.assertEqual(choice.cget("text"), "Achievements")
+        self.assertEqual(choice.cget("accessible_name"), "Achievements, new")
+        badge = ui_surfaces.badge_image("NEW", choice._icon_size)
+        self.assertGreaterEqual(choice._size[0], plain_width + badge.width)
+        # The badge's orange shows on the face, right of the label's middle.
+        face = choice._with_icon(Image.new("RGB", choice._size, "#FFFFFF"))
+        orange = ImageColor.getrgb(ui_surfaces.UNREAD_DOT)
+        row = face.height // 2
+        columns = [x for x in range(face.width)
+                   if max(abs(a - b) for a, b in zip(face.getpixel((x, row)), orange)) < 24]
+        self.assertTrue(columns)
+        self.assertGreater(min(columns), face.width // 2)
+        choice.set_compact(True)
+        self.assertEqual(choice.cget("text"), "Achievements")
+        choice.set_compact(False)
+        choice.set_badge("")
+        self.assertEqual(choice._size[0], plain_width)
 
     def test_choices_wrap_into_rows_without_sharing_column_widths(self):
         root = tk.Tk()

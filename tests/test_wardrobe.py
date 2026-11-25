@@ -282,7 +282,6 @@ class WardrobeTests(unittest.TestCase):
         window.window.update()
         self.assertIsNotNone(window._try_on_frame)
         self.assertEqual(stage.itemcget(window._rail_preview_image, 'image'), str(window._try_on_frame))
-        self.assertEqual(window.rail_brand_subtitle.cget('text'), 'Trying on Crown')
         # The preview holds while the saved outfit's loop keeps ticking.
         window._display_preview()
         self.assertEqual(stage.itemcget(window._rail_preview_image, 'image'), str(window._try_on_frame))
@@ -293,12 +292,10 @@ class WardrobeTests(unittest.TestCase):
         tile.event_generate('<Leave>')
         view.tiles['party-hat'].event_generate('<Enter>')
         window.window.update()
-        self.assertEqual(window.rail_brand_subtitle.cget('text'), 'Trying on Party hat')
         view.tiles['party-hat'].event_generate('<Leave>')
         window.window.after(TRY_ON_RESTORE_MS * 3)
         window.window.update()
         self.assertIsNone(window._try_on_frame)
-        self.assertEqual(window.rail_brand_subtitle.cget('text'), 'companion studio')
         self.assertNotEqual(stage.itemcget(window._rail_preview_image, 'image'), '')
         self.assertTrue(saved_image)
 
@@ -315,7 +312,6 @@ class WardrobeTests(unittest.TestCase):
         self.assertIsNotNone(window._try_on_frame)
         window.page_buttons['Metrics'].invoke()
         self.assertIsNone(window._try_on_frame)
-        self.assertEqual(window.rail_brand_subtitle.cget('text'), 'companion studio')
 
     def test_failed_try_on_render_keeps_the_saved_outfit(self):
         import settings_window
@@ -324,7 +320,6 @@ class WardrobeTests(unittest.TestCase):
             window.wardrobe.tiles['crown'].event_generate('<Enter>')
             window.window.update()
         self.assertIsNone(window._try_on_frame)
-        self.assertEqual(window.rail_brand_subtitle.cget('text'), 'companion studio')
 
     # Choosing --------------------------------------------------------------
 

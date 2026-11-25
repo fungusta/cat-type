@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import sys
 import tkinter as tk
 import tempfile
@@ -15,7 +16,7 @@ from app_version import APP_VERSION, IS_BETA_BUILD
 from cat_settings import CAT_VARIANTS, AppSettings, SettingsStore
 from settings_window import CatScale, SettingsWindow
 from usage_metrics import UsageMetrics
-from ui_surfaces import RoundedAction, RoundedBadge, soft_pill_radius
+from ui_surfaces import RoundedAction, RoundedBadge, pill_border, soft_pill_radius
 
 
 class SettingsWindowSizingTests(unittest.TestCase):
@@ -864,7 +865,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         view.window.update()
         self.assertTrue(view.rail_compact)
         self.assertLess(view.page_switcher.winfo_width(), full)
-        self.assertFalse(view.rail_brand_title.winfo_ismapped())
         for label, button in view.page_buttons.items():
             # Icon only, but the label stays the button's name.
             self.assertTrue(button._compact)
@@ -874,7 +874,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         view.window.geometry(f"{roomy}x700")
         view.window.update()
         self.assertFalse(view.rail_compact)
-        self.assertTrue(view.rail_brand_title.winfo_ismapped())
 
     def test_navigation_items_carry_icons(self) -> None:
         for label, button in self.settings_window.page_buttons.items():
@@ -1266,8 +1265,6 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             "Metrics",
             "Wardrobe",
             "Achievements",
-            "Cat Type",
-            "companion studio",
             "Companion",
             "Behavior",
             "Cat style",
@@ -1333,10 +1330,12 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
     def test_companion_studio_shell_puts_preview_in_the_rail(self) -> None:
         rail = self.settings_window.page_switcher
         self.assertIs(self.settings_window.rail_preview.master, rail.content)
-        self.assertEqual(self.settings_window.rail_brand_title.cget("text"), "Cat Type")
+        # The cat stage stands alone: no brand title or subtitle under it.
+        self.assertFalse(hasattr(self.settings_window, "rail_brand_title"))
+        self.assertFalse(hasattr(self.settings_window, "rail_brand_subtitle"))
         self.assertFalse(hasattr(self.settings_window, "companion_header"))
 
-    def test_rail_preview_is_a_large_square_stage_above_the_brand(self) -> None:
+    def test_rail_preview_is_a_large_square_stage_above_the_navigation(self) -> None:
         self.settings_window.window.geometry("920x800")
         self.settings_window.window.update()
         preview = self.settings_window.rail_preview
@@ -1348,10 +1347,8 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(width, self.settings_window._rail_stage_max)
         self.assertGreaterEqual(width, pill_width)
         self.assertGreaterEqual(width, 120)
-        self.assertGreater(
-            int(self.settings_window.rail_brand_title.grid_info()["row"]),
-            int(preview.grid_info()["row"]),
-        )
+        nav = next(iter(self.settings_window.page_buttons.values())).master
+        self.assertGreater(int(nav.grid_info()["row"]), int(preview.grid_info()["row"]))
 
     def test_rail_preview_stays_in_view_while_the_page_scrolls(self) -> None:
         self.settings_window.window.geometry("920x600")
@@ -2818,6 +2815,24 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.assertEqual(pack_info.get("fill"), "both")
         self.assertTrue(bool(int(pack_info.get("expand", 0))))
 
+    def test_saved_pill_edge_is_not_broken_by_the_label_corners(self) -> None:
+        view = self.settings_window
+        view.save_status.set("Saved!")
+        view.window.update()
+        surface = view.save_status_surface
+        self.assertEqual(surface._border, pill_border(view.ACCENT))
+        radius, padding = surface._radius, surface._padding
+        height = surface.winfo_height()
+        # The shelf face is inset 2px at the sides, 1px at the top and 4px at
+        # the bottom; the label's square corners must sit inside its curve.
+        for corner, centre in (
+            ((padding, padding), (2 + radius, 1 + radius)),
+            ((padding, height - padding), (2 + radius, height - 4 - radius)),
+        ):
+            with self.subTest(corner=corner):
+                self.assertLessEqual(math.dist(corner, centre), radius)
+        view._clear_save_feedback()
+
     def test_failure_status_surface_has_room_for_retry_copy(self) -> None:
         self.settings_window.save_status.set("Couldn't save this change. Try again.")
         self.settings_window.window.update_idletasks()
@@ -2827,22 +2842,22 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             + (self.settings_window.save_status_surface._padding * 2),
         )
 
-    def test_achievements_new_indicator_has_room_for_long_label(self) -> None:
+    def test_achievements_new_indicator_is_a_badge_that_fits_the_rail(self) -> None:
         button = self.settings_window.page_buttons["Achievements"]
-        short_width = button.winfo_reqwidth()
+        rail_width = self.settings_window.page_switcher.content.winfo_width()
         self.settings_window._achievements_unread = True
         self.settings_window._refresh_achievement_indicator()
         self.settings_window.window.update_idletasks()
-        self.assertGreaterEqual(button.winfo_reqwidth(), short_width)
-        expected_width = tkfont.Font(
-            button,
-            font=button.cget("font"),
-        ).measure("Achievements · New") + (14 * 2) + 8
-        self.assertGreaterEqual(button.winfo_reqwidth(), expected_width)
-        self.assertLessEqual(
-            button.winfo_reqwidth(),
-            self.settings_window.page_switcher.content.winfo_width(),
-        )
+        # The label stays "Achievements"; the unread state is a separate badge.
+        self.assertEqual(button.cget("text"), "Achievements")
+        self.assertEqual(button._badge, "NEW")
+        self.assertEqual(button.cget("accessible_name"), "Achievements, new")
+        self.assertLessEqual(button.winfo_reqwidth(), rail_width)
+        # The rail was sized for the badge, so it does not grow when one appears.
+        self.assertEqual(self.settings_window.page_switcher.content.winfo_width(), rail_width)
+        self.settings_window._achievements_unread = False
+        self.settings_window._refresh_achievement_indicator()
+        self.assertEqual(button._badge, "")
 
     def test_achievements_new_indicator_scales_with_tk_font(self) -> None:
         root_scaling = float(self.root.tk.call("tk", "scaling"))
@@ -2856,11 +2871,7 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
             scaled._refresh_achievement_indicator()
             scaled.window.update_idletasks()
             button = scaled.page_buttons["Achievements"]
-            expected_width = tkfont.Font(
-                button,
-                font=button.cget("font"),
-            ).measure("Achievements · New") + (14 * 2) + 8
-            self.assertGreaterEqual(button.winfo_reqwidth(), expected_width)
+            self.assertEqual(button._badge, "NEW")
             self.assertLessEqual(
                 button.winfo_reqwidth(),
                 scaled.page_switcher.content.winfo_width(),

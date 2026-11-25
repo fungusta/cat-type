@@ -15,8 +15,8 @@ from cat_accessories import ACCESSORY_BLURBS, ACCESSORY_BY_ID, ACCESSORY_SLOTS, 
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
 from ui_surfaces import (
-    BUTTON_HOVER, RoundedChoice, RoundedPanel, Tween, blend, faded_art, flow_choices,
-    progress_bar_image, soft_pill_image, status_mark_image,
+    BUTTON_CURSOR, BUTTON_HOVER, RoundedChoice, RoundedPanel, Tween, blend, faded_art,
+    flow_choices, progress_bar_image, soft_pill_image, status_mark_image,
 )
 
 
@@ -47,7 +47,7 @@ class AccessoryTile(tk.Canvas):
     ) -> None:
         super().__init__(
             parent, width=1, height=1, background=palette["card"],
-            highlightthickness=0, borderwidth=0, takefocus=True, cursor="hand2",
+            highlightthickness=0, borderwidth=0, takefocus=True, cursor=BUTTON_CURSOR,
         )
         self.item_id = item_id
         self.slot = slot
@@ -329,7 +329,7 @@ class WardrobeView(tk.Frame):
                 activebackground=palette["peach"], foreground=palette["ink"],
                 relief="flat", borderwidth=0, padx=12, pady=5,
                 highlightthickness=1, highlightcolor=palette["accent_dark"],
-                highlightbackground=palette["border"], takefocus=True, cursor="hand2",
+                highlightbackground=palette["border"], takefocus=True, cursor=BUTTON_CURSOR,
             )
         self._filter_width = 0
         self.filter_bar.bind("<Configure>", self._flow_filters, add="+")

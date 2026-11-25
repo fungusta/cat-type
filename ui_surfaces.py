@@ -9,7 +9,7 @@ import tkinter as tk
 from collections.abc import Callable
 
 from tkinter import font as tkfont
-from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageTk
+from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageTk
 
 
 BUTTON_SHADOW = "#4A3428"
@@ -22,6 +22,9 @@ BUTTON_DISABLED = "#F3EFEA"
 UNREAD_DOT = "#D9822B"
 BUTTON_DISABLED_EDGE = "#E8E1DA"
 SOFT_PILL_MAX_RADIUS = 14
+# The system pointing hand. Tk's "hand2" is the native hand on Windows and X11,
+# but on macOS it is an old bitmap; "pointinghand" is the one Mac apps use.
+BUTTON_CURSOR = "pointinghand" if sys.platform == "darwin" else "hand2"
 # Fluent motion timings: hover/press feedback is "fast", state changes "normal".
 MOTION_FAST_MS = 120
 MOTION_NORMAL_MS = 167
@@ -42,6 +45,13 @@ def blend(start: str, end: str, amount: float) -> str:
     return "#{:02X}{:02X}{:02X}".format(
         *(round(a + (b - a) * amount) for a, b in zip(first, second))
     )
+
+
+def pill_border(fill: str) -> str:
+    """The warm hairline every pill face uses: neutral on white, tinted otherwise."""
+    if ImageColor.getrgb(fill)[:3] == (255, 255, 255):
+        return BUTTON_BORDER
+    return blend(fill, "#7A5C2E", 0.2)
 
 
 def ease_out(progress: float) -> float:
@@ -163,11 +173,7 @@ def soft_pill_image(
     if disabled:
         fill, border = BUTTON_DISABLED, BUTTON_DISABLED_EDGE
     elif border is None:
-        border = (
-            BUTTON_BORDER
-            if ImageColor.getrgb(fill)[:3] == (255, 255, 255)
-            else blend(fill, "#7A5C2E", 0.2)
-        )
+        border = pill_border(fill)
     if focused and not disabled:
         border = BUTTON_INK
     key = (surface, width, height, fill, pressed, focused, disabled, lift, flat, border)
@@ -368,12 +374,58 @@ def nav_icon_image(kind: str, size: int, color: str = BUTTON_INK) -> Image.Image
     return _cached_mark(("nav", kind, size, color), draw)
 
 
+# Bold system faces for text drawn into images; Pillow's own font is the fallback.
+_BADGE_FONT_FILES = (
+    ("/System/Library/Fonts/Avenir Next.ttc", 0),  # Bold
+    ("/System/Library/Fonts/SFNS.ttf", 0),
+    ("C:/Windows/Fonts/seguisb.ttf", 0),  # Segoe UI Semibold
+    ("C:/Windows/Fonts/segoeuib.ttf", 0),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0),
+)
+
+
+@functools.lru_cache(maxsize=16)
+def _badge_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path, index in _BADGE_FONT_FILES:
+        try:
+            return ImageFont.truetype(path, size, index=index)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)
+
+
+def badge_image(text: str, height: int) -> Image.Image:
+    """A small Butter-orange capsule with white caps, e.g. an unread "NEW" mark."""
+    height = max(8, int(height))
+
+    def draw() -> Image.Image:
+        scale = _SUPERSAMPLE
+        font = _badge_font(max(4, round(height * .56)) * scale)
+        tracking = height * .06 * scale
+        glyphs = [font.getlength(char) for char in text]
+        text_width = sum(glyphs) + tracking * max(0, len(text) - 1)
+        width = round(text_width / scale + height * .9)
+        image = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+        pen = ImageDraw.Draw(image)
+        pen.rounded_rectangle((0, 0, width * scale - 1, height * scale - 1),
+                              radius=height * scale / 2, fill=UNREAD_DOT)
+        x = (width * scale - text_width) / 2
+        for char, advance in zip(text, glyphs):
+            # Anchor on the cap-height middle so caps sit optically centred.
+            pen.text((x, height * scale / 2), char, font=font, fill="#FFFFFF", anchor="lm")
+            x += advance + tracking
+        return image.resize((width, height), Image.Resampling.LANCZOS)
+
+    return _cached_mark(("badge", text, height), draw)
+
+
 class RoundedChoice(tk.Radiobutton):
     """Native radio behavior with a softly rounded visual face.
 
     ``variant="ghost"`` keeps unselected items flush with their surface until
     hovered, which suits navigation lists. ``icon`` names a ``nav_icon_image``
-    drawn just before the centred label.
+    drawn just before the centred label; ``set_badge`` adds a small capsule,
+    such as an unread "NEW", just after it.
     """
 
     def __init__(self, parent: tk.Misc, **kwargs: object) -> None:
@@ -400,6 +452,8 @@ class RoundedChoice(tk.Radiobutton):
         self._label_var = variable
         self._label_face = face
         self._icon_pad = ""
+        self._badge = ""
+        self._badge_pad = ""
         self._compact = False
         self._display: tk.StringVar | None = None
         self._plain_label = text
@@ -416,7 +470,7 @@ class RoundedChoice(tk.Radiobutton):
                 kwargs["textvariable"] = display
             else:
                 kwargs["text"] = self._icon_pad + text
-        min_width = int(kwargs.pop("min_width", 0))
+        min_width = self._min_width = int(kwargs.pop("min_width", 0))
         padx = int(kwargs.pop("padx", 10))
         pady = int(kwargs.pop("pady", 8))
         self._size = (
@@ -470,7 +524,7 @@ class RoundedChoice(tk.Radiobutton):
 
     def _sync_icon_label(self) -> None:
         # A compact item shows only its icon; the label stays the accessible name.
-        shown = "" if self._compact else self._icon_pad + self._label()
+        shown = "" if self._compact else self._icon_pad + self._label() + self._badge_pad
         if self._display is not None:
             self._display.set(shown)
         else:
@@ -486,20 +540,49 @@ class RoundedChoice(tk.Radiobutton):
                       if compact else self._natural_size)
         self._sync_icon_label()
 
+    def set_badge(self, text: str) -> None:
+        """Show a small capsule such as "NEW" after the label; "" removes it.
+
+        Trailing spaces open room for it, as the leading ones do for the icon.
+        """
+        if not self._icon or text == self._badge:
+            return
+        self._badge = text
+        face = self._label_face
+        if text:
+            room = self._icon_gap + badge_image(text, self._icon_size).width
+            self._badge_pad = " " * -(-room // max(1, face.measure(" ")))
+        else:
+            self._badge_pad = ""
+        line = face.measure(self._icon_pad + self._label() + self._badge_pad)
+        self._natural_size = (
+            max(self._min_width, 60, line + self._text_padding * 2 + 8), self._natural_size[1],
+        )
+        if not self._compact:
+            self._size = self._natural_size
+        self._sync_icon_label()
+
     def _with_icon(self, image: Image.Image) -> Image.Image:
-        """Draw the icon in the gap the leading spaces leave before the label."""
+        """Draw the icon and badge in the gaps the label's spaces leave."""
         width, height = self._size
         size = self._icon_size
         face = self._label_face
-        top = (height - 1 - size) // 2 + (1 if self._pressed else 0)
+        nudge = 1 if self._pressed else 0
+        top = (height - 1 - size) // 2 + nudge
         if self._compact:
             left = (width - size) // 2
         else:
-            line = face.measure(self._icon_pad + self._label())
-            left = (width - line) // 2 + face.measure(self._icon_pad) - self._icon_gap - size
+            line = face.measure(self._icon_pad + self._label() + self._badge_pad)
+            start = (width - line) // 2
+            left = start + face.measure(self._icon_pad) - self._icon_gap - size
         composed = image.convert("RGBA")
         composed.alpha_composite(nav_icon_image(self._icon, size), (max(0, left), max(0, top)))
-        if self._compact and "New" in self._label():
+        if self._badge and not self._compact:
+            badge = badge_image(self._badge, size)
+            x = start + face.measure(self._icon_pad + self._label()) + self._icon_gap
+            y = (height - 1 - badge.height) // 2 + nudge
+            composed.alpha_composite(badge, (max(0, min(x, width - badge.width)), max(0, y)))
+        if self._compact and self._badge:
             # Without its label, an unread item keeps a small marker by its icon.
             dot = max(4, size // 4)
             x, y = left + size - dot // 2, top - dot // 2
@@ -595,6 +678,9 @@ class RoundedChoice(tk.Radiobutton):
             return self._accent
         if key == "highlightbackground":
             return self._edge
+        if key == "accessible_name":
+            label = self._label()
+            return f"{label}, {self._badge.lower()}" if self._badge else label
         return super().cget(key)
 
 
@@ -655,7 +741,7 @@ class RoundedAction(tk.Canvas):
             highlightthickness=0,
             borderwidth=0,
             takefocus=kwargs.pop("takefocus", True),
-            cursor=kwargs.pop("cursor", "hand2"),
+            cursor=kwargs.pop("cursor", BUTTON_CURSOR),
             **kwargs,
         )
         self.bind("<ButtonPress-1>", self._press)

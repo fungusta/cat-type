@@ -14,8 +14,8 @@ from cat_accessories import Accessory, visible_accessories
 from cat_artwork import load_frame
 from usage_metrics import UsageMetrics
 from ui_surfaces import (
-    RoundedChoice, RoundedPanel, faded_art, flow_choices, progress_bar_image, soft_pill_image,
-    status_mark_image,
+    BUTTON_CURSOR, RoundedChoice, RoundedPanel, faded_art, flow_choices, progress_bar_image,
+    soft_pill_image, status_mark_image,
 )
 
 
@@ -315,7 +315,7 @@ class AchievementsView(tk.Frame):
                 activebackground=palette["peach"], foreground=palette["ink"],
                 relief="flat", borderwidth=0, padx=12, pady=5, highlightthickness=1,
                 highlightcolor=palette["accent_dark"], highlightbackground=palette["border"],
-                takefocus=True, cursor="hand2",
+                takefocus=True, cursor=BUTTON_CURSOR,
             )
         self.filter_bar.bind(
             "<Configure>",

@@ -19,13 +19,16 @@ from usage_metrics import UsageMetrics
 from cat_accessories import ACCESSORY_BY_ID, Accessory, normalize_accessory
 from wardrobe_view import WardrobeView
 from ui_surfaces import (
+    BUTTON_CURSOR,
     MOTION_NORMAL_MS,
     RoundedPanel,
     RoundedChoice,
     RoundedAction,
     RoundedBadge,
     Tween,
+    badge_image,
     blend,
+    pill_border,
 )
 from window_chrome import ThemedTitleBar, NativeWindowChrome
 
@@ -66,7 +69,7 @@ class Toggle(tk.Frame):
         super().__init__(
             parent,
             background=background,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
             takefocus=True,
             highlightthickness=0,
         )
@@ -74,14 +77,14 @@ class Toggle(tk.Frame):
         self.accent = accent
         self.focus_ring = ink
 
-        copy = tk.Frame(self, background=background, cursor="hand2")
+        copy = tk.Frame(self, background=background, cursor=BUTTON_CURSOR)
         title_label = tk.Label(
             copy,
             text=title,
             background=background,
             foreground=ink,
             font=title_font,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
             justify="left",
             anchor="w",
         )
@@ -112,7 +115,7 @@ class Toggle(tk.Frame):
             height=34,
             background=background,
             highlightthickness=0,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
         )
         self.switch.pack(side="right", padx=(12, 0))
         copy.pack(side="left", fill="x", expand=True)
@@ -219,7 +222,7 @@ class CatScale(tk.Canvas):
             height=24,
             background=background,
             highlightthickness=0,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
             takefocus=True,
         )
         self.variable = variable
@@ -967,9 +970,12 @@ class SettingsWindow:
             self.page_heading_actions,
             background=self.BACKGROUND,
             fill=self.ACCENT,
-            border=self.ACCENT_DARK,
-            radius=16,
-            padding=6,
+            border=pill_border(self.ACCENT),
+            # The label is a plain rectangle on the face: a softer corner and
+            # an 8px inset keep its corners inside the curve, so the pill
+            # edge stays smooth instead of showing the label's square corners.
+            radius=10,
+            padding=8,
         )
         self.save_status_label = tk.Label(
             self.save_status_surface.content,
@@ -980,7 +986,7 @@ class SettingsWindow:
             anchor="center",
             justify="center",
         )
-        self.save_status_label.pack(fill="both", expand=True, pady=2)
+        self.save_status_label.pack(fill="both", expand=True)
         self.save_status.trace_add("write", self._refresh_save_status_surface)
         self._refresh_save_status_surface()
         self.columns.pack(fill="x")
@@ -999,7 +1005,7 @@ class SettingsWindow:
             text="Mix it up",
             command=self._mix_wardrobe,
             style=self.primary_button_style,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
             takefocus=True,
         )
         self._refresh_page_heading_actions()
@@ -1143,11 +1149,14 @@ class SettingsWindow:
         # leading spaces in RoundedChoice (icon plus gap, rounded up a space).
         control = self.fonts["control"]
         icon = round(control.metrics("linespace") * .8)
-        icon_room = icon + max(5, round(icon * .35)) + control.measure(" ")
+        gap = max(5, round(icon * .35))
+        icon_room = icon + gap + control.measure(" ")
+        # Achievements also makes room for its unread badge, so the rail does
+        # not change width when one appears.
+        badge_room = gap + badge_image(self.ACHIEVEMENTS_BADGE, icon).width + control.measure(" ")
         choice_widths = {
-            label: control.measure(
-                "Achievements · New" if label == "Achievements" else label
-            ) + icon_room + (14 * 2) + 8
+            label: control.measure(label) + icon_room + (14 * 2) + 8
+            + (badge_room if label == "Achievements" else 0)
             for label in page_labels
         }
         rail_content_width = max(134, max(choice_widths.values()) + 10)
@@ -1194,24 +1203,8 @@ class SettingsWindow:
         )
         self._draw_rail_stage()
         self.rail_preview.bind("<Map>", self._start_hydration, add="+")
-        self.rail_brand_title = tk.Label(
-            tabs,
-            text="Cat Type",
-            background=self.CARD,
-            foreground=self.INK,
-            font=self.fonts["section"],
-        )
-        self.rail_brand_title.grid(row=1, column=0)
-        self.rail_brand_subtitle = tk.Label(
-            tabs,
-            text="companion studio",
-            background=self.CARD,
-            foreground=self.MUTED,
-            font=self.fonts["tiny"],
-        )
-        self.rail_brand_subtitle.grid(row=2, column=0, pady=(0, 10))
         nav = tk.Frame(tabs, background=self.CARD)
-        nav.grid(row=3, column=0, sticky="ew")
+        nav.grid(row=1, column=0, sticky="ew")
         self.page_switcher.configure(width=rail_content_width + 20)
         self.page_switcher.content.configure(width=rail_content_width)
         self.page_host = tk.Frame(page_parent, background=self.BACKGROUND)
@@ -1241,7 +1234,7 @@ class SettingsWindow:
                 font=self.fonts["control"],
                 padx=14,
                 pady=12,
-                cursor="hand2",
+                cursor=BUTTON_CURSOR,
                 takefocus=True,
                 min_width=max(60, rail_content_width - 8),
                 variant="ghost",
@@ -1270,6 +1263,7 @@ class SettingsWindow:
         self._refresh_achievement_indicator()
 
     RAIL_STAGE_RADIUS = 18
+    ACHIEVEMENTS_BADGE = "NEW"
     RAIL_OUTER = 26 + 18 + 20  # rail padx plus its shelf padding
 
     def _fit_rail_mode(self, _event: tk.Event[tk.Misc] | None = None) -> None:
@@ -1295,14 +1289,10 @@ class SettingsWindow:
             button.set_compact(compact)
         if compact:
             width = max(button._size[0] for button in self.page_buttons.values()) + 8
-            self.rail_brand_title.grid_remove()
-            self.rail_brand_subtitle.grid_remove()
             self._rail_stage_max = width - 8
             self._rail_stage_min = min(self._rail_stage_min, self._rail_stage_max)
         else:
             width = self._rail_expanded_width
-            self.rail_brand_title.grid()
-            self.rail_brand_subtitle.grid()
             self._rail_stage_min, self._rail_stage_max = self._rail_expanded_stage
         self.page_switcher.configure(width=width + 20)
         self.page_switcher.content.configure(width=width)
@@ -1383,15 +1373,9 @@ class SettingsWindow:
     def _refresh_achievement_indicator(self) -> None:
         if not hasattr(self, "_achievements_tab_text"):
             return
-        self._achievements_tab_text.set(
-            "Achievements · New" if self._achievements_unread else "Achievements"
-        )
         button = self.page_buttons.get("Achievements")
         if button is not None:
-            button.configure(
-                foreground=(self.ACCENT_DARK if self._achievements_unread
-                            else (self.ACCENT_DARK if self.active_page.get() == "Achievements" else self.INK))
-            )
+            button.set_badge(self.ACHIEVEMENTS_BADGE if self._achievements_unread else "")
 
     def _refresh_page_buttons(self) -> None:
         selected = self.active_page.get()
@@ -1881,7 +1865,7 @@ class SettingsWindow:
                 font=self.fonts["small"],
                 padx=12,
                 pady=5,
-                cursor="hand2",
+                cursor=BUTTON_CURSOR,
                 takefocus=True,
             )
             button.grid(row=0, column=index)
@@ -1922,7 +1906,7 @@ class SettingsWindow:
                 font=self.fonts["small"],
                 padx=12,
                 pady=5,
-                cursor="hand2",
+                cursor=BUTTON_CURSOR,
                 takefocus=True,
             )
             button.grid(row=0, column=index)
@@ -2831,7 +2815,7 @@ class SettingsWindow:
                 font=self.fonts["control"],
                 padx=8,
                 pady=8,
-                cursor="hand2",
+                cursor=BUTTON_CURSOR,
                 min_width=choice_width,
             )
             button.grid(
@@ -2886,7 +2870,7 @@ class SettingsWindow:
             text=self.placement.get(),
             command=self._open_placement_menu,
             style=self.secondary_button_style,
-            cursor="hand2",
+            cursor=BUTTON_CURSOR,
             takefocus=True,
         )
         placement_control.pack(side="right")
@@ -3566,8 +3550,12 @@ class SettingsWindow:
         return {slot: self._allowed_accessory(variable.get(), slot)
                 for slot, variable in self.outfit_vars.items()}
 
-    def _try_on_outfit(self, outfit: dict[str, str] | None, label: str = "") -> None:
-        """Show ``outfit`` on the cat stage until the pointer leaves the tile."""
+    def _try_on_outfit(self, outfit: dict[str, str] | None, _label: str = "") -> None:
+        """Show ``outfit`` on the cat stage until the pointer leaves the tile.
+
+        The wardrobe passes the accessory's name too; the stage itself is the
+        only try-on feedback, so the name is not shown.
+        """
         self._try_on_frame = None
         if outfit is not None and self._preview_icon_path:
             try:
@@ -3579,17 +3567,6 @@ class SettingsWindow:
             except (tk.TclError, OSError, ValueError):
                 # The saved outfit's loop keeps running if the preview fails.
                 self._try_on_frame = None
-        if hasattr(self, "rail_brand_subtitle"):
-            trying = self._try_on_frame is not None and label
-            text = f"Trying on {label}" if trying else "companion studio"
-            # One line at the rail's width: wrapping would resize the stage.
-            limit = max(1, self.page_switcher.content.winfo_width() - 8)
-            font = self.fonts["tiny"]
-            while font.measure(text) > limit and len(text) > 2:
-                text = text[:-2].rstrip() + "…"
-            self.rail_brand_subtitle.configure(
-                text=text, foreground=self.ACCENT_DARK if trying else self.MUTED,
-            )
         if self._try_on_frame is not None:
             self.rail_preview.itemconfigure(self._rail_preview_image, image=self._try_on_frame)
             self.rail_preview.itemconfigure(self._rail_preview_placeholder, state="hidden")
@@ -3750,7 +3727,7 @@ class SettingsWindow:
             return
         is_success = text == "Saved!"
         fill = self.ACCENT if is_success else self.BLUSH
-        border = self.ACCENT_DARK if is_success else self.BORDER
+        border = pill_border(fill) if is_success else self.BORDER
         self.save_status_surface._fill = fill
         self.save_status_surface._border = border
         self.save_status_surface.content.configure(background=fill)
