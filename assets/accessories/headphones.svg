@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Headphones</title>
+  <desc>Editable chunky over-ear headphones with a padded band arching over the head and mint cushions at each side of the face.</desc>
+  <g id="headphones" stroke="#1f2229" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" stroke="#1f2229" stroke-width="7.5" d="M22 48 C20 16 100 16 98 48"/>
+    <path fill="none" stroke="#5c6270" stroke-width="4.5" d="M22 48 C20 16 100 16 98 48"/>
+    <path fill="none" stroke="#9fe3cf" stroke-width="3.2" d="M44 21 Q60 17 76 21"/>
+    <rect x="13" y="42" width="15" height="21" rx="6" fill="#4a505d"/>
+    <rect x="92" y="42" width="15" height="21" rx="6" fill="#4a505d"/>
+    <rect x="24" y="44" width="7" height="17" rx="3.5" fill="#9fe3cf"/>
+    <rect x="89" y="44" width="7" height="17" rx="3.5" fill="#9fe3cf"/>
+    <path fill="none" stroke="#8a909c" stroke-width="1.4" d="M17 47 L17 57 M103 47 L103 57"/>
+  </g>
+</svg>

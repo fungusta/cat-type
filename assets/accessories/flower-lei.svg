@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Flower lei</title>
+  <desc>Editable garland of pink and yellow hibiscus with green leaves, draped around the cat's neck below the mouth.</desc>
+  <g id="flower-lei" stroke="#4a2a37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <g id="flower-lei-garland" data-clip-to-body="true">
+      <path fill="none" stroke="#4f9b5a" stroke-width="3.4" d="M2 74 C24 86 42 94 60 94 C78 94 96 86 118 74"/>
+      <g id="flower-lei-flowers">
+        <circle cx="12" cy="80" r="5.4" fill="#ffd45e"/>
+        <circle cx="26" cy="87" r="5.6" fill="#f37aa8"/>
+        <circle cx="94" cy="87" r="5.6" fill="#f37aa8"/>
+        <circle cx="108" cy="80" r="5.4" fill="#ffd45e"/>
+        <path fill="#7cc46f" d="M37 88 Q41 85 44 90 Q40 93 37 88 Z M83 88 Q79 85 76 90 Q80 93 83 88 Z M55 99 Q57 96 60 99 Q57 102 55 99 Z"/>
+        <path fill="#ffd45e" d="M47 85 Q50 82 52 86 Q56 85 55 89 Q58 92 54 94 Q53 98 49 96 Q45 97 45 93 Q41 90 45 88 Q44 84 47 85 Z"/>
+        <path fill="#f37aa8" d="M60 87 Q63 84 65 88 Q69 87 68 91 Q71 94 67 96 Q66 100 62 98 Q58 99 58 95 Q54 92 58 90 Q57 86 60 87 Z"/>
+        <path fill="#ffd45e" d="M73 85 Q70 82 68 86 Q64 85 65 89 Q62 92 66 94 Q67 98 71 96 Q75 97 75 93 Q79 90 75 88 Q76 84 73 85 Z"/>
+        <circle cx="50" cy="90" r="1.6" fill="#e8763c" stroke="none"/>
+        <circle cx="63" cy="92.5" r="1.6" fill="#b8325e" stroke="none"/>
+        <circle cx="70" cy="90" r="1.6" fill="#e8763c" stroke="none"/>
+      </g>
+    </g>
+  </g>
+</svg>

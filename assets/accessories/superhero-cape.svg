@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Superhero cape</title>
+  <desc>Editable bright red short shoulder cape with a yellow paw-print clasp at the front. It follows the cat's cropped silhouette instead of hanging below it.</desc>
+  <g id="superhero-cape">
+    <g id="superhero-cape-back" stroke="#4a1d24" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+      <path fill="#e04a4f" d="M26 57 Q17 64 8 76 L7 99 Q16 104 30 102 L42 79 Z M94 57 Q103 64 112 76 L113 99 Q104 104 90 102 L78 79 Z"/>
+      <path fill="#b3313c" stroke="none" d="M13 75 L10 97 Q19 101 28 99 L38 80 Z M107 75 L110 97 Q101 101 92 99 L82 80 Z"/>
+    </g>
+    <g id="superhero-cape-front" data-render-layer="front" data-clip-to-body="true" stroke="#4a1d24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path fill="#b3313c" d="M8 70 Q24 78 46 82 L41 94 Q20 91 5 83 Z M112 70 Q96 78 74 82 L79 94 Q100 91 115 83 Z"/>
+      <path fill="none" stroke="#ff8a8a" stroke-width="2" d="M9 72 Q24 80 44 83 M111 72 Q96 80 76 83"/>
+      <path fill="none" stroke="#ffd45e" stroke-width="1.5" d="M44 83 Q60 90 76 83"/>
+      <circle cx="60" cy="88" r="5.2" fill="#ffd45e" stroke="#7a4a1c" stroke-width="1.4"/>
+      <g fill="#b3313c" stroke="none">
+        <ellipse cx="60" cy="89.6" rx="2.2" ry="1.8"/>
+        <circle cx="57.2" cy="86.6" r="0.95"/>
+        <circle cx="59.1" cy="85.5" r="0.95"/>
+        <circle cx="60.9" cy="85.5" r="0.95"/>
+        <circle cx="62.8" cy="86.6" r="0.95"/>
+      </g>
+    </g>
+  </g>
+</svg>

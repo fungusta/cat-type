@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Frog hat</title>
+  <desc>Editable green knit frog hat with two round googly eyes and a little smile, fitted between the cat's ears.</desc>
+  <g id="frog-hat" stroke="#24331f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#6cbf5a" d="M37 32 C37 20 46 13 60 13 C74 13 83 20 83 32 Z"/>
+    <circle cx="46" cy="15" r="7.5" fill="#6cbf5a"/>
+    <circle cx="74" cy="15" r="7.5" fill="#6cbf5a"/>
+    <circle cx="46" cy="14.5" r="4.6" fill="#ffffff" stroke-width="1.6"/>
+    <circle cx="74" cy="14.5" r="4.6" fill="#ffffff" stroke-width="1.6"/>
+    <circle cx="47" cy="15" r="2.1" fill="#24331f" stroke="none"/>
+    <circle cx="73" cy="15" r="2.1" fill="#24331f" stroke="none"/>
+    <path fill="none" stroke-width="1.8" d="M53 25 Q60 29 67 25"/>
+    <circle cx="48" cy="25" r="2.2" fill="#f2a1b7" stroke="none"/>
+    <circle cx="72" cy="25" r="2.2" fill="#f2a1b7" stroke="none"/>
+    <path fill="#8fd67b" d="M34 30 Q60 26 86 30 L85 40 Q60 36 35 40 Z"/>
+    <path fill="none" stroke="#c8f0b6" stroke-width="1.6" d="M42 30 L42 38 M51 29 L51 37 M60 28 L60 36 M69 29 L69 37 M78 30 L78 38"/>
+  </g>
+</svg>

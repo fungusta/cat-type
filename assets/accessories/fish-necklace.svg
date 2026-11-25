@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Fish necklace</title>
+  <desc>Editable silver fish charm on a tan cord, hanging below the mouth.</desc>
+  <g id="fish-necklace" stroke="#33384a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="fish-necklace-cord" data-clip-to-body="true">
+      <path fill="none" stroke="#b08a5a" stroke-width="2.6" d="M2 70 C24 80 43 86 60 86 C77 86 96 80 118 70"/>
+    </g>
+    <circle cx="60" cy="86.5" r="2" fill="none" stroke="#9aa6b8" stroke-width="1.6"/>
+    <path fill="#c9d3e0" d="M60 88.5 Q68 89 70 95 Q68 101 60 101.5 Q55 100 52.5 96 L48 100 L48.5 90.5 L52.5 94.5 Q55 89.5 60 88.5 Z"/>
+    <path fill="none" stroke="#f4f7fb" stroke-width="1.2" d="M57 93 Q58.5 95 57 97 M61 92.5 Q62.5 95 61 97.5"/>
+    <circle cx="66" cy="94" r="1" fill="#33384a" stroke="none"/>
+  </g>
+</svg>

@@ -25,7 +25,7 @@ class SiteBuildTests(unittest.TestCase):
         ids = {item.id for item in self.module().starter_items()}
         self.assertEqual(ids, {
             "ribbon-clip", "round-glasses", "bell-collar", "bow-tie",
-            "beanie", "daisy-clip", "sunglasses",
+            "headphones", "beanie", "daisy-clip", "sunglasses",
         })
 
     def test_starter_rule_never_admits_hidden_items(self):

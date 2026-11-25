@@ -39,6 +39,7 @@ class AchievementTests(unittest.TestCase):
         self.assertEqual(self.tracker(metrics).unlocked, {
             'round-glasses', 'sunglasses', 'star-glasses', 'beanie', 'party-hat', 'crown',
             'bow-tie', 'ribbon-clip', 'bell-collar', 'leaf-sprout', 'travel-satchel', 'daisy-clip',
+            'headphones', 'heart-glasses', 'fish-necklace', 'frog-hat',
         })
 
     def test_days_need_not_be_consecutive_and_empty_days_do_not_count(self):
@@ -156,7 +157,7 @@ class AchievementTests(unittest.TestCase):
         self.assertIn('angel-wings', ACCESSORY_BY_ID)
         from cat_accessories import visible_accessories
         public = {item.id for item in visible_accessories(set())}
-        self.assertEqual(len(public), 22)
+        self.assertEqual(len(public), 34)
         self.assertFalse({'angel-wings', 'moon-pendant', 'sunflower-clip', 'cozy-scarf',
                           'beta-bandana', 'shooting-star-clip', 'sunrise-scarf', 'butterfly-wings'} & public)
         self.assertEqual({item.id for item in visible_accessories({'angel-wings'})}, public | {'angel-wings'})

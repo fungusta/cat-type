@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Cowboy hat</title>
+  <desc>Editable tan cowboy hat with a pinched crown, upturned brim, and a dark band with a small star, between the cat's ears.</desc>
+  <g id="cowboy-hat" stroke="#4a3322" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#d8a565" d="M42 33 C41 20 45 11 52 11 Q56 11 60 15 Q64 11 68 11 C75 11 79 20 78 33 Z"/>
+    <path fill="none" stroke="#e9c48f" stroke-width="1.6" d="M60 16 L60 27"/>
+    <path fill="#8a5a34" d="M41 27 Q60 24 79 27 L79 33 Q60 31 41 33 Z"/>
+    <path fill="#ffd977" stroke="#7a4f2a" stroke-width="1" d="M60 26.5 L61.2 28.8 L63.6 29 L61.8 30.6 L62.3 33 L60 31.8 L57.7 33 L58.2 30.6 L56.4 29 L58.8 28.8 Z"/>
+    <path fill="#c99353" d="M18 31 Q22 38 32 37 Q60 33 88 37 Q98 38 102 31 Q106 39 98 43 Q60 38 22 43 Q14 39 18 31 Z"/>
+    <path fill="none" stroke="#e9c48f" stroke-width="1.5" d="M24 39 Q60 34 96 39"/>
+  </g>
+</svg>

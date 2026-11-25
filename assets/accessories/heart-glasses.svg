@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Heart glasses</title>
+  <desc>Editable pink heart-shaped glasses aligned with the cat's eyes.</desc>
+  <g id="heart-glasses" stroke="#5a2340" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#f37aa8" d="M42 71 L31 60 Q27 55 31 51 Q36 47 42 53 Q48 47 53 51 Q57 55 53 60 Z"/>
+    <path fill="#f37aa8" d="M78 71 L67 60 Q63 55 67 51 Q72 47 78 53 Q84 47 89 51 Q93 55 89 60 Z"/>
+    <path fill="none" d="M53 56 Q60 53 67 56 M30 55 L23 53 M90 55 L97 53"/>
+    <path fill="none" stroke="#ffd0e2" stroke-width="1.6" d="M33 54 Q35 51 38 52 M69 54 Q71 51 74 52"/>
+  </g>
+</svg>

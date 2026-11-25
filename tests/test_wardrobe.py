@@ -160,7 +160,7 @@ class WardrobeTests(unittest.TestCase):
         self.assertIsNotNone(view.tiles['bow-tie']._faded)
         self.assertEqual(view.none_tiles['glasses'].status, 'Unlocked')
         self.assertEqual(view.none_tiles['hat'].status, 'Equipped')
-        self.assertEqual(view.tray_count.get(), '2 of 22 unlocked')
+        self.assertEqual(view.tray_count.get(), '2 of 34 unlocked')
         self.assertEqual(view.tiles['crown'].cget('accessible_name'), 'Crown, Unlocked')
         self.assertEqual(view.tiles['crown'].cget('accessible_role'), 'button')
 
@@ -244,7 +244,7 @@ class WardrobeTests(unittest.TestCase):
         window.window.update()
         self.assertFalse(HIDDEN & window.wardrobe.tiles.keys())
         self.assertFalse(HIDDEN & window.achievements.cards.keys())
-        self.assertIn('0 of 22', window.achievements.summary.get())
+        self.assertIn('0 of 34', window.achievements.summary.get())
         self.assertNotIn('discoveries', [key for key, section in window.achievements.sections.items()
                                          if section.winfo_manager()])
         self.assertIn('ears', window.wardrobe.none_tiles)
@@ -360,7 +360,7 @@ class WardrobeTests(unittest.TestCase):
                                    tuple(ACCESSORY_BY_ID[item] for item in sorted(new_ids)))
         window.window.update()
         self.assertEqual((window.hat.get(), window.glasses.get()), ('crown', 'round-glasses'))
-        self.assertIn('5 of 25', window.achievements.summary.get())
+        self.assertIn('5 of 37', window.achievements.summary.get())
         for item_id in new_ids:
             self.assertIn(item_id, window.achievements._visible_ids)
             window.wardrobe.focus_item(item_id).invoke()
@@ -480,7 +480,7 @@ class RewardAlbumTests(unittest.TestCase):
         self.assertIs(view.cards['daisy-clip'].master, view._section_grids['days'])
         self.assertIs(view.cards['angel-wings'].master, view._section_grids['discoveries'])
         self.assertTrue(view.sections['discoveries'].winfo_ismapped())
-        self.assertEqual(view._section_counts['days'].get(), '1 of 7')
+        self.assertEqual(view._section_counts['days'].get(), '1 of 11')
 
     def test_cards_draw_a_meter_status_mark_and_percent(self):
         window = self.album({'ribbon-clip'})
@@ -516,7 +516,7 @@ class RewardAlbumTests(unittest.TestCase):
     def test_completion_meter_and_summary_count_visible_rewards(self):
         window = self.album({'ribbon-clip', 'round-glasses'})
         view = window.achievements
-        self.assertEqual(view.summary.get(), '2 of 22 achievements unlocked')
+        self.assertEqual(view.summary.get(), '2 of 34 achievements unlocked')
         self.assertTrue(view.completion.winfo_ismapped())
         self.assertIsNotNone(view._completion_image)
 

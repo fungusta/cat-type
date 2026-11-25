@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Chef's hat</title>
+  <desc>Editable tall white chef's toque with a puffy top and a pleated band, fitted between the cat's ears.</desc>
+  <g id="chef-hat" stroke="#3a3540" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#fffdf8" d="M42 30 C34 28 31 17 39 13 C42 6 51 5 55 9 C58 3 68 3 71 9 C76 5 85 8 84 15 C91 19 87 29 78 30 Z"/>
+    <path fill="none" stroke="#e5ddd2" stroke-width="1.6" d="M50 26 Q49 19 53 14 M60 27 Q60 18 63 12 M70 26 Q72 19 70 14"/>
+    <path fill="#f4efe6" d="M41 28 L79 28 L80 40 Q60 43 40 40 Z"/>
+    <path fill="none" stroke="#d6cdbf" stroke-width="1.5" d="M48 30 L48 40 M55 30 L55 41 M62 30 L62 41 M69 30 L69 41 M75 30 L75 40"/>
+  </g>
+</svg>

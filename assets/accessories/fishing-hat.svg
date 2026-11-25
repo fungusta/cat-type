@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Fishing hat</title>
+  <desc>Editable olive bucket hat with a soft downturned brim and a little orange fishing lure hooked on the band.</desc>
+  <g id="fishing-hat" stroke="#2f3324" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="#8f9a5c" d="M39 33 C39 19 47 12 60 12 C73 12 81 19 81 33 Z"/>
+    <path fill="none" stroke="#b5c07d" stroke-width="1.6" d="M45 19 Q60 13 75 19"/>
+    <path fill="#a7b26d" d="M27 39 Q60 29 93 39 L97 45 Q60 36 23 45 Z"/>
+    <path fill="#6d7646" d="M38 29 Q60 25 82 29 L82 34 Q60 31 38 34 Z"/>
+    <g id="fishing-hat-lure" stroke-width="1.6">
+      <path fill="none" stroke="#5d6066" d="M70 31 L70 35 Q70 38 73 38"/>
+      <path fill="#f39a4c" d="M66 27 Q71 22 77 26 L81 23 L81 31 L77 28 Q71 32 66 27 Z"/>
+      <circle cx="69" cy="26.5" r="0.9" fill="#2f3324" stroke="none"/>
+    </g>
+  </g>
+</svg>

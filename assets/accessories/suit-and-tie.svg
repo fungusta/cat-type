@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Suit and tie</title>
+  <desc>Editable navy suit jacket over a white shirt collar with a red tie, fitted to the cat's chest below the mouth and behind the typing paws.</desc>
+  <g id="suit-and-tie" stroke="#1f2433" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <g id="suit-and-tie-jacket" data-clip-to-body="true">
+      <path fill="#33456e" d="M2 78 C24 81 42 81 60 81 C78 81 96 81 118 78 L118 119 L2 119 Z"/>
+      <path fill="#fffdf8" d="M45 79 L75 79 L60 104 Z"/>
+      <path fill="#26355a" d="M45 79 L53 84 L48 89 L57 104 L40 104 L38 84 Z M75 79 L67 84 L72 89 L63 104 L80 104 L82 84 Z"/>
+    </g>
+    <path fill="#fffdf8" d="M50 79 L60 84 L54 89 Z M70 79 L60 84 L66 89 Z"/>
+    <path fill="#d9434d" d="M57 83.5 L63 83.5 L62 87 L58 87 Z"/>
+    <path fill="#d9434d" d="M58 87 L62 87 L64.5 99 L60 103 L55.5 99 Z"/>
+    <path fill="none" stroke="#f08b90" stroke-width="1.3" d="M59 90 L61 94 M58.5 95 L60.5 99"/>
+  </g>
+</svg>

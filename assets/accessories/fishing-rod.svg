@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <title>Fishing rod</title>
+  <desc>Editable bamboo fishing rod resting behind the cat's left shoulder, with a little blue fish dangling from the line.</desc>
+  <g id="fishing-rod" stroke="#3b2d22" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path fill="none" stroke="#3b2d22" stroke-width="5" d="M38 66 L11 7"/>
+    <path fill="none" stroke="#d2a35c" stroke-width="2.8" d="M38 66 L11 7"/>
+    <path fill="none" stroke="#3b2d22" stroke-width="1.4" d="M20 27 L23 26 M15 16 L18 15"/>
+    <path fill="none" stroke="#6b6f78" stroke-width="1" d="M11 7 L10 33"/>
+    <path fill="#6fb6d8" d="M10 33 Q15 36 14 42 Q12 46 9 46 L11 49 L6 49 L7 45 Q4 41 6 37 Q7 34 10 33 Z"/>
+    <circle cx="11" cy="38" r="0.9" fill="#3b2d22" stroke="none"/>
+  </g>
+</svg>
