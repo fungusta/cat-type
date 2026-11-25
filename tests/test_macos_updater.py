@@ -103,6 +103,7 @@ class FakeRunner:
         return [argv for argv in self.calls if self._key(argv) == key]
 
 
+@unittest.skipIf(os.name == "nt", "the macOS installer relies on POSIX file APIs")
 class MacInstallerTestCase(unittest.TestCase):
     def setUp(self) -> None:
         directory = tempfile.TemporaryDirectory()

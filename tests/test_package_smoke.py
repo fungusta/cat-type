@@ -2,6 +2,7 @@ import importlib
 import importlib.util
 import sys
 import unittest
+from pathlib import Path
 
 
 class PackageSmokeTests(unittest.TestCase):
@@ -62,9 +63,9 @@ class MacUpdateSmokeTests(unittest.TestCase):
             ["--app", "dist/Cat Type.app", "--dmg", "dist/Cat-Type-macOS-arm64.dmg"]
         )
 
-        self.assertEqual(str(without.app), "dist/Cat Type.app")
+        self.assertEqual(without.app, Path("dist/Cat Type.app"))
         self.assertIsNone(without.dmg)
-        self.assertEqual(str(with_dmg.dmg), "dist/Cat-Type-macOS-arm64.dmg")
+        self.assertEqual(with_dmg.dmg, Path("dist/Cat-Type-macOS-arm64.dmg"))
 
     @unittest.skipUnless(sys.platform == "darwin", "requires macOS")
     def test_swap_smoke_passes_against_a_bundle_with_the_helper(self) -> None:
