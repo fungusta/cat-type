@@ -18,7 +18,7 @@ from cat_accessories import ACCESSORIES, ACCESSORY_BLURBS, ACCESSORY_BY_ID, Acce
 from cat_settings import CAT_VARIANTS  # noqa: E402
 
 
-SHOWCASE_IDS = ("beanie", "party-hat", "crown", "dragon-wings")
+SHOWCASE_IDS = ("beanie", "frog-hat", "party-hat", "chef-hat", "superhero-cape", "dragon-wings")
 EQUIPPED_ID = "beanie"
 # One pretend first-week user, oldest day first and today last. The Unlock
 # and Track bands both read from it so their numbers always agree.
