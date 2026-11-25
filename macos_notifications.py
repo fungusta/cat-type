@@ -1,9 +1,9 @@
 """Post Cat Type's own macOS notifications through the system notification center.
 
 pystray's macOS backend runs ``osascript``, so its notices are attributed to
-Script Editor and carry its icon. Posting from the app bundle instead lets
-macOS show the Cat Type icon and name. Outside a bundle (running from source)
-there is no app identity to post as, so callers fall back to the tray.
+Script Editor and carry its icon. Posting from the built app bundle instead
+lets macOS show the Cat Type icon and name. Running from source there is no
+Cat Type identity to post as, so callers fall back to the tray.
 """
 
 from __future__ import annotations
@@ -14,39 +14,42 @@ from pathlib import Path
 
 _center = None
 _delegate = None
+_unavailable = False
 
 
 def _notification_center():
     """The shared center, set up once with a delegate; None when unavailable."""
-    global _center, _delegate
+    global _center, _delegate, _unavailable
     if _center is not None:
         return _center
-    if sys.platform != "darwin":
+    # Only the built app has Cat Type's identity to post as. Running from
+    # source, the interpreter's own bundle (or none) would be used instead.
+    if _unavailable or sys.platform != "darwin" or not getattr(sys, "frozen", False):
         return None
     try:
-        from Foundation import NSBundle, NSObject
+        from Foundation import NSObject
         import UserNotifications as notifications
-    except ImportError:
+
+        class CatTypeNoticePresenter(NSObject):
+            """Show notices as banners even while a Cat Type window is in front."""
+
+            def userNotificationCenter_willPresentNotification_withCompletionHandler_(
+                self, _center, _notification, completion,
+            ):
+                completion(
+                    notifications.UNNotificationPresentationOptionBanner
+                    | notifications.UNNotificationPresentationOptionList
+                )
+
+        center = notifications.UNUserNotificationCenter.currentNotificationCenter()
+        delegate = CatTypeNoticePresenter.alloc().init()
+        center.setDelegate_(delegate)
+    except Exception:
+        # Objective-C classes can be registered only once per process, so a
+        # failed setup is not retried; the tray notice is used instead.
+        _unavailable = True
         return None
-    # The center raises for a process with no bundle identity.
-    if not NSBundle.mainBundle().bundleIdentifier():
-        return None
-
-    class _ShowWhileOpen(NSObject):
-        """Show notices as banners even while a Cat Type window is in front."""
-
-        def userNotificationCenter_willPresentNotification_withCompletionHandler_(
-            self, _center, _notification, completion,
-        ):
-            completion(
-                notifications.UNNotificationPresentationOptionBanner
-                | notifications.UNNotificationPresentationOptionList
-            )
-
-    center = notifications.UNUserNotificationCenter.currentNotificationCenter()
-    _delegate = _ShowWhileOpen.alloc().init()
-    center.setDelegate_(_delegate)
-    _center = center
+    _center, _delegate = center, delegate
     return center
 
 

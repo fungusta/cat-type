@@ -31,10 +31,36 @@ class NativeCenterTests(unittest.TestCase):
                 patch.object(macos_notifications.sys, "platform", "win32"):
             self.assertFalse(macos_notifications.post_notice("Title", "Body", "id"))
 
-    def test_without_an_app_bundle_the_tray_is_used(self):
-        # Tests run from a bare interpreter, which has no bundle identity.
-        with patch.object(macos_notifications, "_center", None):
+    def test_running_from_source_uses_the_tray(self):
+        # Only the built app has Cat Type's identity; a source run (whose
+        # interpreter may itself sit in a Python.app bundle) does not.
+        with patch.object(macos_notifications, "_center", None), \
+                patch.object(macos_notifications.sys, "platform", "darwin"), \
+                patch.object(macos_notifications.sys, "frozen", False, create=True):
             self.assertFalse(macos_notifications.post_notice("Title", "Body", "id"))
+
+    def test_a_failed_setup_falls_back_and_is_not_retried(self):
+        import types
+        calls = []
+
+        class Center:
+            @staticmethod
+            def currentNotificationCenter():
+                calls.append(1)
+                raise RuntimeError("no bundle proxy")
+
+        fake = types.SimpleNamespace(UNUserNotificationCenter=Center,
+                                     UNNotificationPresentationOptionBanner=16,
+                                     UNNotificationPresentationOptionList=8)
+        with patch.object(macos_notifications, "_center", None), \
+                patch.object(macos_notifications, "_unavailable", False), \
+                patch.object(macos_notifications.sys, "platform", "darwin"), \
+                patch.object(macos_notifications.sys, "frozen", True, create=True), \
+                patch.dict("sys.modules", {"UserNotifications": fake,
+                                           "Foundation": types.SimpleNamespace(NSObject=object)}):
+            self.assertFalse(macos_notifications.post_notice("Title", "Body", "id"))
+            self.assertFalse(macos_notifications.post_notice("Title", "Body", "id"))
+        self.assertEqual(len(calls), 1)
 
 
 class NotifyAccessoriesTests(unittest.TestCase):
