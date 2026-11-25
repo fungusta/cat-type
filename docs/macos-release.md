@@ -46,6 +46,34 @@ The script requires a Developer ID identity, applies the hardened runtime,
 verifies the app and disk image signatures, and verifies the disk image. A
 local DMG still needs notarization before public distribution.
 
+The build compiles the self-update helper (`packaging/macos_update_helper.c`)
+with the Xcode command-line tools through `CatType.spec`, so it ships in
+`Contents/Frameworks/cat-type-update-helper` and is signed with the app.
+
+## Self-update
+
+Installed copies update themselves from the notarized DMG; see the README's
+Automatic updates section. CI smoke-tests the helper swap on every macOS build
+and, in the release workflow, the full prepare-and-swap path against the
+notarized DMG (`python -m scripts.smoke_macos_update`).
+
+Before the first release that ships the updater, and after any change to the
+updater, check on a real Mac:
+
+1. Install the previous release in `/Applications`, grant Input Monitoring,
+   and confirm the cat appears when typing.
+2. On a fork, publish notarized test builds of the branch (for example
+   `v1.0.61` and `v1.0.62`) with `GITHUB_LATEST_RELEASE_URL` pointed at the
+   fork in those test builds only.
+3. In the first test build, press **Check for updates**, choose
+   **Install Update**, and confirm Cat Type quits and reopens as the newer
+   version within about ten seconds, with Input Monitoring still granted and
+   settings and achievements intact.
+4. Let an automatic check find an update while typing in another app; confirm
+   the prompt appears without taking focus and responds to a mouse click.
+5. Repeat from `~/Applications/Cat Type 2.app`, and confirm that running from
+   the mounted DMG shows the "Move Cat Type to Applications" message.
+
 ## Notarization
 
 The release workflow submits each signed DMG with `xcrun notarytool`, waits for

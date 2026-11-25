@@ -18,6 +18,7 @@ from auto_update import (
     UpdateError,
     UpdateService,
     UpdateStateStore,
+    is_newer_version,
 )
 from cat_settings import default_settings_path
 
@@ -961,6 +962,55 @@ class VerifiedDownloadTests(unittest.TestCase):
 
         self.assertEqual(len(opener.calls), 1)
         self.assertFalse(self.cache.exists())
+
+
+class SkippedVersionStateTests(unittest.TestCase):
+    NOW = datetime(2026, 11, 25, tzinfo=timezone.utc)
+
+    def setUp(self) -> None:
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        self.path = Path(temporary_directory.name) / "update-state.json"
+        self.store = UpdateStateStore(self.path)
+
+    def test_skip_version_round_trips_and_survives_record_success(self) -> None:
+        self.store.skip_version("1.1.0")
+        self.store.record_success(self.NOW)
+
+        self.assertEqual(self.store.skipped_version(), "1.1.0")
+        self.assertFalse(self.store.is_due(self.NOW))
+
+    def test_record_success_then_skip_keeps_last_check(self) -> None:
+        self.store.record_success(self.NOW)
+        self.store.skip_version("1.1.0")
+
+        self.assertEqual(self.store.skipped_version(), "1.1.0")
+        self.assertFalse(self.store.is_due(self.NOW))
+
+    def test_skipped_version_is_none_for_missing_corrupt_or_non_string_state(
+        self,
+    ) -> None:
+        self.assertIsNone(self.store.skipped_version())
+        for corrupt in (
+            "{bad json",
+            "[]",
+            "{}",
+            '{"skipped_version": 3}',
+            '{"skipped_version": ""}',
+        ):
+            with self.subTest(corrupt=corrupt):
+                self.path.write_text(corrupt, encoding="utf-8")
+                self.assertIsNone(self.store.skipped_version())
+
+
+class VersionComparisonTests(unittest.TestCase):
+    def test_is_newer_version(self) -> None:
+        self.assertTrue(is_newer_version("1.0.61", "1.0.60"))
+        self.assertFalse(is_newer_version("1.0.60", "1.0.60"))
+        self.assertFalse(is_newer_version("1.0.9", "1.0.10"))
+        self.assertTrue(is_newer_version("1.0.10", "1.0.9"))
+        with self.assertRaises(UpdateError):
+            is_newer_version("1.0", "1.0.60")
 
 
 if __name__ == "__main__":

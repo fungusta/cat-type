@@ -587,6 +587,23 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertFalse(app._first_run)
         app.open_settings.assert_called_once_with()
 
+    def test_closing_setup_guide_keeps_an_open_update_prompt_clickable(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._permission_guide = Mock()
+        app._shutting_down = False
+        app._first_run = False
+        app._settings_window = None
+        app._update_prompt = Mock()
+        set_policy = Mock(return_value=True)
+
+        with patch(
+            "cat_type._macos_activation_policy_accessors_for_app",
+            return_value=(Mock(return_value=1), set_policy, Mock(return_value=False)),
+        ):
+            app._permission_guide_closed()
+
+        set_policy.assert_not_called()
+
     def test_windows_and_linux_preserve_disabled_global_hotkey_listener(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)

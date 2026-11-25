@@ -78,6 +78,12 @@ jobs:
           python -m scripts.smoke_linux_update
           "${{ matrix.executable }}"
 
+      - name: Smoke test macOS update swap
+        if: runner.os == 'macOS'
+        run: >-
+          python -m scripts.smoke_macos_update
+          --app "${{ matrix.output }}"
+
       - name: Smoke test Windows shutdown handoff
         if: runner.os == 'Windows'
         run: >-

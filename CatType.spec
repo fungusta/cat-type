@@ -32,15 +32,28 @@ hidden_imports = [
     "app_version",
     "auto_update",
     "platform_updater",
+    "macos_updater",
+    "update_prompt",
     *runtime_modules(sys.platform),
 ]
 if is_windows:
     hidden_imports += collect_submodules("comtypes.gen")
+binaries = []
+if is_macos:
+    sys.path.insert(0, str(project_root))
+    from scripts.build_macos_update_helper import build_update_helper
+
+    # The update swap helper ships beside the app's other binaries and is
+    # signed with the bundle. Cat Type copies it out before running it.
+    update_helper = build_update_helper(
+        project_root / "build" / "cat-type-update-helper"
+    )
+    binaries.append((str(update_helper), "."))
 
 a = Analysis(
     ["cat_type.py"],
     pathex=[str(project_root)],
-    binaries=[],
+    binaries=binaries,
     datas=[
         (
             str(project_root / "assets" / "vector-cats"),
@@ -103,7 +116,7 @@ if is_macos:
         name="Cat Type.app",
         icon=str(icon_path),
         bundle_identifier="com.fungusta.cat-type",
-        version="1.0.60",
+        version="1.0.61",
         info_plist={
             "LSUIElement": True,
             "NSHighResolutionCapable": True,

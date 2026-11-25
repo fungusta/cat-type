@@ -8,7 +8,7 @@ from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from auto_update import (
     AvailableUpdate,
@@ -80,6 +80,14 @@ class FakeState:
     def record_success(self, now: datetime) -> None:
         self.successes.append(now)
 
+    skipped: str | None = None
+
+    def skipped_version(self) -> str | None:
+        return self.skipped
+
+    def skip_version(self, version: str) -> None:
+        self.skipped = version
+
 
 class FakeService:
     def __init__(
@@ -127,6 +135,8 @@ class FakeInstaller:
         )
         self.prepared: list[tuple[Path, AvailableUpdate]] = []
         self.started: list[object] = []
+        self.discarded: list[object] = []
+        self.start_error: Exception | None = None
 
     def availability(self) -> InstallerAvailability:
         return self._availability
@@ -137,7 +147,12 @@ class FakeInstaller:
         return prepared
 
     def start(self, prepared: object) -> None:
+        if self.start_error is not None:
+            raise self.start_error
         self.started.append(prepared)
+
+    def discard(self, prepared: object) -> None:
+        self.discarded.append(prepared)
 
 
 class BlockingInstaller(FakeInstaller):
@@ -182,6 +197,7 @@ class UpdateControllerTests(unittest.TestCase):
         before_handoff: Callable[[str], None] | None = None,
         platform_name: str = "linux",
         frozen: bool = True,
+        prompt_factory: object | None = None,
     ) -> CatTypeApp:
         app = CatTypeApp.__new__(CatTypeApp)
         app._shutting_down = False
@@ -198,6 +214,7 @@ class UpdateControllerTests(unittest.TestCase):
             frozen=frozen,
             now=lambda: NOW,
             before_handoff=before_handoff,
+            prompt_factory=prompt_factory,
         )
         app._hide = Mock()
         app._tray_icon = None
@@ -265,10 +282,9 @@ class UpdateControllerTests(unittest.TestCase):
 
         app.check_for_updates(manual=False)
         app.check_for_updates(manual=True)
-        automatic_target, _name = runner.jobs.pop()
-        automatic_target()
-        app._drain_update_events()
 
+        # A not-due automatic check never starts, so the manual check runs
+        # immediately instead of being replayed after it.
         self.assertEqual(len(runner.jobs), 1)
         manual_target, _name = runner.jobs.pop()
         manual_target()
@@ -614,8 +630,72 @@ class UpdateControllerTests(unittest.TestCase):
         self.assertEqual(installer.started, [])
         self.assertFalse(app._update_worker_active)
 
-    def test_shutdown_waits_for_prepare_handoff_that_already_began(self) -> None:
-        self._assert_shutdown_waits_for_active_handoff("prepare")
+    def test_shutdown_during_prepare_returns_promptly_and_discards_it(self) -> None:
+        installer = BlockingInstaller("prepare")
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            runner=runner,
+        )
+        app.check_for_updates(manual=True)
+        runner.jobs.pop()[0]()  # type: ignore[operator]
+        app._drain_update_events()
+        install_thread = threading.Thread(target=runner.jobs.pop()[0])  # type: ignore[arg-type]
+        try:
+            install_thread.start()
+            self.assertTrue(installer.handoff_entered.wait(timeout=1.0))
+            shutdown_thread = threading.Thread(target=app.shutdown)
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=0.5)
+            self.assertFalse(shutdown_thread.is_alive(), "shutdown waited on prepare")
+        finally:
+            installer.release_handoff.set()
+            install_thread.join(timeout=1.0)
+        self.assertEqual(installer.started, [])
+        self.assertEqual(len(installer.discarded), 1)
+
+    def test_event_drain_is_not_blocked_while_prepare_runs(self) -> None:
+        installer = BlockingInstaller("prepare")
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            runner=runner,
+        )
+        app.check_for_updates(manual=True)
+        runner.jobs.pop()[0]()  # type: ignore[operator]
+        app._drain_update_events()
+        install_thread = threading.Thread(target=runner.jobs.pop()[0])  # type: ignore[arg-type]
+        try:
+            install_thread.start()
+            self.assertTrue(installer.handoff_entered.wait(timeout=1.0))
+            drain = threading.Thread(target=app._drain_update_events)
+            drain.start()
+            drain.join(timeout=0.5)
+            self.assertFalse(drain.is_alive(), "Tk event drain blocked on prepare")
+        finally:
+            installer.release_handoff.set()
+            install_thread.join(timeout=1.0)
+
+    def test_start_failure_discards_prepared_update(self) -> None:
+        installer = FakeInstaller()
+        installer.start_error = RuntimeError("An update is already in progress.")
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+        )
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(len(installer.discarded), 1)
+        self.assertEqual(app._update_status, "Update failed: An update is already in progress.")
+        app.shutdown.assert_not_called()
 
     def test_shutdown_waits_for_start_handoff_that_already_began(self) -> None:
         self._assert_shutdown_waits_for_active_handoff("start")
@@ -793,6 +873,408 @@ class ProductionUpdateRunnerTests(unittest.TestCase):
         runner(second_done.set, "later-update")
 
         self.assertTrue(second_done.wait(timeout=1.0))
+
+
+class PeriodicUpdateCheckTests(unittest.TestCase):
+    make_app = UpdateControllerTests.make_app
+
+    def test_run_schedules_startup_and_periodic_check_on_each_platform(self) -> None:
+        for platform_name in ("darwin", "win32", "linux"):
+            with self.subTest(platform=platform_name):
+                app = CatTypeApp.__new__(CatTypeApp)
+                app._start_tray = Mock()
+                app._ensure_activity_monitoring = Mock()
+                app.animation = Mock()
+                app.tracker = Mock()
+                app.root = Mock()
+                app._first_run = False
+                app._platform_name = platform_name
+
+                app.run()
+
+                app.root.after.assert_any_call(2000, app.check_for_updates)
+                app.root.after.assert_any_call(
+                    3_600_000, app._schedule_periodic_update_check
+                )
+                self.assertEqual(CatTypeApp.UPDATE_RECHECK_INTERVAL_MS, 3_600_000)
+
+    def test_periodic_check_rearms_and_stops_after_shutdown(self) -> None:
+        app = self.make_app()
+        app.check_for_updates = Mock()
+
+        app._schedule_periodic_update_check()
+
+        app.check_for_updates.assert_called_once_with()
+        app.root.after.assert_called_once_with(
+            3_600_000, app._schedule_periodic_update_check
+        )
+
+        app.check_for_updates.reset_mock()
+        app.root.after.reset_mock()
+        app._shutting_down = True
+        app._schedule_periodic_update_check()
+
+        app.check_for_updates.assert_not_called()
+        app.root.after.assert_not_called()
+
+    def test_periodic_check_is_noop_while_operation_active(self) -> None:
+        service = FakeService(result=available_update())
+        app = self.make_app(service=service)
+        self.assertIsNotNone(app._begin_update_operation())
+
+        app._schedule_periodic_update_check()
+
+        self.assertEqual(service.check_calls, [])
+
+    def test_periodic_check_respects_not_due(self) -> None:
+        service = FakeService(result=available_update())
+        app = self.make_app(service=service, state=FakeState(due=False))
+
+        app._schedule_periodic_update_check()
+        app._drain_update_events()
+
+        self.assertEqual(service.check_calls, [])
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_not_due_automatic_check_leaves_status_and_installer_alone(self) -> None:
+        installer = FakeInstaller()
+        installer.availability = Mock(wraps=installer.availability)  # type: ignore[method-assign]
+        runner = DeferredRunner()
+        app = self.make_app(
+            installer=installer, state=FakeState(due=False), runner=runner
+        )
+        app._update_status = "Update failed: offline"
+
+        app._schedule_periodic_update_check()
+        app._drain_update_events()
+
+        self.assertEqual(runner.jobs, [])
+        installer.availability.assert_not_called()
+        self.assertEqual(app._update_status, "Update failed: offline")
+
+
+class SkippedVersionControllerTests(unittest.TestCase):
+    make_app = UpdateControllerTests.make_app
+
+    def skipped_app(self, skipped: str) -> tuple[CatTypeApp, Mock]:
+        state = FakeState()
+        state.skipped = skipped
+        confirm = Mock(return_value=False)
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            state=state,
+            confirm=confirm,
+        )
+        return app, confirm
+
+    def test_automatic_check_skips_prompt_for_skipped_version(self) -> None:
+        app, confirm = self.skipped_app("1.1.0")
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        confirm.assert_not_called()
+        self.assertEqual(app._update_status, "Cat Type 1.1.0 is available (skipped).")
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_manual_check_prompts_even_for_skipped_version(self) -> None:
+        app, confirm = self.skipped_app("1.1.0")
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        confirm.assert_called_once()
+
+    def test_newer_than_skipped_version_prompts(self) -> None:
+        app, confirm = self.skipped_app("1.0.99")
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        confirm.assert_called_once()
+
+
+def mac_available_update() -> AvailableUpdate:
+    return AvailableUpdate(
+        version="1.1.0",
+        tag_name="v1.1.0",
+        html_url="https://example.test/releases/v1.1.0",
+        package=ReleaseAsset(
+            "Cat-Type-macOS-arm64.dmg",
+            "https://example.test/Cat-Type-macOS-arm64.dmg",
+            100,
+        ),
+        checksums=ReleaseAsset(
+            "SHA256SUMS.txt",
+            "https://example.test/SHA256SUMS.txt",
+            80,
+        ),
+    )
+
+
+class FakePrompt:
+    def __init__(self, root: object, update: AvailableUpdate, current_version: str, **callbacks: object) -> None:
+        self.update = update
+        self.current_version = current_version
+        self.take_focus = callbacks.pop("take_focus")
+        self.callbacks = callbacks
+        self.progress: list[tuple[str, float | None]] = []
+        self.errors: list[str] = []
+        self.fronted: list[bool] = []
+        self.closed = False
+
+    def choose(self, choice: str) -> None:
+        self.callbacks["on_choice"](choice)  # type: ignore[operator]
+
+    def show_progress(self, text: str, fraction: float | None) -> None:
+        self.progress.append((text, fraction))
+
+    def show_error(self, message: str) -> None:
+        self.errors.append(message)
+
+    def bring_to_front(self, take_focus: bool) -> None:
+        self.fronted.append(take_focus)
+
+    def close(self) -> None:
+        if not self.closed:
+            self.closed = True
+            self.callbacks["on_closed"]()  # type: ignore[operator]
+
+
+class MacPromptControllerTests(unittest.TestCase):
+    make_app = UpdateControllerTests.make_app
+
+    def mac_app(self, **overrides: object) -> tuple[CatTypeApp, list[FakePrompt]]:
+        prompts: list[FakePrompt] = []
+
+        def factory(*args: object, **kwargs: object) -> FakePrompt:
+            prompt = FakePrompt(*args, **kwargs)
+            prompts.append(prompt)
+            return prompt
+
+        options: dict[str, object] = {
+            "service": FakeService(result=mac_available_update()),
+            "platform_name": "darwin",
+            "prompt_factory": factory,
+        }
+        options.update(overrides)
+        app = self.make_app(**options)  # type: ignore[arg-type]
+        app.shutdown = Mock()
+        app._return_to_macos_background_policy = Mock()
+        return app, prompts
+
+    def test_macos_update_opens_prompt_without_focus_for_automatic_check(self) -> None:
+        confirm = Mock(return_value=True)
+        app, prompts = self.mac_app(confirm=confirm)
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        self.assertEqual(len(prompts), 1)
+        self.assertFalse(prompts[0].take_focus)
+        self.assertEqual(prompts[0].update.version, "1.1.0")
+        confirm.assert_not_called()
+        self.assertIsNotNone(app._active_update_operation_id)
+
+    def test_unfocused_prompt_becomes_clickable_without_taking_focus(self) -> None:
+        app, prompts = self.mac_app()
+        policies: list[int] = []
+        accessors = (lambda: 2, lambda policy: policies.append(policy) or True, lambda: False)
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        app.root.after.assert_any_call(
+            CatTypeApp.UPDATE_PROMPT_CLICKABLE_DELAY_MS,
+            app._make_update_prompt_clickable,
+        )
+        with patch("cat_type._macos_activation_policy_accessors_for_app", return_value=accessors):
+            app._make_update_prompt_clickable()
+            prompts[0].choose("later")
+            app._make_update_prompt_clickable()
+
+        self.assertEqual(policies, [1])
+
+    def test_macos_manual_check_opens_prompt_with_focus(self) -> None:
+        app, prompts = self.mac_app()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertTrue(prompts[0].take_focus)
+
+    def test_manual_check_with_open_prompt_brings_it_to_front(self) -> None:
+        service = FakeService(result=mac_available_update())
+        app, prompts = self.mac_app(service=service)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(len(prompts), 1)
+        self.assertEqual(prompts[0].fronted, [True])
+        self.assertEqual(len(service.check_calls), 1)
+
+    def test_choice_install_starts_install_and_routes_progress_to_prompt(self) -> None:
+        installer = FakeInstaller()
+        app, prompts = self.mac_app(installer=installer)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("install")
+        app._drain_update_events()
+
+        progress = prompts[0].progress
+        self.assertEqual(progress[0], ("Downloading update… 0%", 0.0))
+        self.assertIn(("Downloading update… 50%", 0.5), progress)
+        self.assertIn(("Verifying Cat Type 1.1.0…", None), progress)
+        self.assertIn(("Installing Cat Type 1.1.0…", None), progress)
+        self.assertEqual(len(installer.started), 1)
+        self.assertTrue(prompts[0].closed)
+        app.shutdown.assert_called_once_with()
+
+    def test_choice_skip_records_version(self) -> None:
+        state = FakeState()
+        app, prompts = self.mac_app(state=state)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("skip")
+
+        self.assertEqual(state.skipped, "1.1.0")
+        self.assertTrue(prompts[0].closed)
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_choice_later_records_nothing(self) -> None:
+        state = FakeState()
+        service = FakeService(result=mac_available_update())
+        app, prompts = self.mac_app(state=state, service=service)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("later")
+
+        self.assertIsNone(state.skipped)
+        self.assertEqual(service.downloads, [])
+        self.assertTrue(prompts[0].closed)
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_error_is_shown_in_prompt_and_current_app_keeps_running(self) -> None:
+        service = FakeService(
+            result=mac_available_update(),
+            download_error=UpdateError("package checksum does not match SHA256SUMS.txt"),
+        )
+        installer = FakeInstaller()
+        app, prompts = self.mac_app(service=service, installer=installer)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("install")
+        app._drain_update_events()
+
+        self.assertEqual(
+            prompts[0].errors, ["package checksum does not match SHA256SUMS.txt"]
+        )
+        self.assertFalse(prompts[0].closed)
+        self.assertEqual(installer.started, [])
+        app.shutdown.assert_not_called()
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_new_check_after_error_replaces_the_error_prompt(self) -> None:
+        service = FakeService(
+            result=mac_available_update(), download_error=UpdateError("offline")
+        )
+        app, prompts = self.mac_app(service=service)
+        app.check_for_updates()
+        app._drain_update_events()
+        prompts[0].choose("install")
+        app._drain_update_events()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertTrue(prompts[0].closed)
+        self.assertEqual(len(prompts), 2)
+
+    def test_cancel_during_download_emits_cancelled_and_closes_prompt(self) -> None:
+        runner = DeferredRunner()
+        installer = FakeInstaller()
+        app, prompts = self.mac_app(runner=runner, installer=installer)
+        app.check_for_updates()
+        runner.jobs.pop(0)[0]()  # type: ignore[operator]
+        app._drain_update_events()
+
+        prompts[0].choose("install")
+        prompts[0].callbacks["on_cancel"]()  # type: ignore[operator]
+        runner.jobs.pop(0)[0]()  # type: ignore[operator]
+        app._drain_update_events()
+
+        self.assertEqual(installer.prepared, [])
+        self.assertTrue(prompts[0].closed)
+        self.assertEqual(app._update_status, "Update cancelled.")
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_shutdown_with_open_prompt_closes_it_and_never_starts_helper(self) -> None:
+        runner = DeferredRunner()
+        installer = FakeInstaller()
+        app, prompts = self.mac_app(runner=runner, installer=installer)
+        del app.shutdown
+        app.check_for_updates()
+        runner.jobs.pop(0)[0]()  # type: ignore[operator]
+        app._drain_update_events()
+        prompts[0].choose("install")
+
+        app.shutdown()
+        runner.jobs.pop(0)[0]()  # type: ignore[operator]
+
+        self.assertTrue(prompts[0].closed)
+        self.assertEqual(installer.prepared, [])
+        self.assertEqual(installer.started, [])
+
+    def test_prompt_close_returns_to_background_policy_when_settings_closed(self) -> None:
+        app, prompts = self.mac_app()
+        app._return_to_macos_background_policy = Mock()
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("later")
+
+        app._return_to_macos_background_policy.assert_called_once_with()
+
+    def test_download_manually_opens_release_page(self) -> None:
+        app, prompts = self.mac_app()
+        app.check_for_updates()
+        app._drain_update_events()
+
+        with patch("cat_type.webbrowser.open") as browser:
+            prompts[0].callbacks["on_download_manually"]()  # type: ignore[operator]
+
+        browser.assert_called_once_with("https://example.test/releases/v1.1.0")
+
+    def test_windows_and_linux_automatic_prompt_defaults_to_no(self) -> None:
+        for manual, expected in ((False, "no"), (True, "yes")):
+            with self.subTest(manual=manual):
+                app = self.make_app(service=FakeService(result=available_update()))
+                app._confirm_update = app._confirm_available_update
+                with patch("cat_type.messagebox.askyesno", return_value=False) as ask:
+                    app.check_for_updates(manual=manual)
+                    app._drain_update_events()
+                ask.assert_called_once()
+                self.assertEqual(ask.call_args.kwargs["default"], expected)
+
+    def test_windows_and_linux_still_use_confirm_update(self) -> None:
+        for platform_name in ("win32", "linux"):
+            with self.subTest(platform=platform_name):
+                confirm = Mock(return_value=False)
+                app = self.make_app(
+                    service=FakeService(result=available_update()),
+                    confirm=confirm,
+                    platform_name=platform_name,
+                )
+                app.check_for_updates(manual=True)
+                app._drain_update_events()
+                confirm.assert_called_once()
 
 
 if __name__ == "__main__":

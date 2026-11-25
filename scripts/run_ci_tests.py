@@ -48,6 +48,9 @@ TEST_MODULES = (
     "tests.test_auto_update",
     "tests.test_update_controller",
     "tests.test_platform_updater",
+    "tests.test_macos_update_helper",
+    "tests.test_macos_updater",
+    "tests.test_update_prompt",
     "tests.test_windows_installer_contract",
 )
 

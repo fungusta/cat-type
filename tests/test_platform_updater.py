@@ -329,6 +329,20 @@ class LinuxPortableStagingTests(unittest.TestCase):
             self.directory.resolve() / "Cat Type current.previous",
         )
 
+    def test_controller_discard_removes_only_the_staged_executable(self) -> None:
+        archive = self.make_archive([_regular_member(body=b"replacement")])
+        prepared = self.installer.prepare(archive, "1.1.0")
+        controller = LinuxControllerInstaller(self.installer)
+
+        controller.discard(object())
+        controller.discard(
+            PreparedLinuxUpdate(prepared.current, prepared.current, prepared.backup)
+        )
+        controller.discard(prepared)
+
+        self.assertFalse(prepared.staged.exists())
+        self.assertEqual(self.executable.read_bytes(), b"old")
+
     def test_prepare_rejects_every_archive_shape_except_one_exact_regular_member(
         self,
     ) -> None:
@@ -503,8 +517,8 @@ class LinuxControllerWiringTests(unittest.TestCase):
 
         self.assertIsInstance(installer, LinuxControllerInstaller)
 
-    def test_source_linux_and_packaged_macos_remain_manual(self) -> None:
-        for platform_name, frozen in (("linux", False), ("darwin", True)):
+    def test_source_linux_and_source_macos_remain_manual(self) -> None:
+        for platform_name, frozen in (("linux", False), ("darwin", False)):
             with self.subTest(platform=platform_name):
                 installer = cat_type._default_update_installer(
                     platform_name,
@@ -512,6 +526,20 @@ class LinuxControllerWiringTests(unittest.TestCase):
                     shutdown_available=False,
                 )
                 self.assertFalse(installer.availability().can_install)
+
+
+
+class MacControllerWiringTests(unittest.TestCase):
+    def test_frozen_macos_defaults_to_mac_adapter(self) -> None:
+        from macos_updater import MacControllerInstaller
+
+        installer = cat_type._default_update_installer(
+            "darwin",
+            frozen=True,
+            shutdown_available=False,
+        )
+
+        self.assertIsInstance(installer, MacControllerInstaller)
 
 
 if __name__ == "__main__":
