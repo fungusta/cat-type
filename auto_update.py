@@ -22,6 +22,7 @@ from cat_settings import default_settings_path
 GITHUB_LATEST_RELEASE_URL = (
     "https://api.github.com/repos/fungusta/cat-type/releases/latest"
 )
+RELEASES_URL = "https://github.com/fungusta/cat-type/releases/latest"
 HTTP_TIMEOUT_SECONDS = 10
 MAX_METADATA_BYTES = 1024 * 1024
 MAX_PACKAGE_BYTES = 256 * 1024 * 1024

@@ -29,6 +29,7 @@ from app_version import IS_BETA_BUILD
 
 from auto_update import (
     AvailableUpdate,
+    RELEASES_URL,
     InstallerAvailability,
     UpdateEvent,
     UpdateService,
@@ -1523,7 +1524,7 @@ class _UnavailableShutdownSignal:
 class _UnavailableUpdateInstaller:
     """Manual-only implementation of the normalized controller seam."""
 
-    RELEASES_URL = "https://github.com/fungusta/cat-type/releases/latest"
+    RELEASES_URL = RELEASES_URL
 
     def __init__(self, platform_name: str, frozen: bool | None) -> None:
         is_frozen = (
