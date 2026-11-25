@@ -80,6 +80,14 @@ class FakeState:
     def record_success(self, now: datetime) -> None:
         self.successes.append(now)
 
+    skipped: str | None = None
+
+    def skipped_version(self) -> str | None:
+        return self.skipped
+
+    def skip_version(self, version: str) -> None:
+        self.skipped = version
+
 
 class FakeService:
     def __init__(
@@ -793,6 +801,109 @@ class ProductionUpdateRunnerTests(unittest.TestCase):
         runner(second_done.set, "later-update")
 
         self.assertTrue(second_done.wait(timeout=1.0))
+
+
+class PeriodicUpdateCheckTests(unittest.TestCase):
+    make_app = UpdateControllerTests.make_app
+
+    def test_run_schedules_startup_and_periodic_check_on_each_platform(self) -> None:
+        for platform_name in ("darwin", "win32", "linux"):
+            with self.subTest(platform=platform_name):
+                app = CatTypeApp.__new__(CatTypeApp)
+                app._start_tray = Mock()
+                app._ensure_activity_monitoring = Mock()
+                app.animation = Mock()
+                app.tracker = Mock()
+                app.root = Mock()
+                app._first_run = False
+                app._platform_name = platform_name
+
+                app.run()
+
+                app.root.after.assert_any_call(2000, app.check_for_updates)
+                app.root.after.assert_any_call(
+                    3_600_000, app._schedule_periodic_update_check
+                )
+                self.assertEqual(CatTypeApp.UPDATE_RECHECK_INTERVAL_MS, 3_600_000)
+
+    def test_periodic_check_rearms_and_stops_after_shutdown(self) -> None:
+        app = self.make_app()
+        app.check_for_updates = Mock()
+
+        app._schedule_periodic_update_check()
+
+        app.check_for_updates.assert_called_once_with()
+        app.root.after.assert_called_once_with(
+            3_600_000, app._schedule_periodic_update_check
+        )
+
+        app.check_for_updates.reset_mock()
+        app.root.after.reset_mock()
+        app._shutting_down = True
+        app._schedule_periodic_update_check()
+
+        app.check_for_updates.assert_not_called()
+        app.root.after.assert_not_called()
+
+    def test_periodic_check_is_noop_while_operation_active(self) -> None:
+        service = FakeService(result=available_update())
+        app = self.make_app(service=service)
+        self.assertIsNotNone(app._begin_update_operation())
+
+        app._schedule_periodic_update_check()
+
+        self.assertEqual(service.check_calls, [])
+
+    def test_periodic_check_respects_not_due(self) -> None:
+        service = FakeService(result=available_update())
+        app = self.make_app(service=service, state=FakeState(due=False))
+
+        app._schedule_periodic_update_check()
+        app._drain_update_events()
+
+        self.assertEqual(service.check_calls, [])
+        self.assertIsNone(app._active_update_operation_id)
+
+
+class SkippedVersionControllerTests(unittest.TestCase):
+    make_app = UpdateControllerTests.make_app
+
+    def skipped_app(self, skipped: str) -> tuple[CatTypeApp, Mock]:
+        state = FakeState()
+        state.skipped = skipped
+        confirm = Mock(return_value=False)
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            state=state,
+            confirm=confirm,
+        )
+        return app, confirm
+
+    def test_automatic_check_skips_prompt_for_skipped_version(self) -> None:
+        app, confirm = self.skipped_app("1.1.0")
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        confirm.assert_not_called()
+        self.assertEqual(app._update_status, "Cat Type 1.1.0 is available (skipped).")
+        self.assertIsNone(app._active_update_operation_id)
+
+    def test_manual_check_prompts_even_for_skipped_version(self) -> None:
+        app, confirm = self.skipped_app("1.1.0")
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        confirm.assert_called_once()
+
+    def test_newer_than_skipped_version_prompts(self) -> None:
+        app, confirm = self.skipped_app("1.0.99")
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        confirm.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -1610,6 +1610,7 @@ class CatTypeApp:
     TRANSPARENT_COLOR = "#00ff01"
     MAX_CONTINUITY_SNAPSHOT_AGE_SECONDS = 0.25
     USAGE_FLUSH_INTERVAL_MS = 30_000
+    UPDATE_RECHECK_INTERVAL_MS = 3_600_000
 
     def __init__(
         self,
@@ -1927,7 +1928,12 @@ class CatTypeApp:
                     )
                     return
                 self.update_events.put(
-                    UpdateEvent(operation_id, "check-result", update=update)
+                    UpdateEvent(
+                        operation_id,
+                        "check-result",
+                        update=update,
+                        manual=manual,
+                    )
                 )
             except Exception as error:
                 self.update_events.put(
@@ -1937,6 +1943,18 @@ class CatTypeApp:
         self._update_worker = self._update_thread_runner(
             check_worker,
             "update-check",
+        )
+
+    def _schedule_periodic_update_check(self) -> None:
+        """Run an automatic check and re-arm; is_due limits it to once a day."""
+        if self._shutting_down:
+            return
+        self.check_for_updates()
+        if self._shutting_down:
+            return
+        self.root.after(
+            self.UPDATE_RECHECK_INTERVAL_MS,
+            self._schedule_periodic_update_check,
         )
 
     def _clear_pending_manual_update_check(self) -> None:
@@ -2026,6 +2044,12 @@ class CatTypeApp:
             return
 
         update = event.update
+        if not event.manual and update.version == self._update_state.skipped_version():
+            self._finish_update_operation(event.operation_id)
+            self._set_update_status(
+                f"Cat Type {update.version} is available (skipped)."
+            )
+            return
         self._set_update_status(f"Cat Type {update.version} is available.")
         if not self._confirm_update(update):
             self._finish_update_operation(event.operation_id)
@@ -2129,10 +2153,14 @@ class CatTypeApp:
             self._flush_usage_periodically,
         )
         platform_name = getattr(self, "_platform_name", sys.platform)
-        if platform_name == "win32" or platform_name.startswith(
+        if platform_name in {"darwin", "win32"} or platform_name.startswith(
             "linux"
         ):
             self.root.after(2000, self.check_for_updates)
+            self.root.after(
+                self.UPDATE_RECHECK_INTERVAL_MS,
+                self._schedule_periodic_update_check,
+            )
         if self._first_run:
             self.root.after(400, self.open_settings)
         self.root.mainloop()
