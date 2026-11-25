@@ -36,11 +36,22 @@ hidden_imports = [
 ]
 if is_windows:
     hidden_imports += collect_submodules("comtypes.gen")
+binaries = []
+if is_macos:
+    sys.path.insert(0, str(project_root))
+    from scripts.build_macos_update_helper import build_update_helper
+
+    # The update swap helper ships beside the app's other binaries and is
+    # signed with the bundle. Cat Type copies it out before running it.
+    update_helper = build_update_helper(
+        project_root / "build" / "cat-type-update-helper"
+    )
+    binaries.append((str(update_helper), "."))
 
 a = Analysis(
     ["cat_type.py"],
     pathex=[str(project_root)],
-    binaries=[],
+    binaries=binaries,
     datas=[
         (
             str(project_root / "assets" / "vector-cats"),
