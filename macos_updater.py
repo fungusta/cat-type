@@ -358,3 +358,91 @@ class MacBundleInstaller:
                     os.lchown(name, owner.st_uid, owner.st_gid)
                 except OSError:
                     pass
+
+    def start(self, prepared: PreparedMacUpdate, pid: int | None = None) -> None:
+        """Copy the helper out of the bundle and launch it to finish the swap."""
+        if not isinstance(prepared, PreparedMacUpdate):
+            raise TypeError("prepared macOS update has the wrong type")
+        if pid is None:
+            pid = os.getpid()
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            raise ValueError("macOS updater PID must be a positive integer")
+        installed = self._require_capability()
+        if (
+            prepared.installed != installed
+            or prepared.staging_dir.parent != installed.parent
+            or not prepared.staging_dir.name.startswith(STAGING_PREFIX)
+            or prepared.staged != prepared.staging_dir / installed.name
+            or not prepared.staged.is_dir()
+        ):
+            raise RuntimeError("The prepared update no longer matches this app.")
+        lock = self._lock_path(installed)
+        try:
+            lock.mkdir(mode=0o700)
+        except FileExistsError as error:
+            raise RuntimeError("An update is already in progress.") from error
+        except OSError as error:
+            raise RuntimeError("The update lock could not be created.") from error
+
+        helper_dir: Path | None = None
+        try:
+            helper_dir = Path(tempfile.mkdtemp(prefix=HELPER_DIR_PREFIX))
+            helper_copy = helper_dir / HELPER_NAME
+            shutil.copy2(self._helper, helper_copy)
+            helper_copy.chmod(0o755)
+            self._log_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._log_path.open("ab") as log:
+                process = self._popen(
+                    [
+                        str(helper_copy),
+                        str(pid),
+                        str(installed),
+                        str(prepared.staged),
+                        str(prepared.staging_dir),
+                        str(lock),
+                        str(helper_dir),
+                        OPEN,
+                        GKTOOL,
+                        "swap",
+                        str(HELPER_WAIT_SECONDS),
+                    ],
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=log,
+                    stderr=log,
+                    close_fds=True,
+                )
+        except BaseException:
+            _remove_path(lock)
+            if helper_dir is not None:
+                shutil.rmtree(helper_dir, ignore_errors=True)
+            raise
+        try:
+            (lock / HELPER_PID_FILE).write_text(
+                f"{getattr(process, 'pid', '')}\n", encoding="ascii"
+            )
+        except OSError:
+            pass
+
+
+class MacControllerInstaller:
+    """Normalize macOS bundle installation to the controller protocol."""
+
+    def __init__(self, installer: MacBundleInstaller | None = None) -> None:
+        self._installer = installer or MacBundleInstaller()
+
+    def availability(self) -> InstallerAvailability:
+        return self._installer.availability()
+
+    def prepare(self, package: Path, update: AvailableUpdate) -> PreparedMacUpdate:
+        if (
+            update.package.name not in MACOS_DMG_NAMES
+            or Path(package).name != update.package.name
+        ):
+            raise ValueError("verified macOS disk image does not match the selected asset")
+        return self._installer.prepare(Path(package), update.version)
+
+    def start(self, prepared: object) -> None:
+        if not isinstance(prepared, PreparedMacUpdate):
+            raise TypeError("prepared macOS update has the wrong type")
+        self._installer.start(prepared)

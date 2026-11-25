@@ -1599,6 +1599,10 @@ def _default_update_installer(
         return WindowsControllerInstaller()
     if platform_name.startswith("linux") and frozen:
         return LinuxControllerInstaller()
+    if platform_name == "darwin" and frozen:
+        from macos_updater import MacControllerInstaller
+
+        return MacControllerInstaller()
     return _UnavailableUpdateInstaller(platform_name, frozen)
 
 

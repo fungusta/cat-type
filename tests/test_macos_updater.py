@@ -11,9 +11,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from auto_update import RELEASES_URL
+from auto_update import RELEASES_URL, AvailableUpdate, ReleaseAsset
 from macos_updater import (
     CODE_REQUIREMENT,
+    MacControllerInstaller,
     HELPER_NAME,
     LOCK_SUFFIX,
     STAGING_PREFIX,
@@ -364,6 +365,153 @@ class MacPrepareTests(MacInstallerTestCase):
             self.installer(frozen=False).prepare(self.dmg, "1.1.0")
 
         self.assertEqual(self.runner.calls, [])
+
+
+class RecordingPopen:
+    def __init__(self, error: BaseException | None = None) -> None:
+        self.calls: list[tuple[list[str], dict[str, object]]] = []
+        self.error = error
+        self.pid = 4242
+
+    def __call__(self, argv: list[str], **kwargs: object) -> "RecordingPopen":
+        if self.error is not None:
+            raise self.error
+        self.calls.append((list(argv), kwargs))
+        return self
+
+
+class MacHandoffTests(MacInstallerTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.popen = RecordingPopen()
+        self.log_path = self.root / "Logs" / "update-helper.log"
+        self.addCleanup(self._remove_helper_dirs)
+        self.helper_dirs_before = set(self._helper_dirs())
+
+    @staticmethod
+    def _helper_dirs() -> list[Path]:
+        return list(Path(tempfile.gettempdir()).glob("cat-type-update-helper-*"))
+
+    def _remove_helper_dirs(self) -> None:
+        for path in set(self._helper_dirs()) - self.helper_dirs_before:
+            shutil.rmtree(path, ignore_errors=True)
+
+    def handoff_installer(self, **overrides: object) -> MacBundleInstaller:
+        options: dict[str, object] = {"popen": self.popen, "log_path": self.log_path}
+        options.update(overrides)
+        return self.installer(**options)
+
+    def test_start_copies_helper_out_of_bundle_and_passes_exact_argv(self) -> None:
+        installer = self.handoff_installer()
+        prepared = installer.prepare(self.dmg, "1.1.0")
+
+        installer.start(prepared, pid=777)
+
+        self.assertEqual(len(self.popen.calls), 1)
+        argv, kwargs = self.popen.calls[0]
+        helper_copy = Path(argv[0])
+        lock = Path(f"{prepared.installed}{LOCK_SUFFIX}")
+        self.assertEqual(helper_copy.name, HELPER_NAME)
+        self.assertTrue(helper_copy.parent.name.startswith("cat-type-update-helper-"))
+        self.assertNotIn(str(prepared.installed), str(helper_copy))
+        self.assertTrue(os.access(helper_copy, os.X_OK))
+        self.assertEqual(
+            argv[1:],
+            [
+                "777",
+                str(prepared.installed),
+                str(prepared.staged),
+                str(prepared.staging_dir),
+                str(lock),
+                str(helper_copy.parent),
+                "/usr/bin/open",
+                "/usr/bin/gktool",
+                "swap",
+                "300",
+            ],
+        )
+        self.assertIs(kwargs["start_new_session"], True)
+        self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
+        self.assertTrue(lock.is_dir())
+        self.assertEqual(
+            (lock / "helper.pid").read_text(encoding="ascii").strip(), "4242"
+        )
+        self.assertTrue(self.log_path.parent.is_dir())
+
+    def test_start_refuses_when_lock_exists(self) -> None:
+        installer = self.handoff_installer()
+        prepared = installer.prepare(self.dmg, "1.1.0")
+        Path(f"{prepared.installed}{LOCK_SUFFIX}").mkdir()
+
+        with self.assertRaisesRegex(RuntimeError, "already in progress"):
+            installer.start(prepared, pid=777)
+
+        self.assertEqual(self.popen.calls, [])
+
+    def test_start_cleans_lock_and_helper_copy_when_spawn_fails(self) -> None:
+        installer = self.handoff_installer(popen=RecordingPopen(OSError("no spawn")))
+        prepared = installer.prepare(self.dmg, "1.1.0")
+
+        with self.assertRaises(OSError):
+            installer.start(prepared, pid=777)
+
+        self.assertFalse(Path(f"{prepared.installed}{LOCK_SUFFIX}").exists())
+        self.assertEqual(set(self._helper_dirs()), self.helper_dirs_before)
+
+    def test_start_rejects_a_prepared_update_for_another_bundle(self) -> None:
+        installer = self.handoff_installer()
+        prepared = installer.prepare(self.dmg, "1.1.0")
+        other = PreparedMacUpdate(
+            self.root / "Other.app", prepared.staged, prepared.staging_dir
+        )
+
+        with self.assertRaises(RuntimeError):
+            installer.start(other, pid=777)
+
+        self.assertEqual(self.popen.calls, [])
+
+
+def mac_update(package: str = "Cat-Type-macOS-arm64.dmg") -> AvailableUpdate:
+    return AvailableUpdate(
+        version="1.1.0",
+        tag_name="v1.1.0",
+        html_url="https://example.test/releases/v1.1.0",
+        package=ReleaseAsset(package, f"https://example.test/{package}", 100),
+        checksums=ReleaseAsset(
+            "SHA256SUMS.txt", "https://example.test/SHA256SUMS.txt", 80
+        ),
+    )
+
+
+class MacControllerInstallerTests(MacInstallerTestCase):
+    def test_controller_prepare_rejects_mismatched_package(self) -> None:
+        controller = MacControllerInstaller(self.installer())
+        for package_path, update in (
+            (self.root / "Cat-Type-Linux-x64.tar.gz", mac_update("Cat-Type-Linux-x64.tar.gz")),
+            (self.root / "Cat-Type-macOS-x64.dmg", mac_update()),
+        ):
+            with self.subTest(package=package_path.name):
+                with self.assertRaises(ValueError):
+                    controller.prepare(package_path, update)
+        self.assertEqual(self.runner.calls, [])
+
+    def test_controller_prepare_and_start_delegate(self) -> None:
+        popen = RecordingPopen()
+        installer = self.installer(popen=popen, log_path=self.root / "log.txt")
+        controller = MacControllerInstaller(installer)
+
+        prepared = controller.prepare(self.dmg, mac_update())
+        controller.start(prepared)
+
+        self.assertIsInstance(prepared, PreparedMacUpdate)
+        self.assertEqual(popen.calls[0][0][1], str(os.getpid()))
+        for path in Path(tempfile.gettempdir()).glob("cat-type-update-helper-*"):
+            if Path(popen.calls[0][0][0]).parent == path:
+                shutil.rmtree(path, ignore_errors=True)
+
+    def test_controller_start_rejects_wrong_type(self) -> None:
+        with self.assertRaises(TypeError):
+            MacControllerInstaller(self.installer()).start(object())
 
 
 if __name__ == "__main__":

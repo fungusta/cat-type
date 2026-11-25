@@ -503,8 +503,8 @@ class LinuxControllerWiringTests(unittest.TestCase):
 
         self.assertIsInstance(installer, LinuxControllerInstaller)
 
-    def test_source_linux_and_packaged_macos_remain_manual(self) -> None:
-        for platform_name, frozen in (("linux", False), ("darwin", True)):
+    def test_source_linux_and_source_macos_remain_manual(self) -> None:
+        for platform_name, frozen in (("linux", False), ("darwin", False)):
             with self.subTest(platform=platform_name):
                 installer = cat_type._default_update_installer(
                     platform_name,
@@ -512,6 +512,20 @@ class LinuxControllerWiringTests(unittest.TestCase):
                     shutdown_available=False,
                 )
                 self.assertFalse(installer.availability().can_install)
+
+
+
+class MacControllerWiringTests(unittest.TestCase):
+    def test_frozen_macos_defaults_to_mac_adapter(self) -> None:
+        from macos_updater import MacControllerInstaller
+
+        installer = cat_type._default_update_installer(
+            "darwin",
+            frozen=True,
+            shutdown_available=False,
+        )
+
+        self.assertIsInstance(installer, MacControllerInstaller)
 
 
 if __name__ == "__main__":
