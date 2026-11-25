@@ -157,6 +157,13 @@ jobs:
             --verbose=4 \
             "${{ matrix.source }}"
 
+      - name: Smoke test macOS self-update from the notarized disk image
+        if: runner.os == 'macOS'
+        run: >-
+          python -m scripts.smoke_macos_update
+          --app "dist/Cat Type.app"
+          --dmg "${{ matrix.source }}"
+
       - name: Smoke test Linux package
         if: runner.os == 'Linux'
         run: >-

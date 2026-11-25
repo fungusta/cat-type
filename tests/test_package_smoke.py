@@ -47,5 +47,45 @@ class PackageSmokeTests(unittest.TestCase):
         )
 
 
+
+class MacUpdateSmokeTests(unittest.TestCase):
+    def _module(self):
+        spec = importlib.util.find_spec("scripts.smoke_macos_update")
+        self.assertIsNotNone(spec, "macOS update smoke tester must exist")
+        return importlib.import_module("scripts.smoke_macos_update")
+
+    def test_smoke_macos_update_parses_app_and_optional_dmg(self) -> None:
+        smoke = self._module()
+
+        without = smoke.parse_args(["--app", "dist/Cat Type.app"])
+        with_dmg = smoke.parse_args(
+            ["--app", "dist/Cat Type.app", "--dmg", "dist/Cat-Type-macOS-arm64.dmg"]
+        )
+
+        self.assertEqual(str(without.app), "dist/Cat Type.app")
+        self.assertIsNone(without.dmg)
+        self.assertEqual(str(with_dmg.dmg), "dist/Cat-Type-macOS-arm64.dmg")
+
+    @unittest.skipUnless(sys.platform == "darwin", "requires macOS")
+    def test_swap_smoke_passes_against_a_bundle_with_the_helper(self) -> None:
+        import plistlib
+        import tempfile
+        from pathlib import Path
+
+        from scripts.build_macos_update_helper import build_update_helper
+
+        smoke = self._module()
+        with tempfile.TemporaryDirectory() as raw:
+            app = Path(raw) / "Cat Type.app"
+            (app / "Contents" / "MacOS").mkdir(parents=True)
+            with (app / "Contents" / "Info.plist").open("wb") as info:
+                plistlib.dump({"CFBundleIdentifier": "com.fungusta.cat-type"}, info)
+            build_update_helper(
+                app / "Contents" / "Frameworks" / "cat-type-update-helper"
+            )
+
+            smoke.run_swap_smoke(app)
+
+
 if __name__ == "__main__":
     unittest.main()

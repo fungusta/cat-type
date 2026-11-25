@@ -123,11 +123,19 @@ Press **Ctrl+Alt+Q** at any time to quit.
 ## Automatic updates
 
 Packaged Windows, macOS, and Linux builds check GitHub for a newer stable
-release at startup. After a successful check, Cat Type waits at least 24 hours
-before checking automatically again. You can check at any time with **Check
-for updates** in Settings. Windows and Linux ask for confirmation before
-downloading or installing an available update. macOS reports the new version
-and links to its GitHub release so the notarized DMG can be installed manually.
+release at startup and again while running. After a successful check, Cat Type
+waits at least 24 hours before checking automatically again. You can check at
+any time with **Check for updates** in Settings. Windows and Linux ask for
+confirmation before downloading or installing an available update.
+
+On macOS, an available update opens a small window with **Install Update**,
+**Remind Me Later**, and **Skip This Version**. A window opened by an automatic
+check never takes keyboard focus from the app you are typing in; click it to
+use the keyboard. **Remind Me Later** asks again after the next daily check,
+and **Skip This Version** stays quiet about that version until a newer one is
+released (pressing **Check for updates** still offers it). **Install Update**
+shows download progress, can be cancelled while downloading, and shows any
+error with a **Download Manually** link.
 
 Downloads come from the public Cat Type GitHub release and are accepted only
 when their SHA-256 digest matches the exact asset entry in the release's
@@ -151,7 +159,20 @@ left unchanged and show instructions to update manually. The replacement
 helper requires Linux `/proc` plus the standard `sh`, `mv`, `sed`, and `awk`
 command-line tools included by mainstream desktop distributions.
 
-macOS and source checkouts never self-install. Checking or downloading contacts
+On macOS, Cat Type mounts the verified disk image read-only, copies the new
+app beside the installed one, and accepts it only when it is signed by the Cat
+Type Developer ID team (`9B98U2J5Q2`) with bundle ID `com.fungusta.cat-type`,
+passes Gatekeeper, and is newer than the running version. Cat Type then quits,
+and a small helper copied out of the app swaps the two bundles in one atomic
+step (falling back to move-aside-and-restore when the volume cannot swap),
+removes the old copy, and reopens Cat Type. This follows the approach of
+Sparkle, the standard macOS update framework. Self-installation needs a folder
+you can write to, such as `/Applications` for an administrator account; running
+from the disk image, from a location macOS has translocated, or from a
+protected folder shows instructions to update manually instead. Helper
+diagnostics go to `~/Library/Logs/Cat Type/update-helper.log`.
+
+Source checkouts never self-install. Checking or downloading contacts
 GitHub's API and release download hosts; Cat Type does not include keyboard
 input or local usage metrics in those requests.
 

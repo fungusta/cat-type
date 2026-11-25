@@ -1,5 +1,10 @@
 # Windows and Linux Automatic Updates
 
+> **Superseded for macOS** by
+> `2026-11-25-macos-auto-updates-design.md`: packaged macOS builds now install
+> updates themselves. The macOS-manual statements below describe the original
+> design.
+
 ## Goal
 
 Cat Type will check for stable GitHub releases on Windows and Linux, ask the
