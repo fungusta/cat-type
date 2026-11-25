@@ -282,10 +282,9 @@ class UpdateControllerTests(unittest.TestCase):
 
         app.check_for_updates(manual=False)
         app.check_for_updates(manual=True)
-        automatic_target, _name = runner.jobs.pop()
-        automatic_target()
-        app._drain_update_events()
 
+        # A not-due automatic check never starts, so the manual check runs
+        # immediately instead of being replayed after it.
         self.assertEqual(len(runner.jobs), 1)
         manual_target, _name = runner.jobs.pop()
         manual_target()
@@ -936,6 +935,22 @@ class PeriodicUpdateCheckTests(unittest.TestCase):
 
         self.assertEqual(service.check_calls, [])
         self.assertIsNone(app._active_update_operation_id)
+
+    def test_not_due_automatic_check_leaves_status_and_installer_alone(self) -> None:
+        installer = FakeInstaller()
+        installer.availability = Mock(wraps=installer.availability)  # type: ignore[method-assign]
+        runner = DeferredRunner()
+        app = self.make_app(
+            installer=installer, state=FakeState(due=False), runner=runner
+        )
+        app._update_status = "Update failed: offline"
+
+        app._schedule_periodic_update_check()
+        app._drain_update_events()
+
+        self.assertEqual(runner.jobs, [])
+        installer.availability.assert_not_called()
+        self.assertEqual(app._update_status, "Update failed: offline")
 
 
 class SkippedVersionControllerTests(unittest.TestCase):

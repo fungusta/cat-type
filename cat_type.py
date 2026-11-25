@@ -1907,6 +1907,10 @@ class CatTypeApp:
                 or self._platform_name.startswith("linux")
             ):
                 return
+            # The hourly timer must stay silent until a check is due: no
+            # status churn and no installer capability probes.
+            if self._frozen and not self._update_state.is_due(self._update_now()):
+                return
 
         operation_id = self._begin_update_operation()
         if operation_id is None:
