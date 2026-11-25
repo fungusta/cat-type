@@ -47,13 +47,17 @@ class SiteBuildTests(unittest.TestCase):
 
     def test_showcase_progress_agrees_with_thresholds(self):
         showcase = {item["id"]: item for item in self.module().catalog()["showcase"]}
-        self.assertEqual(list(showcase), ["beanie", "party-hat", "crown", "dragon-wings"])
+        self.assertEqual(list(showcase), [
+            "beanie", "frog-hat", "party-hat", "chef-hat", "superhero-cape", "dragon-wings",
+        ])
         self.assertEqual(showcase["beanie"]["progress"], 100)
         self.assertIs(showcase["beanie"]["equipped"], True)
+        self.assertEqual(showcase["frog-hat"]["progress"], 26)
         self.assertEqual(showcase["party-hat"]["progress"], 21)
-        self.assertEqual(showcase["crown"]["progress"], 10)
+        self.assertEqual(showcase["chef-hat"]["progress"], 8)
+        self.assertEqual(showcase["superhero-cape"]["progress"], 3)
         self.assertEqual(showcase["dragon-wings"]["progress"], 2)
-        for item_id in ("party-hat", "crown", "dragon-wings"):
+        for item_id in ("frog-hat", "party-hat", "chef-hat", "superhero-cape", "dragon-wings"):
             self.assertIs(showcase[item_id]["equipped"], False)
         for item_id, item in showcase.items():
             self.assertEqual(item["blurb"], ACCESSORY_BLURBS[item_id])
