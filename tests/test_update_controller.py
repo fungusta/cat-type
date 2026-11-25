@@ -1061,6 +1061,25 @@ class MacPromptControllerTests(unittest.TestCase):
         confirm.assert_not_called()
         self.assertIsNotNone(app._active_update_operation_id)
 
+    def test_unfocused_prompt_becomes_clickable_without_taking_focus(self) -> None:
+        app, prompts = self.mac_app()
+        policies: list[int] = []
+        accessors = (lambda: 2, lambda policy: policies.append(policy) or True, lambda: False)
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        app.root.after.assert_any_call(
+            CatTypeApp.UPDATE_PROMPT_CLICKABLE_DELAY_MS,
+            app._make_update_prompt_clickable,
+        )
+        with patch("cat_type._macos_activation_policy_accessors_for_app", return_value=accessors):
+            app._make_update_prompt_clickable()
+            prompts[0].choose("later")
+            app._make_update_prompt_clickable()
+
+        self.assertEqual(policies, [1])
+
     def test_macos_manual_check_opens_prompt_with_focus(self) -> None:
         app, prompts = self.mac_app()
 

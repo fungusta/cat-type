@@ -1622,6 +1622,7 @@ class CatTypeApp:
     MAX_CONTINUITY_SNAPSHOT_AGE_SECONDS = 0.25
     USAGE_FLUSH_INTERVAL_MS = 30_000
     UPDATE_RECHECK_INTERVAL_MS = 3_600_000
+    UPDATE_PROMPT_CLICKABLE_DELAY_MS = 250
 
     def __init__(
         self,
@@ -2127,6 +2128,14 @@ class CatTypeApp:
             on_activate=self._activate_for_update_prompt,
             on_closed=self._on_update_prompt_closed,
         )
+        if not take_focus:
+            # Shown under the idle "prohibited" policy so it cannot steal
+            # focus; once on screen, the accessory policy lets a click reach
+            # it like any background app's window, still without activating.
+            self.root.after(
+                self.UPDATE_PROMPT_CLICKABLE_DELAY_MS,
+                self._make_update_prompt_clickable,
+            )
 
     def _on_update_prompt_choice(
         self,
@@ -2184,6 +2193,13 @@ class CatTypeApp:
             settings_open = False
         if not settings_open:
             self._return_to_macos_background_policy()
+
+    def _make_update_prompt_clickable(self) -> None:
+        if getattr(self, "_update_prompt", None) is None:
+            return
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
 
     def _activate_for_update_prompt(self) -> None:
         activation_policy = _macos_activation_policy_accessors_for_app()

@@ -96,7 +96,7 @@ class MacOSOverlayFocusTests(unittest.TestCase):
             )
 
             app._open_update_prompt(update, 1, take_focus=False)
-            self._run_event_loop(app.root, 0.5)
+            self._run_event_loop(app.root, 1.0)
 
             prompt = app._update_prompt
             self.assertIsNotNone(prompt, "the update prompt did not open")
@@ -105,6 +105,13 @@ class MacOSOverlayFocusTests(unittest.TestCase):
                 self._frontmost_pid(),
                 frontmost_before,
                 "an automatic update prompt activated Cat Type",
+            )
+            activation_policy = _macos_activation_policy_accessors_for_app()
+            assert activation_policy is not None
+            self.assertEqual(
+                activation_policy[0](),
+                1,
+                "the update prompt was not made clickable (accessory policy)",
             )
         finally:
             app._close_update_prompt()
