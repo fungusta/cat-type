@@ -2157,6 +2157,15 @@ class CatTypeApp:
         self._finish_update_operation(operation_id)
         self._close_update_prompt()
 
+    def _discard_prepared_update(self, prepared: object) -> None:
+        discard = getattr(self._update_installer, "discard", None)
+        if discard is None:
+            return
+        try:
+            discard(prepared)
+        except Exception:
+            pass
+
     def _close_update_prompt(self) -> None:
         prompt = getattr(self, "_update_prompt", None)
         if prompt is not None:
@@ -2219,6 +2228,8 @@ class CatTypeApp:
 
         def install_worker() -> None:
             terminal = UpdateEvent(operation_id, "cancelled")
+            prepared: object | None = None
+            started = False
             try:
                 package = self._update_service.download_verified(
                     update,
@@ -2237,7 +2248,10 @@ class CatTypeApp:
                 with self._update_lifecycle_lock:
                     if self._shutting_down:
                         return
-                    prepared = self._update_installer.prepare(package, update)
+                # Preparing can take tens of seconds on macOS (mount, copy,
+                # signature and Gatekeeper checks), so it runs without the
+                # lifecycle lock; the Tk thread and Quit never wait on it.
+                prepared = self._update_installer.prepare(package, update)
                 self.update_events.put(
                     UpdateEvent(
                         operation_id,
@@ -2247,8 +2261,9 @@ class CatTypeApp:
                 )
                 self._before_update_handoff("start")
                 with self._update_lifecycle_lock:
-                    if self._shutting_down:
+                    if self._shutting_down or cancel.is_set():
                         return
+                    started = True
                     self._update_installer.start(prepared)
                     terminal = UpdateEvent(
                         operation_id,
@@ -2264,6 +2279,10 @@ class CatTypeApp:
                     message=str(error),
                 )
             finally:
+                if prepared is not None and (
+                    not started or terminal.kind != "install-started"
+                ):
+                    self._discard_prepared_update(prepared)
                 self.update_events.put(terminal)
 
         self._update_worker = self._update_thread_runner(

@@ -359,10 +359,35 @@ class MacBundleInstaller:
                 except OSError:
                     pass
 
+    def discard(self, prepared: PreparedMacUpdate) -> None:
+        """Delete an abandoned staged update; never touches anything else."""
+        if not isinstance(prepared, PreparedMacUpdate):
+            return
+        staging_dir = prepared.staging_dir
+        if (
+            staging_dir.name.startswith(STAGING_PREFIX)
+            and staging_dir.parent == prepared.installed.parent
+            and staging_dir != prepared.installed
+            and staging_dir.is_dir()
+            and not staging_dir.is_symlink()
+        ):
+            shutil.rmtree(staging_dir, ignore_errors=True)
+
     def start(self, prepared: PreparedMacUpdate, pid: int | None = None) -> None:
-        """Copy the helper out of the bundle and launch it to finish the swap."""
+        """Copy the helper out of the bundle and launch it to finish the swap.
+
+        Any failure deletes the staged update, so nothing is left beside the
+        installed app.
+        """
         if not isinstance(prepared, PreparedMacUpdate):
             raise TypeError("prepared macOS update has the wrong type")
+        try:
+            self._start(prepared, pid)
+        except BaseException:
+            self.discard(prepared)
+            raise
+
+    def _start(self, prepared: PreparedMacUpdate, pid: int | None) -> None:
         if pid is None:
             pid = os.getpid()
         if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
@@ -446,3 +471,7 @@ class MacControllerInstaller:
         if not isinstance(prepared, PreparedMacUpdate):
             raise TypeError("prepared macOS update has the wrong type")
         self._installer.start(prepared)
+
+    def discard(self, prepared: object) -> None:
+        if isinstance(prepared, PreparedMacUpdate):
+            self._installer.discard(prepared)

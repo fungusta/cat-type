@@ -458,6 +458,39 @@ class MacHandoffTests(MacInstallerTestCase):
         self.assertFalse(Path(f"{prepared.installed}{LOCK_SUFFIX}").exists())
         self.assertEqual(set(self._helper_dirs()), self.helper_dirs_before)
 
+    def test_start_failures_remove_the_staged_bundle(self) -> None:
+        for name in ("lock exists", "spawn fails"):
+            with self.subTest(name=name):
+                popen = RecordingPopen(OSError("no spawn")) if name == "spawn fails" else self.popen
+                installer = self.handoff_installer(popen=popen)
+                prepared = installer.prepare(self.dmg, "1.1.0")
+                lock = Path(f"{prepared.installed}{LOCK_SUFFIX}")
+                if name == "lock exists":
+                    lock.mkdir()
+
+                with self.assertRaises((RuntimeError, OSError)):
+                    installer.start(prepared, pid=777)
+
+                self.assertFalse(prepared.staging_dir.exists())
+                self.assertEqual(marker(self.installed), "old")
+                shutil.rmtree(lock, ignore_errors=True)
+
+    def test_discard_removes_only_our_staging_folder(self) -> None:
+        installer = self.handoff_installer()
+        prepared = installer.prepare(self.dmg, "1.1.0")
+        foreign = self.root / "not-staging"
+        make_bundle(foreign / "Cat Type 2.app", marker="keep")
+
+        installer.discard(
+            PreparedMacUpdate(prepared.installed, foreign / "Cat Type 2.app", foreign)
+        )
+        installer.discard(prepared)
+        installer.discard(prepared)
+
+        self.assertTrue(foreign.exists())
+        self.assertFalse(prepared.staging_dir.exists())
+        self.assertEqual(marker(self.installed), "old")
+
     def test_start_rejects_a_prepared_update_for_another_bundle(self) -> None:
         installer = self.handoff_installer()
         prepared = installer.prepare(self.dmg, "1.1.0")
@@ -508,6 +541,16 @@ class MacControllerInstallerTests(MacInstallerTestCase):
         for path in Path(tempfile.gettempdir()).glob("cat-type-update-helper-*"):
             if Path(popen.calls[0][0][0]).parent == path:
                 shutil.rmtree(path, ignore_errors=True)
+
+    def test_controller_discard_delegates_and_ignores_other_types(self) -> None:
+        installer = self.installer()
+        controller = MacControllerInstaller(installer)
+        prepared = controller.prepare(self.dmg, mac_update())
+
+        controller.discard(object())
+        controller.discard(prepared)
+
+        self.assertFalse(prepared.staging_dir.exists())
 
     def test_controller_start_rejects_wrong_type(self) -> None:
         with self.assertRaises(TypeError):

@@ -135,6 +135,8 @@ class FakeInstaller:
         )
         self.prepared: list[tuple[Path, AvailableUpdate]] = []
         self.started: list[object] = []
+        self.discarded: list[object] = []
+        self.start_error: Exception | None = None
 
     def availability(self) -> InstallerAvailability:
         return self._availability
@@ -145,7 +147,12 @@ class FakeInstaller:
         return prepared
 
     def start(self, prepared: object) -> None:
+        if self.start_error is not None:
+            raise self.start_error
         self.started.append(prepared)
+
+    def discard(self, prepared: object) -> None:
+        self.discarded.append(prepared)
 
 
 class BlockingInstaller(FakeInstaller):
@@ -624,8 +631,72 @@ class UpdateControllerTests(unittest.TestCase):
         self.assertEqual(installer.started, [])
         self.assertFalse(app._update_worker_active)
 
-    def test_shutdown_waits_for_prepare_handoff_that_already_began(self) -> None:
-        self._assert_shutdown_waits_for_active_handoff("prepare")
+    def test_shutdown_during_prepare_returns_promptly_and_discards_it(self) -> None:
+        installer = BlockingInstaller("prepare")
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            runner=runner,
+        )
+        app.check_for_updates(manual=True)
+        runner.jobs.pop()[0]()  # type: ignore[operator]
+        app._drain_update_events()
+        install_thread = threading.Thread(target=runner.jobs.pop()[0])  # type: ignore[arg-type]
+        try:
+            install_thread.start()
+            self.assertTrue(installer.handoff_entered.wait(timeout=1.0))
+            shutdown_thread = threading.Thread(target=app.shutdown)
+            shutdown_thread.start()
+            shutdown_thread.join(timeout=0.5)
+            self.assertFalse(shutdown_thread.is_alive(), "shutdown waited on prepare")
+        finally:
+            installer.release_handoff.set()
+            install_thread.join(timeout=1.0)
+        self.assertEqual(installer.started, [])
+        self.assertEqual(len(installer.discarded), 1)
+
+    def test_event_drain_is_not_blocked_while_prepare_runs(self) -> None:
+        installer = BlockingInstaller("prepare")
+        runner = DeferredRunner()
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+            runner=runner,
+        )
+        app.check_for_updates(manual=True)
+        runner.jobs.pop()[0]()  # type: ignore[operator]
+        app._drain_update_events()
+        install_thread = threading.Thread(target=runner.jobs.pop()[0])  # type: ignore[arg-type]
+        try:
+            install_thread.start()
+            self.assertTrue(installer.handoff_entered.wait(timeout=1.0))
+            drain = threading.Thread(target=app._drain_update_events)
+            drain.start()
+            drain.join(timeout=0.5)
+            self.assertFalse(drain.is_alive(), "Tk event drain blocked on prepare")
+        finally:
+            installer.release_handoff.set()
+            install_thread.join(timeout=1.0)
+
+    def test_start_failure_discards_prepared_update(self) -> None:
+        installer = FakeInstaller()
+        installer.start_error = RuntimeError("An update is already in progress.")
+        app = self.make_app(
+            service=FakeService(result=available_update()),
+            installer=installer,
+            confirm=Mock(return_value=True),
+        )
+        app.shutdown = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(len(installer.discarded), 1)
+        self.assertEqual(app._update_status, "Update failed: An update is already in progress.")
+        app.shutdown.assert_not_called()
 
     def test_shutdown_waits_for_start_handoff_that_already_began(self) -> None:
         self._assert_shutdown_waits_for_active_handoff("start")

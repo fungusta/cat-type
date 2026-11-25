@@ -329,6 +329,20 @@ class LinuxPortableStagingTests(unittest.TestCase):
             self.directory.resolve() / "Cat Type current.previous",
         )
 
+    def test_controller_discard_removes_only_the_staged_executable(self) -> None:
+        archive = self.make_archive([_regular_member(body=b"replacement")])
+        prepared = self.installer.prepare(archive, "1.1.0")
+        controller = LinuxControllerInstaller(self.installer)
+
+        controller.discard(object())
+        controller.discard(
+            PreparedLinuxUpdate(prepared.current, prepared.current, prepared.backup)
+        )
+        controller.discard(prepared)
+
+        self.assertFalse(prepared.staged.exists())
+        self.assertEqual(self.executable.read_bytes(), b"old")
+
     def test_prepare_rejects_every_archive_shape_except_one_exact_regular_member(
         self,
     ) -> None:

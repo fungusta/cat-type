@@ -549,3 +549,17 @@ class LinuxControllerInstaller:
         if not isinstance(prepared, PreparedLinuxUpdate):
             raise TypeError("prepared Linux update has the wrong type")
         self._installer.start(prepared)
+
+    def discard(self, prepared: object) -> None:
+        """Delete an abandoned staged executable; never touches anything else."""
+        if not isinstance(prepared, PreparedLinuxUpdate):
+            return
+        staged = prepared.staged
+        current = prepared.current
+        if (
+            staged != current
+            and staged.parent == current.parent
+            and staged.name.startswith(f".{current.name}.")
+            and staged.name.endswith(".new")
+        ):
+            _remove_if_present(staged)
