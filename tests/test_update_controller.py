@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Callable
 from unittest.mock import Mock, patch
 
+from app_version import APP_VERSION
 from auto_update import (
+    RELEASES_URL,
     AvailableUpdate,
     InstallerAvailability,
     ReleaseAsset,
@@ -87,6 +89,15 @@ class FakeState:
 
     def skip_version(self, version: str) -> None:
         self.skipped = version
+
+    install_attempt: str | None = None
+
+    def record_install_attempt(self, version: str) -> None:
+        self.install_attempt = version
+
+    def take_install_attempt(self) -> str | None:
+        attempt, self.install_attempt = self.install_attempt, None
+        return attempt
 
 
 class FakeService:
@@ -889,9 +900,11 @@ class PeriodicUpdateCheckTests(unittest.TestCase):
                 app.root = Mock()
                 app._first_run = False
                 app._platform_name = platform_name
+                app._report_failed_update_install = Mock()
 
                 app.run()
 
+                app._report_failed_update_install.assert_called_once_with()
                 app.root.after.assert_any_call(2000, app.check_for_updates)
                 app.root.after.assert_any_call(
                     3_600_000, app._schedule_periodic_update_check
@@ -1275,6 +1288,117 @@ class MacPromptControllerTests(unittest.TestCase):
                 app.check_for_updates(manual=True)
                 app._drain_update_events()
                 confirm.assert_called_once()
+
+
+class UpdateFollowUpTests(unittest.TestCase):
+    """Fixes for issues deferred from the macOS auto-update review."""
+
+    make_app = UpdateControllerTests.make_app
+    mac_app = MacPromptControllerTests.mac_app
+
+    def test_manual_prompt_activates_cat_type_so_keys_reach_it(self) -> None:
+        app, prompts = self.mac_app()
+        app._activate_for_update_prompt = Mock()
+
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertTrue(prompts[0].take_focus)
+        app._activate_for_update_prompt.assert_called_once_with()
+
+    def test_automatic_prompt_does_not_activate_cat_type(self) -> None:
+        app, prompts = self.mac_app()
+        app._activate_for_update_prompt = Mock()
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        self.assertFalse(prompts[0].take_focus)
+        app._activate_for_update_prompt.assert_not_called()
+
+    def test_manual_press_during_automatic_check_is_treated_as_manual(self) -> None:
+        state = FakeState()
+        state.skipped = "1.1.0"
+        app, prompts = self.mac_app(state=state)
+
+        app.check_for_updates()
+        app.check_for_updates(manual=True)
+        app._drain_update_events()
+
+        self.assertEqual(len(prompts), 1)
+        self.assertTrue(prompts[0].take_focus)
+        self.assertFalse(app._pending_manual_update_check)
+
+    def test_prompt_that_fails_to_open_does_not_escape_the_tick(self) -> None:
+        def broken_factory(*_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("Tk could not create the window")
+
+        app, _prompts = self.mac_app(prompt_factory=broken_factory)
+
+        app.check_for_updates()
+        app._drain_update_events()
+
+        self.assertIsNone(app._active_update_operation_id)
+        self.assertIsNone(app._update_prompt)
+        self.assertIn("1.1.0", app._update_status)
+        self.assertIn(RELEASES_URL, app._update_status)
+
+    def test_os_errors_reach_the_user_without_raw_errno_text(self) -> None:
+        installer = FakeInstaller()
+        installer.start_error = PermissionError(
+            13, "Permission denied", "/Applications/Cat Type.app"
+        )
+        app, prompts = self.mac_app(installer=installer)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("install")
+        app._drain_update_events()
+
+        self.assertEqual(len(prompts[0].errors), 1)
+        message = prompts[0].errors[0]
+        self.assertNotIn("Errno", message)
+        self.assertNotIn("/Applications", message)
+        self.assertIn("Permission denied", message)
+        self.assertNotIn("Errno", app._update_status)
+
+    def test_install_attempt_is_recorded_before_handoff(self) -> None:
+        state = FakeState()
+        app, prompts = self.mac_app(state=state)
+        app.check_for_updates()
+        app._drain_update_events()
+
+        prompts[0].choose("install")
+        app._drain_update_events()
+
+        self.assertEqual(state.install_attempt, "1.1.0")
+
+    def test_failed_install_is_reported_on_next_launch(self) -> None:
+        state = FakeState()
+        state.install_attempt = "99.0.0"
+        app, _prompts = self.mac_app(state=state)
+
+        with patch("cat_type.post_notice", return_value=True) as notice:
+            app._report_failed_update_install()
+
+        self.assertIn("99.0.0", app._update_status)
+        self.assertIn(RELEASES_URL, app._update_status)
+        notice.assert_called_once()
+        self.assertIsNone(state.install_attempt)
+
+    def test_successful_install_is_not_reported(self) -> None:
+        state = FakeState()
+        state.install_attempt = APP_VERSION
+        app, _prompts = self.mac_app(state=state)
+        before = app._update_status
+
+        with patch("cat_type.post_notice", return_value=True) as notice:
+            app._report_failed_update_install()
+
+        self.assertEqual(app._update_status, before)
+        notice.assert_not_called()
+        self.assertIsNone(state.install_attempt)
+
 
 
 if __name__ == "__main__":

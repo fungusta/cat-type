@@ -35,6 +35,7 @@ from auto_update import (
     UpdateEvent,
     UpdateService,
     UpdateStateStore,
+    is_newer_version,
 )
 from cat_settings import (
     CAT_VARIANTS,
@@ -1500,6 +1501,10 @@ class ControllerUpdateState(Protocol):
 
     def skip_version(self, version: str) -> None: ...
 
+    def record_install_attempt(self, version: str) -> None: ...
+
+    def take_install_attempt(self) -> str | None: ...
+
 
 class UpdateThreadRunner(Protocol):
     """Runs serialized controller jobs without exposing thread details."""
@@ -1609,6 +1614,16 @@ def _default_update_prompt_factory(
     from update_prompt import MacUpdatePrompt
 
     return MacUpdatePrompt
+
+
+def _describe_update_error(error: BaseException) -> str:
+    """Return update failure text without errno numbers or file paths."""
+    # System call failures carry an errno and usually a path; messages that
+    # code raised on purpose (OSError("...")) are already written for people.
+    if isinstance(error, OSError) and error.errno is not None:
+        reason = error.strerror or type(error).__name__
+        return f"Cat Type couldn't use the update files ({reason})."
+    return str(error) or type(error).__name__
 
 
 def _default_update_installer(
@@ -1986,7 +2001,11 @@ class CatTypeApp:
                 )
             except Exception as error:
                 self.update_events.put(
-                    UpdateEvent(operation_id, "error", message=str(error))
+                    UpdateEvent(
+                        operation_id,
+                        "error",
+                        message=_describe_update_error(error),
+                    )
                 )
 
         self._update_worker = self._update_thread_runner(
@@ -2005,6 +2024,48 @@ class CatTypeApp:
             self.UPDATE_RECHECK_INTERVAL_MS,
             self._schedule_periodic_update_check,
         )
+
+    def _report_failed_update_install(self) -> None:
+        """Tell the user when the update they chose to install did not land.
+
+        The install helper reopens the old version when it cannot swap the
+        new one in; without this, that failure would be silent.
+        """
+        try:
+            attempted = self._update_state.take_install_attempt()
+        except Exception:
+            return
+        if not attempted:
+            return
+        try:
+            failed = is_newer_version(attempted, APP_VERSION)
+        except Exception:
+            return
+        if not failed:
+            return
+        self._set_update_status(
+            f"Cat Type {attempted} couldn't be installed, so Cat Type "
+            f"{APP_VERSION} reopened. Download it from {RELEASES_URL}"
+        )
+        title = "Cat Type couldn't update"
+        message = (
+            f"Cat Type {attempted} couldn't be installed. "
+            "Download it from the Cat Type releases page."
+        )
+        icon = getattr(self, "_tray_icon", None)
+
+        def tray_notice() -> None:
+            if icon is not None and getattr(icon, "HAS_NOTIFICATION", False):
+                try:
+                    icon.notify(message, title)
+                except Exception:
+                    pass
+
+        try:
+            if not post_notice(title, message, "update-install-failed", tray_notice):
+                tray_notice()
+        except Exception:
+            pass
 
     def _clear_pending_manual_update_check(self) -> None:
         with self._update_lifecycle_lock:
@@ -2102,13 +2163,17 @@ class CatTypeApp:
             return
         if event.kind != "check-result":
             return
-        self._clear_pending_manual_update_check()
+        # A press of "Check for updates" while an automatic check was already
+        # running makes that check's answer the user's own.
+        with self._update_lifecycle_lock:
+            manual = event.manual or self._pending_manual_update_check
+            self._pending_manual_update_check = False
         if event.update is None:
             self._set_update_status("Cat Type is up to date.")
             return
 
         update = event.update
-        if not event.manual and update.version == self._update_state.skipped_version():
+        if not manual and update.version == self._update_state.skipped_version():
             self._finish_update_operation(event.operation_id)
             self._set_update_status(
                 f"Cat Type {update.version} is available (skipped)."
@@ -2119,10 +2184,10 @@ class CatTypeApp:
             self._open_update_prompt(
                 update,
                 event.operation_id,
-                take_focus=event.manual,
+                take_focus=manual,
             )
             return
-        self._confirming_manual_update = event.manual
+        self._confirming_manual_update = manual
         if not self._confirm_update(update):
             self._finish_update_operation(event.operation_id)
             self._set_update_status("Update cancelled.")
@@ -2139,19 +2204,34 @@ class CatTypeApp:
         self._close_update_prompt()
         factory = self._update_prompt_factory
         assert factory is not None
-        self._update_prompt = factory(
-            self.root,
-            update,
-            APP_VERSION,
-            take_focus=take_focus,
-            on_choice=lambda choice: self._on_update_prompt_choice(
-                choice, update, operation_id
-            ),
-            on_cancel=self._update_cancel.set,
-            on_download_manually=lambda: webbrowser.open(update.html_url),
-            on_activate=self._activate_for_update_prompt,
-            on_closed=self._on_update_prompt_closed,
-        )
+        if take_focus:
+            # The user asked for this check: bring Cat Type forward so the
+            # prompt can become the key window and take Return and Escape.
+            self._activate_for_update_prompt()
+        try:
+            self._update_prompt = factory(
+                self.root,
+                update,
+                APP_VERSION,
+                take_focus=take_focus,
+                on_choice=lambda choice: self._on_update_prompt_choice(
+                    choice, update, operation_id
+                ),
+                on_cancel=self._update_cancel.set,
+                on_download_manually=lambda: webbrowser.open(update.html_url),
+                on_activate=self._activate_for_update_prompt,
+                on_closed=self._on_update_prompt_closed,
+            )
+        except Exception:
+            # The prompt is optional; the cat's animation loop is not.
+            self._update_prompt = None
+            self._finish_update_operation(operation_id)
+            self._set_update_status(
+                f"Cat Type {update.version} is available. "
+                f"Download it from {RELEASES_URL}"
+            )
+            self._on_update_prompt_closed()
+            return
         if not take_focus:
             # Shown under the idle "prohibited" policy so it cannot steal
             # focus; once on screen, the accessory policy lets a click reach
@@ -2305,6 +2385,12 @@ class CatTypeApp:
                         return
                     started = True
                     self._update_installer.start(prepared)
+                    # The helper is waiting for Cat Type to quit; remember the
+                    # version so the next launch can tell if it never landed.
+                    try:
+                        self._update_state.record_install_attempt(update.version)
+                    except Exception:
+                        pass
                     terminal = UpdateEvent(
                         operation_id,
                         "install-started",
@@ -2316,7 +2402,7 @@ class CatTypeApp:
                 terminal = UpdateEvent(
                     operation_id,
                     "error",
-                    message=str(error),
+                    message=_describe_update_error(error),
                 )
             finally:
                 if prepared is not None and (
@@ -2347,6 +2433,7 @@ class CatTypeApp:
         if platform_name in {"darwin", "win32"} or platform_name.startswith(
             "linux"
         ):
+            self._report_failed_update_install()
             self.root.after(2000, self.check_for_updates)
             self.root.after(
                 self.UPDATE_RECHECK_INTERVAL_MS,
