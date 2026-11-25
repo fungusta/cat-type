@@ -32,9 +32,13 @@ cat, open Settings, or quit.
 
 Download **Cat-Type-macOS-arm64.dmg** for Apple Silicon (M1 and newer), or
 **Cat-Type-macOS-x64.dmg** for an Intel Mac. Open the signed and notarized disk
-image, then drag Cat Type to Applications. On first launch, open Settings and
-choose **Enable Input Monitoring**. macOS controls the permission under
-**System Settings > Privacy & Security > Input Monitoring**.
+image, then drag Cat Type to Applications. On first launch, a short setup window
+walks you through turning on Input Monitoring: it opens **System Settings >
+Privacy & Security > Input Monitoring**, shows which switch to turn on, and
+notices by itself when access arrives. Until then it reopens on each launch, and
+the menu bar offers **Set Up Input Monitoring…**. If the cat still doesn't
+appear, including when another app holds Secure Keyboard Entry, see the
+[help page](https://fungusta.github.io/cat-type/help.html).
 
 ## Install on Linux
 

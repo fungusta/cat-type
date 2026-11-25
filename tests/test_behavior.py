@@ -505,7 +505,7 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         self.assertFalse(icon.visible_during_setup)
         self.assertTrue(icon.visible)
 
-    def test_macos_run_has_no_custom_monitoring_consent_prompt(self) -> None:
+    def _run_app(self, *, granted: bool, first_run: bool = False) -> CatTypeApp:
         app = CatTypeApp.__new__(CatTypeApp)
         app._start_tray = Mock()
         app._ensure_activity_monitoring = Mock()
@@ -513,21 +513,79 @@ class CatTypeKeyActivityTests(unittest.TestCase):
         app.animation = Mock()
         app.root = Mock()
         app._tick = Mock()
-        app._first_run = False
+        app._first_run = first_run
         app._platform_name = "darwin"
         app._requires_input_monitoring = True
-        app.settings = AppSettings(enabled=False)
+        app._input_monitoring_preflight = Mock(return_value=granted)
+        app.settings = AppSettings(enabled=granted)
         app.usage_tracker = Mock()
-
         app.run()
+        return app
+
+    def test_macos_run_opens_setup_guide_until_access_is_granted(self) -> None:
+        app = self._run_app(granted=False, first_run=True)
 
         app._ensure_activity_monitoring.assert_called_once_with()
-        self.assertFalse(
-            any(
-                call.args and call.args[0] == 300
-                for call in app.root.after.call_args_list
-            )
+        app.root.after.assert_any_call(400, app.open_permission_guide)
+        self.assertNotIn(
+            (400, app.open_settings),
+            [call.args for call in app.root.after.call_args_list],
         )
+
+    def test_macos_run_skips_setup_guide_once_access_is_granted(self) -> None:
+        app = self._run_app(granted=True, first_run=True)
+
+        app.root.after.assert_any_call(400, app.open_settings)
+        self.assertNotIn(
+            (400, app.open_permission_guide),
+            [call.args for call in app.root.after.call_args_list],
+        )
+
+    def test_macos_setup_registers_then_opens_input_monitoring_pane(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._request_input_monitoring_access = Mock(return_value=False)
+        app._open_input_monitoring_settings = Mock(return_value=True)
+
+        app._start_input_monitoring_setup()
+
+        app._request_input_monitoring_access.assert_called_once_with()
+        app._open_input_monitoring_settings.assert_called_once_with()
+
+    def test_macos_setup_skips_system_settings_when_already_granted(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._request_input_monitoring_access = Mock(return_value=True)
+        app._open_input_monitoring_settings = Mock()
+
+        app._start_input_monitoring_setup()
+
+        app._open_input_monitoring_settings.assert_not_called()
+
+    def test_macos_permission_updates_reach_the_setup_guide(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._input_monitoring_requested = True
+        app._permission_guide = Mock()
+        app._permission_guide.exists.return_value = True
+        app._settings_window = None
+
+        app._update_input_monitoring_ui(True)
+
+        app._permission_guide.set_status.assert_called_once_with(
+            granted=True,
+            opened=True,
+        )
+
+    def test_closing_setup_guide_on_first_run_opens_settings(self) -> None:
+        app = CatTypeApp.__new__(CatTypeApp)
+        app._permission_guide = Mock()
+        app._shutting_down = False
+        app._first_run = True
+        app.open_settings = Mock()
+
+        app._permission_guide_closed()
+
+        self.assertIsNone(app._permission_guide)
+        self.assertFalse(app._first_run)
+        app.open_settings.assert_called_once_with()
 
     def test_windows_and_linux_preserve_disabled_global_hotkey_listener(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
@@ -642,19 +700,19 @@ class CatTypeKeyActivityTests(unittest.TestCase):
             "Cat Type — Input monitoring active",
         )
 
-    def test_macos_enabled_menu_requests_native_permission_directly(self) -> None:
+    def test_macos_enabled_menu_opens_setup_guide_without_access(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)
         app.settings = AppSettings(enabled=False)
         app._requires_input_monitoring = True
         app._platform_name = "darwin"
         app._input_monitoring_preflight = Mock(return_value=False)
-        app._request_input_monitoring_access = Mock(return_value=False)
-        app.open_settings = Mock()
+        app.open_permission_guide = Mock()
+        app.apply_settings = Mock()
 
         app._set_enabled(True)
 
-        app._request_input_monitoring_access.assert_called_once_with()
-        app.open_settings.assert_called_once_with()
+        app.open_permission_guide.assert_called_once_with()
+        app.apply_settings.assert_not_called()
 
     def test_periodic_usage_flush_reschedules_while_app_is_running(self) -> None:
         app = CatTypeApp.__new__(CatTypeApp)

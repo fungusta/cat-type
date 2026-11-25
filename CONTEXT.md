@@ -44,4 +44,7 @@
 - **settings focus treatment** — Butter + ink ring: a dark inner focus ring with a Butter Sun outer ring keeps keyboard focus unmistakable while fitting the toybox language.
 - **settings save feedback** — Quiet inline: auto-save feedback stays as a small persistent status line near the action area, discoverable without interrupting the settings flow or adding transient notification noise.
 - **settings save error** — Inline + retry: a compact inline message explains the failure with wording and an icon, then exposes one direct Retry action while keeping the user in context.
+- **setup guide** — the small macOS window that walks a person through turning on Input Monitoring in three numbered steps, with a picture of the switch to flip. It opens System Settings at the right pane, notices access on its own, and links to the help page. It opens on every launch until access is granted.
+- **secure input notice** — on macOS, when another app keeps Secure Keyboard Entry on for more than 30 seconds, Cat Type posts one notice per app per run and the menu bar names the app until it lets go. Short stretches in password fields stay silent.
+- **help page** — `help.html` on the website: fixes for a missing cat, ordered from most to least likely, including Secure Keyboard Entry. The landing page links to it only from the footer.
 - **settings empty state** — Friendly shelf: an empty section gets a small consistent visual anchor, a plain explanation, and one useful next step without becoming a promotional card grid.
