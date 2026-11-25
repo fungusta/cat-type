@@ -34,6 +34,10 @@ class UpdateError(Exception):
     """An update could not be safely discovered or verified."""
 
 
+class UpdateCancelled(Exception):
+    """The user cancelled an update download."""
+
+
 @dataclass(frozen=True)
 class ReleaseAsset:
     name: str
@@ -77,6 +81,7 @@ class UpdateEvent:
     update: AvailableUpdate | None = None
     received: int = 0
     total: int = 0
+    manual: bool = False
 
 
 def _require_aware(moment: datetime) -> None:
@@ -100,6 +105,13 @@ def _parse_version(value: str, *, label: str) -> tuple[int, int, int]:
             f"invalid {label}: numeric component is too large"
         ) from error
     return major, minor, patch
+
+
+def is_newer_version(candidate: str, current: str) -> bool:
+    """Return whether ``candidate`` is a strictly newer release than ``current``."""
+    return _parse_version(candidate, label="candidate version") > _parse_version(
+        current, label="current version"
+    )
 
 
 def _is_https_url(value: object) -> bool:
@@ -146,24 +158,48 @@ class UpdateStateStore:
     def __init__(self, path: Path | None = None) -> None:
         self.path = path or default_settings_path().with_name("update-state.json")
 
+    def _read_state(self) -> dict[str, object]:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
     def is_due(self, now: datetime) -> bool:
         _require_aware(now)
         try:
-            payload = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                return True
-            raw_timestamp = payload["last_successful_check"]
+            raw_timestamp = self._read_state()["last_successful_check"]
             if not isinstance(raw_timestamp, str):
                 return True
             checked_at = datetime.fromisoformat(raw_timestamp)
             _require_aware(checked_at)
-        except (OSError, ValueError, TypeError, KeyError):
+        except (ValueError, TypeError, KeyError):
             return True
         elapsed = now.astimezone(timezone.utc) - checked_at.astimezone(timezone.utc)
         return elapsed >= CHECK_INTERVAL
 
+    def skipped_version(self) -> str | None:
+        value = self._read_state().get("skipped_version")
+        return value if isinstance(value, str) and value else None
+
     def record_success(self, now: datetime) -> None:
         _require_aware(now)
+        payload = self._preserved_state("skipped_version")
+        payload["last_successful_check"] = now.astimezone(timezone.utc).isoformat()
+        self._write_state(payload)
+
+    def skip_version(self, version: str) -> None:
+        if not isinstance(version, str) or not version:
+            raise ValueError("skipped version must be a nonempty string")
+        payload = self._preserved_state("last_successful_check")
+        payload["skipped_version"] = version
+        self._write_state(payload)
+
+    def _preserved_state(self, key: str) -> dict[str, object]:
+        value = self._read_state().get(key)
+        return {key: value} if isinstance(value, str) and value else {}
+
+    def _write_state(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=f".{self.path.name}.",
@@ -171,9 +207,6 @@ class UpdateStateStore:
             dir=self.path.parent,
         )
         temporary = Path(temporary_name)
-        payload = {
-            "last_successful_check": now.astimezone(timezone.utc).isoformat()
-        }
         primary_error: BaseException | None = None
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as state_file:

@@ -1484,6 +1484,10 @@ class ControllerUpdateState(Protocol):
 
     def record_success(self, now: datetime) -> None: ...
 
+    def skipped_version(self) -> str | None: ...
+
+    def skip_version(self, version: str) -> None: ...
+
 
 class UpdateThreadRunner(Protocol):
     """Runs serialized controller jobs without exposing thread details."""
