@@ -45,6 +45,7 @@ from macos_input_monitoring import (
     preflight_input_monitoring,
     request_input_monitoring,
 )
+from macos_notifications import post_notice
 from macos_pointer import MacOSPointerMonitor, RecentPointerClick
 from platform_assets import icon_filename
 from platform_updater import (
@@ -437,6 +438,36 @@ def _linux_monitor_areas() -> tuple[MonitorArea, ...]:
                 connection.close()
             except Exception:
                 pass
+
+
+def unlock_notice_text(earned: tuple[Accessory, ...]) -> tuple[str, str]:
+    """Title and body for an unlock notice; the system already names Cat Type."""
+    names = [item.name for item in earned]
+    if len(names) == 1:
+        return "New accessory unlocked", f"{names[0]} is ready to try on in your Wardrobe."
+    listed = ", ".join(names[:-1]) + f" and {names[-1]}"
+    return "New accessories unlocked", f"{listed} are ready to try on in your Wardrobe."
+
+
+UNLOCK_PICTURE_PREFIX = "cat-type-unlock-"
+
+
+def unlock_notice_picture(item: Accessory, variant: str, size: int = 256) -> Path | None:
+    """A square PNG of the cat wearing ``item``, for the unlock notice."""
+    try:
+        frame = load_frame(ASSETS_ROOT, variant, "excited", size, **{item.slot: item.id})
+        bounds = frame.getchannel("A").getbbox()
+        if bounds is not None:
+            frame = frame.crop(bounds)
+        side = round(max(frame.size) * 1.08)
+        picture = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        picture.alpha_composite(frame, ((side - frame.width) // 2, (side - frame.height) // 2))
+        handle, name = tempfile.mkstemp(prefix=UNLOCK_PICTURE_PREFIX, suffix=".png")
+        with os.fdopen(handle, "wb") as file:
+            picture.save(file, "PNG")
+        return Path(name)
+    except (OSError, ValueError):
+        return None
 
 
 def _macos_monitor_areas() -> tuple[MonitorArea, ...]:
@@ -2437,16 +2468,37 @@ class CatTypeApp:
 
     def _notify_accessories(self, earned: tuple[Accessory, ...]) -> None:
         icon = getattr(self, "_tray_icon", None)
-        if icon is None or not getattr(icon, "HAS_NOTIFICATION", False):
-            return
-        message = ", ".join(item.name for item in earned) + " unlocked. Open Settings → Wardrobe to equip."
+        title, message = unlock_notice_text(earned)
+        variant = getattr(self, "_active_variant", CAT_VARIANTS[0])
+        picture: list[Path] = []
 
         def notify() -> None:
             try:
-                icon.notify(message, "Cat Type · New accessories")
+                # macOS shows a native notice with the Cat Type icon and a
+                # picture of the cat wearing what it unlocked; the tray's
+                # notice is the fallback elsewhere and outside the app bundle.
+                identifier = "unlock-" + "-".join(item.id for item in earned)
+                if sys.platform == "darwin":
+                    rendered = unlock_notice_picture(earned[0], variant)
+                    if rendered is not None:
+                        picture.append(rendered)
+                    if post_notice(title, message, identifier, tray_notice,
+                                   str(rendered) if rendered else None):
+                        return
+                tray_notice()
             except Exception:
-                # Desktop notifications are optional on some tray backends.
+                # Desktop notifications are optional on some backends.
                 pass
+
+        def tray_notice() -> None:
+            # macOS keeps the picture only when it delivers the notice itself.
+            for path in picture:
+                path.unlink(missing_ok=True)
+            if icon is not None and getattr(icon, "HAS_NOTIFICATION", False):
+                try:
+                    icon.notify(message, title)
+                except Exception:
+                    pass
 
         threading.Thread(target=notify, name="cat-type-unlock-notice", daemon=True).start()
 

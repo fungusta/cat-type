@@ -27,6 +27,7 @@ TEST_MODULES = (
     "tests.test_accessory_artwork",
     "tests.test_wardrobe",
     "tests.test_wardrobe_integration",
+    "tests.test_macos_notifications",
     "tests.test_cat_comparison",
     "tests.test_vector_platform_surfaces",
     "tests.test_ui_surfaces",
