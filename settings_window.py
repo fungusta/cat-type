@@ -378,8 +378,7 @@ class SettingsWindow:
         requires_input_monitoring: bool = False,
         input_monitoring_granted: bool | None = None,
         input_monitoring_request_attempted: bool = False,
-        on_request_input_monitoring: Callable[[], bool] | None = None,
-        on_open_input_monitoring_settings: Callable[[], bool] | None = None,
+        on_request_input_monitoring: Callable[[], object] | None = None,
         unlocked_accessories: set[str] | None = None,
         newly_unlocked: tuple[Accessory, ...] = (),
     ) -> None:
@@ -397,9 +396,6 @@ class SettingsWindow:
             input_monitoring_request_attempted
         )
         self._on_request_input_monitoring = on_request_input_monitoring
-        self._on_open_input_monitoring_settings = (
-            on_open_input_monitoring_settings
-        )
         self._privacy_details_visible = False
         self._saving = False
         self._save_failed = False
@@ -1654,25 +1650,8 @@ class SettingsWindow:
     def _handle_input_monitoring_action(self) -> None:
         if self._input_monitoring_granted:
             return
-        if self._input_monitoring_request_attempted:
-            if self._on_open_input_monitoring_settings is not None:
-                opened = bool(self._on_open_input_monitoring_settings())
-                if opened:
-                    self.input_monitoring_status_text.set(
-                        "Waiting for permission in System Settings…"
-                    )
-            return
-        granted = bool(
+        if self._on_request_input_monitoring is not None:
             self._on_request_input_monitoring()
-            if self._on_request_input_monitoring is not None
-            else False
-        )
-        self.set_input_monitoring_status(
-            granted,
-            request_attempted=not granted,
-        )
-        if granted:
-            self.enabled.set(True)
 
     def set_input_monitoring_status(
         self,
@@ -1686,34 +1665,29 @@ class SettingsWindow:
         if not hasattr(self, "input_monitoring_button"):
             return
         if granted:
-            self.input_monitoring_status_text.set("Input Monitoring is enabled.")
+            self.input_monitoring_status_text.set(
+                "Input Monitoring is on. Your cat can see you type."
+            )
             self.input_monitoring_button.configure(
-                text="Input Monitoring Enabled",
+                text="Input Monitoring On",
                 state="disabled",
                 style=self.secondary_button_style,
             )
-        elif request_attempted:
-            self.input_monitoring_status_text.set(
-                "Input Monitoring is off. Allow Cat Type in System Settings."
-            )
-            self.input_monitoring_button.configure(
-                text="Open System Settings",
-                state="normal",
-                style=self.primary_button_style,
-            )
-        else:
-            self.input_monitoring_status_text.set(
-                "Input Monitoring is required to show the cat."
-            )
-            self.input_monitoring_button.configure(
-                text="Enable Input Monitoring",
-                state=(
-                    "normal"
-                    if self._on_request_input_monitoring is not None
-                    else "disabled"
-                ),
-                style=self.primary_button_style,
-            )
+            return
+        self.input_monitoring_status_text.set(
+            "Waiting for Cat Type to be switched on in System Settings."
+            if request_attempted
+            else "Your cat needs Input Monitoring to notice your typing."
+        )
+        self.input_monitoring_button.configure(
+            text="Show Setup Steps" if request_attempted else "Set Up Input Monitoring…",
+            state=(
+                "normal"
+                if self._on_request_input_monitoring is not None
+                else "disabled"
+            ),
+            style=self.primary_button_style,
+        )
 
     def _build_metrics_page(self, parent: tk.Frame) -> None:
         self.metrics_page = tk.Frame(parent, background=self.BACKGROUND)

@@ -342,6 +342,24 @@ a:focus-visible, button:focus-visible {
 .doc strong { color: var(--ink); }
 .doc code { font-size: .9em; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
 .doc-updated { font-size: .9rem; }
+.doc > .lede { max-width: none; margin-top: 12px; color: var(--muted); }
+.doc h3 { font-size: 1.05rem; margin: 22px 0 8px; }
+.doc ol { margin: 0 0 12px; padding-left: 1.4em; color: var(--muted); }
+.doc .steps li { padding-left: 4px; }
+.doc .steps li::marker { color: var(--butter-ink); font-weight: 800; }
+.doc pre {
+  margin: 12px 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.doc pre code { background: none; padding: 0; white-space: pre; }
+.doc section { scroll-margin-top: 16px; }
+.doc-toc { margin-top: 24px; padding: 18px 22px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); }
+.doc-toc ol { margin: 0; }
+.doc-note { font-size: .9rem; color: var(--muted); }
 
 @media (max-width: 760px) {
   .hero, .band { grid-template-columns: 1fr; gap: 28px; }

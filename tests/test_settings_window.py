@@ -1657,44 +1657,48 @@ class SettingsWindowTkLayoutTests(unittest.TestCase):
         self.on_check_for_updates.assert_called_once_with()
         self.on_open_release_page.assert_called_once_with()
 
-    def test_macos_permission_control_uses_native_request_then_settings(
-        self,
-    ) -> None:
-        request_permission = Mock(return_value=False)
-        open_system_settings = Mock(return_value=True)
+    def test_macos_permission_control_opens_the_setup_guide(self) -> None:
+        open_guide = Mock()
         macos_window = SettingsWindow(
             self.root,
             AppSettings(enabled=False),
             Mock(),
             requires_input_monitoring=True,
             input_monitoring_granted=False,
-            on_request_input_monitoring=request_permission,
-            on_open_input_monitoring_settings=open_system_settings,
+            on_request_input_monitoring=open_guide,
         )
         self.addCleanup(macos_window.close)
 
         texts = self._widget_texts(macos_window.window)
         self.assertIn(
-            "Input Monitoring is required to show the cat.",
+            "Your cat needs Input Monitoring to notice your typing.",
             texts,
         )
         self.assertEqual(
             macos_window.input_monitoring_button.cget("text"),
-            "Enable Input Monitoring",
+            "Set Up Input Monitoring…",
         )
 
         macos_window.input_monitoring_button.invoke()
 
-        request_permission.assert_called_once_with()
-        self.assertEqual(
-            macos_window.input_monitoring_button.cget("text"),
-            "Open System Settings",
-        )
+        open_guide.assert_called_once_with()
         self.assertFalse(macos_window.enabled.get())
 
+        macos_window.set_input_monitoring_status(False, request_attempted=True)
+        self.assertEqual(
+            macos_window.input_monitoring_button.cget("text"),
+            "Show Setup Steps",
+        )
         macos_window.input_monitoring_button.invoke()
+        self.assertEqual(open_guide.call_count, 2)
 
-        open_system_settings.assert_called_once_with()
+        macos_window.set_input_monitoring_status(True)
+        self.assertEqual(
+            macos_window.input_monitoring_button.cget("text"),
+            "Input Monitoring On",
+        )
+        macos_window.input_monitoring_button.invoke()
+        self.assertEqual(open_guide.call_count, 2)
 
     def test_macos_privacy_explanation_toggles_from_details_button(
         self,
