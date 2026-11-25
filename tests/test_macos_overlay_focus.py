@@ -74,6 +74,46 @@ class MacOSOverlayFocusTests(unittest.TestCase):
             app.root.destroy()
             self._activate_app(frontmost_before)
 
+    def test_automatic_update_prompt_does_not_activate_cat_type(self) -> None:
+        from auto_update import AvailableUpdate, ReleaseAsset
+
+        frontmost_before = self._frontmost_pid()
+        if frontmost_before == os.getpid():
+            self.skipTest("Cat Type was already the frontmost application")
+        app = CatTypeApp(hold_seconds=10.0)
+        try:
+            self._activate_app(frontmost_before)
+            update = AvailableUpdate(
+                version="9.9.9",
+                tag_name="v9.9.9",
+                html_url="https://example.test/releases/v9.9.9",
+                package=ReleaseAsset(
+                    "Cat-Type-macOS-arm64.dmg", "https://example.test/a.dmg", 1
+                ),
+                checksums=ReleaseAsset(
+                    "SHA256SUMS.txt", "https://example.test/SHA256SUMS.txt", 1
+                ),
+            )
+
+            app._open_update_prompt(update, 1, take_focus=False)
+            self._run_event_loop(app.root, 0.5)
+
+            prompt = app._update_prompt
+            self.assertIsNotNone(prompt, "the update prompt did not open")
+            self.assertTrue(prompt.window.winfo_viewable())
+            self.assertEqual(
+                self._frontmost_pid(),
+                frontmost_before,
+                "an automatic update prompt activated Cat Type",
+            )
+        finally:
+            app._close_update_prompt()
+            activation_policy = _macos_activation_policy_accessors_for_app()
+            if activation_policy is not None:
+                activation_policy[1](0)
+            app.root.destroy()
+            self._activate_app(frontmost_before)
+
     def test_showing_overlay_is_ordered_above_foreground_app(self) -> None:
         frontmost_pid = self._frontmost_pid()
         if frontmost_pid == os.getpid():

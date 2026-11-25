@@ -33,6 +33,7 @@ hidden_imports = [
     "auto_update",
     "platform_updater",
     "macos_updater",
+    "update_prompt",
     *runtime_modules(sys.platform),
 ]
 if is_windows:

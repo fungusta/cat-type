@@ -25,12 +25,13 @@ from PIL import Image, ImageTk
 from cat_artwork import BASE_SIZE, frame_source_path, load_frame, vector_png
 from achievements import AchievementStore, AchievementTracker
 from cat_accessories import ACCESSORY_BY_ID, ACCESSORY_SLOTS, Accessory
-from app_version import IS_BETA_BUILD
+from app_version import APP_VERSION, IS_BETA_BUILD
 
 from auto_update import (
     AvailableUpdate,
     RELEASES_URL,
     InstallerAvailability,
+    UpdateCancelled,
     UpdateEvent,
     UpdateService,
     UpdateStateStore,
@@ -1590,6 +1591,16 @@ def _create_tk_root() -> tk.Tk:
     raise RuntimeError("unreachable")
 
 
+def _default_update_prompt_factory(
+    platform_name: str,
+) -> Callable[..., object] | None:
+    if platform_name != "darwin":
+        return None
+    from update_prompt import MacUpdatePrompt
+
+    return MacUpdatePrompt
+
+
 def _default_update_installer(
     platform_name: str,
     frozen: bool,
@@ -1624,6 +1635,7 @@ class CatTypeApp:
         update_installer: ControllerUpdateInstaller | None = None,
         thread_runner: UpdateThreadRunner | None = None,
         confirm_update: Callable[[AvailableUpdate], bool] | None = None,
+        update_prompt_factory: Callable[..., object] | None = None,
         platform_name: str = sys.platform,
         machine: str | None = None,
         frozen: bool | None = None,
@@ -1758,6 +1770,11 @@ class CatTypeApp:
             machine=machine or runtime_platform.machine(),
             frozen=is_frozen,
             now=now or (lambda: datetime.now(timezone.utc)),
+            prompt_factory=(
+                _default_update_prompt_factory(platform_name)
+                if update_prompt_factory is None
+                else update_prompt_factory
+            ),
         )
 
         self.root = _create_tk_root()
@@ -1828,8 +1845,12 @@ class CatTypeApp:
         frozen: bool,
         now: Callable[[], datetime],
         before_handoff: Callable[[UpdateHandoffStage], None] | None = None,
+        prompt_factory: Callable[..., object] | None = None,
     ) -> None:
         self.update_events: queue.SimpleQueue[UpdateEvent] = queue.SimpleQueue()
+        self._update_prompt_factory = prompt_factory
+        self._update_prompt: object | None = None
+        self._update_cancel = threading.Event()
         self._update_service = update_service
         self._update_state = update_state
         self._update_installer = update_installer
@@ -1870,6 +1891,14 @@ class CatTypeApp:
             return True
 
     def check_for_updates(self, manual: bool = False) -> None:
+        prompt = getattr(self, "_update_prompt", None)
+        if (
+            manual
+            and prompt is not None
+            and self._active_update_operation_id is not None
+        ):
+            prompt.bring_to_front(True)
+            return
         if not manual:
             if not (
                 self._platform_name == "darwin"
@@ -1995,12 +2024,19 @@ class CatTypeApp:
         with self._update_lifecycle_lock:
             if event.operation_id != self._active_update_operation_id:
                 return
+        prompt = getattr(self, "_update_prompt", None)
         if event.kind == "progress":
             percent = round(event.received * 100 / event.total) if event.total else 0
-            self._set_update_status(f"Downloading update… {percent}%", checking=True)
+            text = f"Downloading update… {percent}%"
+            self._set_update_status(text, checking=True)
+            if prompt is not None:
+                fraction = event.received / event.total if event.total else 0.0
+                prompt.show_progress(text, fraction)
             return
         if event.kind == "stage":
             self._set_update_status(event.message, checking=True)
+            if prompt is not None:
+                prompt.show_progress(event.message, None)
             return
 
         terminal = event.kind in {
@@ -2025,15 +2061,19 @@ class CatTypeApp:
         if event.kind == "error":
             detail = event.message or "Unknown update error"
             self._set_update_status(f"Update failed: {detail}")
+            if prompt is not None:
+                prompt.show_error(detail)
             self._replay_pending_manual_update_check()
             return
         if event.kind == "cancelled":
             self._clear_pending_manual_update_check()
             self._set_update_status("Update cancelled.")
+            self._close_update_prompt()
             return
         if event.kind == "install-started":
             self._clear_pending_manual_update_check()
             self._set_update_status(event.message)
+            self._close_update_prompt()
             self.shutdown()
             return
         if event.kind != "check-result":
@@ -2051,11 +2091,95 @@ class CatTypeApp:
             )
             return
         self._set_update_status(f"Cat Type {update.version} is available.")
+        if getattr(self, "_update_prompt_factory", None) is not None:
+            self._open_update_prompt(
+                update,
+                event.operation_id,
+                take_focus=event.manual,
+            )
+            return
         if not self._confirm_update(update):
             self._finish_update_operation(event.operation_id)
             self._set_update_status("Update cancelled.")
             return
         self._start_update_install(update, event.operation_id)
+
+    def _open_update_prompt(
+        self,
+        update: AvailableUpdate,
+        operation_id: int,
+        *,
+        take_focus: bool,
+    ) -> None:
+        self._close_update_prompt()
+        factory = self._update_prompt_factory
+        assert factory is not None
+        self._update_prompt = factory(
+            self.root,
+            update,
+            APP_VERSION,
+            take_focus=take_focus,
+            on_choice=lambda choice: self._on_update_prompt_choice(
+                choice, update, operation_id
+            ),
+            on_cancel=self._update_cancel.set,
+            on_download_manually=lambda: webbrowser.open(update.html_url),
+            on_activate=self._activate_for_update_prompt,
+            on_closed=self._on_update_prompt_closed,
+        )
+
+    def _on_update_prompt_choice(
+        self,
+        choice: str,
+        update: AvailableUpdate,
+        operation_id: int,
+    ) -> None:
+        with self._update_lifecycle_lock:
+            if (
+                self._shutting_down
+                or self._active_update_operation_id != operation_id
+            ):
+                return
+        if choice == "install":
+            prompt = self._update_prompt
+            if prompt is not None:
+                prompt.show_progress("Downloading update… 0%", 0.0)
+            self._start_update_install(update, operation_id)
+            return
+        if choice == "skip":
+            try:
+                self._update_state.skip_version(update.version)
+            except Exception:
+                pass
+            self._set_update_status(
+                f"Cat Type {update.version} is available (skipped)."
+            )
+        self._finish_update_operation(operation_id)
+        self._close_update_prompt()
+
+    def _close_update_prompt(self) -> None:
+        prompt = getattr(self, "_update_prompt", None)
+        if prompt is not None:
+            prompt.close()
+        self._update_prompt = None
+
+    def _on_update_prompt_closed(self) -> None:
+        self._update_prompt = None
+        settings_window = getattr(self, "_settings_window", None)
+        try:
+            settings_open = (
+                settings_window is not None
+                and bool(settings_window.window.winfo_exists())
+            )
+        except tk.TclError:
+            settings_open = False
+        if not settings_open:
+            self._return_to_macos_background_policy()
+
+    def _activate_for_update_prompt(self) -> None:
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
 
     def _start_update_install(
         self,
@@ -2069,8 +2193,12 @@ class CatTypeApp:
             ):
                 return
         self._set_update_status("Downloading update… 0%", checking=True)
+        cancel = self._update_cancel
+        cancel.clear()
 
         def progress(received: int, total: int) -> None:
+            if cancel.is_set():
+                raise UpdateCancelled()
             if received == total and total > 0:
                 self.update_events.put(
                     UpdateEvent(
@@ -2096,6 +2224,8 @@ class CatTypeApp:
                     update,
                     progress=progress,
                 )
+                if cancel.is_set():
+                    return
                 self.update_events.put(
                     UpdateEvent(
                         operation_id,
@@ -2125,6 +2255,8 @@ class CatTypeApp:
                         "install-started",
                         message=f"Installing Cat Type {update.version}…",
                     )
+            except UpdateCancelled:
+                pass
             except Exception as error:
                 terminal = UpdateEvent(
                     operation_id,
@@ -2338,6 +2470,10 @@ class CatTypeApp:
                 self._update_worker_active = False
                 self._update_worker = None
                 self._pending_manual_update_check = False
+        update_cancel = getattr(self, "_update_cancel", None)
+        if update_cancel is not None:
+            update_cancel.set()
+        self._close_update_prompt()
         usage_tracker = getattr(self, "usage_tracker", None)
         if usage_tracker is not None:
             usage_tracker.flush()
