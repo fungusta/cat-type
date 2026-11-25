@@ -16,6 +16,11 @@ from typing import Literal
 
 from PIL import Image, ImageDraw, ImageTk
 
+from help_links import (  # re-exported for existing callers
+    HELP_URL,
+    INPUT_MONITORING_HELP_URL,
+    SECURE_KEYBOARD_ENTRY_HELP_URL,
+)
 from ui_surfaces import (
     BUTTON_ACCENT,
     BUTTON_INK,
@@ -24,10 +29,6 @@ from ui_surfaces import (
     prefers_reduced_motion,
 )
 
-
-HELP_URL = "https://fungusta.github.io/cat-type/help.html"
-INPUT_MONITORING_HELP_URL = f"{HELP_URL}#input-monitoring"
-SECURE_KEYBOARD_ENTRY_HELP_URL = f"{HELP_URL}#secure-keyboard-entry"
 
 Stage = Literal["start", "waiting", "granted"]
 StepState = Literal["todo", "current", "done"]
