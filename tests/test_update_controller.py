@@ -1252,6 +1252,17 @@ class MacPromptControllerTests(unittest.TestCase):
 
         browser.assert_called_once_with("https://example.test/releases/v1.1.0")
 
+    def test_windows_and_linux_automatic_prompt_defaults_to_no(self) -> None:
+        for manual, expected in ((False, "no"), (True, "yes")):
+            with self.subTest(manual=manual):
+                app = self.make_app(service=FakeService(result=available_update()))
+                app._confirm_update = app._confirm_available_update
+                with patch("cat_type.messagebox.askyesno", return_value=False) as ask:
+                    app.check_for_updates(manual=manual)
+                    app._drain_update_events()
+                ask.assert_called_once()
+                self.assertEqual(ask.call_args.kwargs["default"], expected)
+
     def test_windows_and_linux_still_use_confirm_update(self) -> None:
         for platform_name in ("win32", "linux"):
             with self.subTest(platform=platform_name):

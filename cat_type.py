@@ -2003,10 +2003,14 @@ class CatTypeApp:
         self.check_for_updates(manual=True)
 
     def _confirm_available_update(self, update: AvailableUpdate) -> bool:
+        # An automatic check can open this while the user is typing in another
+        # app; make Return answer "No" so a stray keypress never installs.
+        manual = getattr(self, "_confirming_manual_update", False)
         return messagebox.askyesno(
             "Cat Type update",
             f"Cat Type {update.version} is available. Download and install it now?",
             parent=self.root,
+            default=messagebox.YES if manual else messagebox.NO,
         )
 
     def _set_update_status(self, text: str, checking: bool = False) -> None:
@@ -2103,6 +2107,7 @@ class CatTypeApp:
                 take_focus=event.manual,
             )
             return
+        self._confirming_manual_update = event.manual
         if not self._confirm_update(update):
             self._finish_update_operation(event.operation_id)
             self._set_update_status("Update cancelled.")
