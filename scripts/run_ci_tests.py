@@ -55,6 +55,10 @@ TEST_MODULES = (
 )
 
 
+TEST_TIMEOUT_SECONDS = 480
+TRACEBACK_LEAD_SECONDS = 30
+
+
 def _escape_annotation(value: str) -> str:
     return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
@@ -248,7 +252,16 @@ def main() -> int:
     modules = list(TEST_MODULES)
     if sys.platform.startswith("linux"):
         modules.append("tests.test_linux_update_integration")
-    returncode, output = _run_streaming(_test_command(modules))
+    # Dump stacks once, shortly before the timeout: faulthandler reads other
+    # threads' frames without the GIL and has crashed busy Pillow tests when
+    # it fired every minute on a healthy run.
+    returncode, output = _run_streaming(
+        _test_command(
+            modules,
+            traceback_interval=TEST_TIMEOUT_SECONDS - TRACEBACK_LEAD_SECONDS,
+        ),
+        timeout=TEST_TIMEOUT_SECONDS,
+    )
     if returncode:
         failures = []
         headers = list(re.finditer(r"^(?:FAIL|ERROR): (.+)$", output, re.MULTILINE))
