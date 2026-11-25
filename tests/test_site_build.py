@@ -47,13 +47,17 @@ class SiteBuildTests(unittest.TestCase):
 
     def test_showcase_progress_agrees_with_thresholds(self):
         showcase = {item["id"]: item for item in self.module().catalog()["showcase"]}
-        self.assertEqual(list(showcase), ["beanie", "party-hat", "crown", "dragon-wings"])
+        self.assertEqual(list(showcase), [
+            "beanie", "frog-hat", "party-hat", "chef-hat", "superhero-cape", "dragon-wings",
+        ])
         self.assertEqual(showcase["beanie"]["progress"], 100)
         self.assertIs(showcase["beanie"]["equipped"], True)
+        self.assertEqual(showcase["frog-hat"]["progress"], 26)
         self.assertEqual(showcase["party-hat"]["progress"], 21)
-        self.assertEqual(showcase["crown"]["progress"], 10)
+        self.assertEqual(showcase["chef-hat"]["progress"], 8)
+        self.assertEqual(showcase["superhero-cape"]["progress"], 3)
         self.assertEqual(showcase["dragon-wings"]["progress"], 2)
-        for item_id in ("party-hat", "crown", "dragon-wings"):
+        for item_id in ("frog-hat", "party-hat", "chef-hat", "superhero-cape", "dragon-wings"):
             self.assertIs(showcase[item_id]["equipped"], False)
         for item_id, item in showcase.items():
             self.assertEqual(item["blurb"], ACCESSORY_BLURBS[item_id])
@@ -85,7 +89,7 @@ class SiteBuildTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         out = self.module().build_site(Path(directory.name) / "site", goatcounter_code="cat-type")
         pages = list(out.glob("*.html"))
-        self.assertEqual({page.name for page in pages}, {"index.html", "privacy.html"})
+        self.assertEqual({page.name for page in pages}, {"index.html", "privacy.html", "help.html"})
         for page in pages:
             self.assertIn('data-goatcounter="https://cat-type.goatcounter.com/count"',
                           page.read_text(encoding="utf-8"), page)
@@ -99,6 +103,18 @@ class SiteBuildTests(unittest.TestCase):
         for name in ("download-footer-windows", "download-footer-mac-arm64", "download-footer-mac-intel"):
             self.assertIn(f'data-goatcounter-click="{name}"', text)
         self.assertEqual(text.count("releases/latest/download/"), 3)
+
+    def test_help_page_has_the_sections_the_app_links_to(self):
+        from permission_guide import INPUT_MONITORING_HELP_URL
+
+        text = (Path(__file__).resolve().parents[1] / "site" / "help.html").read_text(encoding="utf-8")
+        anchor = INPUT_MONITORING_HELP_URL.split("#", 1)[1]
+        self.assertIn(f'id="{anchor}"', text)
+        self.assertIn('id="secure-keyboard-entry"', text)
+        self.assertIn("Privacy_ListenEvent", text)
+        self.assertIn("com.fungusta.cat-type", text)
+        index = (Path(__file__).resolve().parents[1] / "site" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="help.html"', index)
 
     def test_build_copies_all_six_cats_and_excludes_site_tests(self):
         out = self.build()

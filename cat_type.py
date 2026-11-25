@@ -49,6 +49,16 @@ from macos_input_monitoring import (
 )
 from macos_notifications import post_notice
 from macos_pointer import MacOSPointerMonitor, RecentPointerClick
+from macos_secure_input import (
+    SECURE_INPUT_OFF,
+    SecureInputWatch,
+    read_secure_input_state,
+)
+from permission_guide import (
+    INPUT_MONITORING_HELP_URL,
+    SECURE_KEYBOARD_ENTRY_HELP_URL,
+    PermissionGuideWindow,
+)
 from platform_assets import icon_filename
 from platform_updater import (
     LinuxControllerInstaller,
@@ -1623,6 +1633,7 @@ class CatTypeApp:
     USAGE_FLUSH_INTERVAL_MS = 30_000
     UPDATE_RECHECK_INTERVAL_MS = 3_600_000
     UPDATE_PROMPT_CLICKABLE_DELAY_MS = 250
+    SECURE_INPUT_POLL_MS = 2_000
 
     def __init__(
         self,
@@ -1687,6 +1698,9 @@ class CatTypeApp:
         self._activity_monitoring_started = False
         self._input_monitoring_requested = False
         self._monitoring_permission_poll_id: str | None = None
+        self._secure_input_watch = SecureInputWatch()
+        self._secure_input_reader = read_secure_input_state
+        self._secure_input_poll_id: str | None = None
         self.events: queue.SimpleQueue[AppEvent] = queue.SimpleQueue()
         self.usage_tracker = usage_tracker or UsageTracker(
             UsageStore(self.settings_store.path.with_name("usage.json"))
@@ -1727,6 +1741,7 @@ class CatTypeApp:
         self._active_variant = CAT_VARIANTS[0]
         self._next_variant_index = 0
         self._settings_window: SettingsWindow | None = None
+        self._permission_guide: PermissionGuideWindow | None = None
         self._macos_previous_activation_policy: int | None = None
         self._macos_overlay_surface: _MacOSNativeOverlaySurface | None = None
         self._tray_icon: pystray.Icon | None = None
@@ -2337,7 +2352,13 @@ class CatTypeApp:
                 self.UPDATE_RECHECK_INTERVAL_MS,
                 self._schedule_periodic_update_check,
             )
-        if self._first_run:
+        if getattr(self, "_requires_input_monitoring", False) and platform_name == "darwin":
+            self.root.after(self.SECURE_INPUT_POLL_MS, self._poll_secure_input)
+        if self._input_monitoring_missing():
+            # Every launch until access is granted: without it the cat can't
+            # appear at all. The guide opens Settings afterwards on first run.
+            self.root.after(400, self.open_permission_guide)
+        elif self._first_run:
             self.root.after(400, self.open_settings)
         self.root.mainloop()
 
@@ -2360,8 +2381,69 @@ class CatTypeApp:
             self.settings.enabled
             and getattr(self, "_activity_monitoring_started", False)
         )
+        if monitoring_active and self._secure_input_blocking():
+            holder = self._secure_input_watch.state.holder_label
+            return f"Cat Type — Secure Keyboard Entry is on in {holder}{suffix}"
         status = "active" if monitoring_active else "paused"
         return f"Cat Type — Input monitoring {status}{suffix}"
+
+    def _secure_input_blocking(self) -> bool:
+        watch = getattr(self, "_secure_input_watch", None)
+        return watch is not None and watch.state.enabled
+
+    def _secure_input_menu_label(self, _item: object) -> str:
+        holder = self._secure_input_watch.state.holder_name
+        return f"Typing Hidden by {holder}…" if holder else "Typing Hidden by Secure Keyboard Entry…"
+
+    def _poll_secure_input(self) -> None:
+        """Check every couple of seconds whether another app is hiding typing."""
+        self._secure_input_poll_id = None
+        if getattr(self, "_shutting_down", False):
+            return
+        watching = self.settings.enabled and getattr(self, "_activity_monitoring_started", False)
+        watch = self._secure_input_watch
+        was_blocking = watch.state
+        # While the cat is off there is nothing to hide, so nothing to report.
+        state = self._secure_input_reader() if watching else SECURE_INPUT_OFF
+        notify = watch.update(state, time.monotonic())
+        if watch.state != was_blocking:
+            self._update_tray_monitoring_status()
+            tray_icon = getattr(self, "_tray_icon", None)
+            if tray_icon is not None:
+                tray_icon.update_menu()
+        if notify:
+            self._notify_secure_input()
+        try:
+            self._secure_input_poll_id = self.root.after(
+                self.SECURE_INPUT_POLL_MS,
+                self._poll_secure_input,
+            )
+        except tk.TclError:
+            pass
+
+    def _notify_secure_input(self) -> None:
+        holder = self._secure_input_watch.state.holder_label
+        title = "Your cat can't see your typing"
+        message = (
+            f"{holder[0].upper()}{holder[1:]} has Secure Keyboard Entry on, which "
+            "hides typing from other apps. Click the cat in the menu bar to see "
+            "how to fix it."
+        )
+        icon = getattr(self, "_tray_icon", None)
+
+        def tray_notice() -> None:
+            if icon is not None and getattr(icon, "HAS_NOTIFICATION", False):
+                try:
+                    icon.notify(message, title)
+                except Exception:
+                    pass
+
+        try:
+            if not post_notice(title, message, "secure-keyboard-entry", tray_notice):
+                tray_notice()
+        except Exception:
+            # Desktop notifications are optional on some backends.
+            pass
 
     def _settings_menu_label(self, _item: object) -> str:
         return "Settings… · New achievement" if getattr(self, "_unseen_achievements", set()) else "Settings…"
@@ -2429,6 +2511,13 @@ class CatTypeApp:
         *,
         request_attempted: bool = False,
     ) -> None:
+        guide = getattr(self, "_permission_guide", None)
+        if guide is not None and guide.exists():
+            guide.set_status(
+                granted=granted,
+                opened=request_attempted
+                or getattr(self, "_input_monitoring_requested", False),
+            )
         settings_window = getattr(self, "_settings_window", None)
         if (
             settings_window is None
@@ -2499,6 +2588,60 @@ class CatTypeApp:
             self._schedule_input_monitoring_poll()
         return opened
 
+    def _input_monitoring_missing(self) -> bool:
+        return (
+            getattr(self, "_requires_input_monitoring", False)
+            and getattr(self, "_platform_name", sys.platform) == "darwin"
+            and not self._input_monitoring_preflight()
+        )
+
+    def _start_input_monitoring_setup(self) -> None:
+        """Register Cat Type with macOS, then open the exact settings pane.
+
+        The native request adds Cat Type to the Input Monitoring list (and
+        shows macOS's own popup the first time), so the person only has to
+        flip its switch. Opening the pane directly covers every later attempt,
+        when macOS no longer shows a popup.
+        """
+        if self._request_input_monitoring_access():
+            return
+        self._open_input_monitoring_settings()
+
+    def open_permission_guide(self) -> None:
+        if not getattr(self, "_requires_input_monitoring", False):
+            return
+        guide = getattr(self, "_permission_guide", None)
+        if guide is not None and guide.exists():
+            guide.show(activate=True)
+            return
+        if getattr(self, "_overlay_visible", False):
+            self._hide(reset_anchor=False)
+        self._restore_macos_activation_policy()
+        activation_policy = _macos_activation_policy_accessors_for_app()
+        if activation_policy is not None:
+            activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_ACCESSORY)
+        self._permission_guide = PermissionGuideWindow(
+            self.root,
+            granted=not self._input_monitoring_missing(),
+            opened=getattr(self, "_input_monitoring_requested", False),
+            on_open_settings=self._start_input_monitoring_setup,
+            on_help=lambda: webbrowser.open(INPUT_MONITORING_HELP_URL),
+            on_close=self._permission_guide_closed,
+            icon_path=str(APP_ICON) if APP_ICON.exists() else None,
+        )
+
+    def _permission_guide_closed(self) -> None:
+        self._permission_guide = None
+        if getattr(self, "_shutting_down", False):
+            return
+        if getattr(self, "_first_run", False):
+            self._first_run = False
+            self.open_settings()
+            return
+        settings_window = getattr(self, "_settings_window", None)
+        if settings_window is None or not settings_window.window.winfo_exists():
+            self._return_to_macos_background_policy()
+
     def shutdown(self) -> None:
         lifecycle_lock = getattr(self, "_update_lifecycle_lock", None)
         if lifecycle_lock is None:
@@ -2532,17 +2675,14 @@ class CatTypeApp:
         if hydration_id is not None:
             self.root.after_cancel(hydration_id)
             self._frame_hydration_after_id = None
-        permission_poll_id = getattr(
-            self,
-            "_monitoring_permission_poll_id",
-            None,
-        )
-        if permission_poll_id is not None:
-            try:
-                self.root.after_cancel(permission_poll_id)
-            except tk.TclError:
-                pass
-            self._monitoring_permission_poll_id = None
+        for attribute in ("_monitoring_permission_poll_id", "_secure_input_poll_id"):
+            poll_id = getattr(self, attribute, None)
+            if poll_id is not None:
+                try:
+                    self.root.after_cancel(poll_id)
+                except tk.TclError:
+                    pass
+                setattr(self, attribute, None)
         if self._tray_icon is not None:
             self._tray_icon.stop()
         pointer_clicks = getattr(self, "pointer_clicks", None)
@@ -2595,6 +2735,8 @@ class CatTypeApp:
                 should_quit = True
             elif event.kind == "settings":
                 self.open_settings()
+            elif event.kind == "permission-guide":
+                self.open_permission_guide()
             elif event.kind == "toggle":
                 self._set_enabled(not self.settings.enabled)
             elif event.kind == "hook-error":
@@ -2956,6 +3098,18 @@ class CatTypeApp:
                 default=True,
             ),
             pystray.MenuItem(
+                "Set Up Input Monitoring…",
+                lambda _icon, _item: self.events.put(
+                    AppEvent("permission-guide", time.monotonic())
+                ),
+                visible=lambda _item: self._input_monitoring_missing(),
+            ),
+            pystray.MenuItem(
+                self._secure_input_menu_label,
+                lambda _icon, _item: webbrowser.open(SECURE_KEYBOARD_ENTRY_HELP_URL),
+                visible=lambda _item: self._secure_input_blocking(),
+            ),
+            pystray.MenuItem(
                 "Enabled",
                 lambda _icon, _item: self.events.put(
                     AppEvent("toggle", time.monotonic())
@@ -3072,12 +3226,7 @@ class CatTypeApp:
                 False,
             ),
             on_request_input_monitoring=(
-                self._request_input_monitoring_access
-                if requires_input_monitoring
-                else None
-            ),
-            on_open_input_monitoring_settings=(
-                self._open_input_monitoring_settings
+                self.open_permission_guide
                 if requires_input_monitoring
                 else None
             ),
@@ -3091,6 +3240,12 @@ class CatTypeApp:
             )
 
     def _return_to_macos_background_policy(self) -> None:
+        guide = getattr(self, "_permission_guide", None)
+        if guide is not None and guide.exists():
+            return
+        # An open update prompt needs the accessory policy to stay clickable.
+        if getattr(self, "_update_prompt", None) is not None:
+            return
         activation_policy = _macos_activation_policy_accessors_for_app()
         if activation_policy is not None:
             activation_policy[1](_NSAPPLICATION_ACTIVATION_POLICY_PROHIBITED)
@@ -3172,8 +3327,7 @@ class CatTypeApp:
             and self._platform_name == "darwin"
             and not self._input_monitoring_preflight()
         ):
-            if not self._request_input_monitoring_access():
-                self.open_settings()
+            self.open_permission_guide()
             return
         updated = AppSettings(
             **{

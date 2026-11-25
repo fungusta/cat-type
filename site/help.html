@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Cat Type — Help and troubleshooting</title>
+  <meta name="description" content="Get Cat Type working on your Mac: turn on Input Monitoring, fix a switch that is on but not working, and find the app holding Secure Keyboard Entry.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <!-- analytics -->
+</head>
+<body>
+  <header class="site-header wrap">
+    <a class="wordmark" href="./"><img src="favicon.png" alt="" width="28" height="28"> Cat Type</a>
+    <a class="quiet-link" href="https://github.com/fungusta/cat-type">GitHub</a>
+  </header>
+
+  <main class="doc wrap">
+    <h1>Help and troubleshooting</h1>
+    <p class="lede">The cat isn't showing up? Nearly always, macOS hasn't let Cat Type notice your typing yet. Start at the top and stop when the cat comes back.</p>
+
+    <nav class="doc-toc" aria-label="On this page">
+      <ol>
+        <li><a class="quiet-link" href="#input-monitoring">Turn on Input Monitoring</a></li>
+        <li><a class="quiet-link" href="#not-in-list">Cat Type isn't in the list</a></li>
+        <li><a class="quiet-link" href="#switch-on">The switch is on, but there's still no cat</a></li>
+        <li><a class="quiet-link" href="#secure-keyboard-entry">The cat disappears in some apps (Secure Keyboard Entry)</a></li>
+        <li><a class="quiet-link" href="#windows">On Windows</a></li>
+        <li><a class="quiet-link" href="#still-stuck">Still stuck</a></li>
+      </ol>
+    </nav>
+
+    <section id="input-monitoring">
+      <h2>1. Turn on Input Monitoring</h2>
+      <p>macOS asks you to allow <strong>Input Monitoring</strong> before any app can notice key presses. Cat Type only counts them to make the cat tap along. It never sees what you type.</p>
+      <p>The easiest way is the setup window built into Cat Type: click the cat in your menu bar and choose <strong>Set Up Input Monitoring…</strong>. It opens the right page in System Settings and lets you know the moment it works. To do it by hand:</p>
+      <ol class="steps">
+        <li>Open <strong>System Settings</strong> from the Apple menu.</li>
+        <li>Go to <strong>Privacy &amp; Security</strong>, then <strong>Input Monitoring</strong>.</li>
+        <li>Turn on the switch next to <strong>Cat Type</strong>. macOS may ask for your password or Touch ID.</li>
+        <li>If macOS offers <strong>Quit &amp; Reopen</strong>, choose it. Cat Type opens again by itself.</li>
+      </ol>
+      <p><a class="pill" href="x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent">Open Input Monitoring settings</a></p>
+      <p class="doc-note">That button only works on a Mac. Your browser will ask before it opens System Settings.</p>
+    </section>
+
+    <section id="not-in-list">
+      <h2>2. Cat Type isn't in the list</h2>
+      <ol class="steps">
+        <li>Make sure Cat Type is in your <strong>Applications</strong> folder. If you opened it straight from the downloaded disk image, drag it to Applications, eject the disk image, and open it from Applications instead.</li>
+        <li>In <strong>Input Monitoring</strong>, click <strong>+</strong> under the list.</li>
+        <li>Choose <strong>Applications</strong>, select <strong>Cat Type</strong>, and click <strong>Open</strong>.</li>
+        <li>Turn on its switch, then quit Cat Type from the menu bar and open it again.</li>
+      </ol>
+    </section>
+
+    <section id="switch-on">
+      <h2>3. The switch is on, but there's still no cat</h2>
+      <p>After an update, macOS can keep the old copy's permission and ignore the new one, even though the switch still looks on. Giving permission again fixes it:</p>
+      <ol class="steps">
+        <li>In <strong>Input Monitoring</strong>, select <strong>Cat Type</strong> and click <strong>−</strong> to remove it.</li>
+        <li>Click <strong>+</strong> and add Cat Type from Applications again, then turn its switch on.</li>
+        <li>Quit Cat Type from the menu bar and open it again.</li>
+      </ol>
+      <p>If you prefer Terminal, this clears Cat Type's Input Monitoring entry so you can allow it fresh the next time Cat Type opens:</p>
+      <pre><code>tccutil reset ListenEvent com.fungusta.cat-type</code></pre>
+      <p>Also check that the cat isn't simply paused. Click the cat in the menu bar: <strong>Enabled</strong> should be ticked.</p>
+    </section>
+
+    <section id="secure-keyboard-entry">
+      <h2>4. The cat disappears in some apps</h2>
+      <p>macOS has a protection called <strong>Secure Keyboard Entry</strong>. While it is on, no other app can notice your typing, Cat Type included. It switches on by itself while you type into a password field, so the cat staying away there is macOS doing its job. The cat considers this a reasonable boundary.</p>
+      <p>Trouble starts when an app keeps Secure Keyboard Entry on all the time, or forgets to switch it off. Then the cat vanishes in that app, or everywhere until that app lets go. Common sources:</p>
+      <ul>
+        <li><strong>Terminal:</strong> open the <strong>Terminal</strong> menu and untick <strong>Secure Keyboard Entry</strong>.</li>
+        <li><strong>iTerm2:</strong> open the <strong>iTerm2</strong> menu and untick <strong>Secure Keyboard Entry</strong>.</li>
+        <li><strong>Password managers and sign-in prompts</strong> can leave it on after you type a password. Close the prompt or quit the app.</li>
+      </ul>
+      <p>Cat Type watches for this. When Secure Keyboard Entry stays on for more than half a minute, it lets you know once, and the menu bar cat names the app holding it until that app lets go.</p>
+      <h3>Find the app that's holding it</h3>
+      <p>Paste this into Terminal. When something has Secure Keyboard Entry on, it prints a line ending in a number, such as <code>SecureInputPID"=1234</code>. When it prints nothing, Secure Keyboard Entry is off.</p>
+      <pre><code>ioreg -l -w 0 | grep -o 'SecureInputPID"=[0-9]*'</code></pre>
+      <p>Then put your number in place of <code>1234</code> to see the app's name:</p>
+      <pre><code>ps -p 1234 -o comm=</code></pre>
+      <p>Turn off Secure Keyboard Entry in that app, or quit it. If you can't tell which app it is, locking your Mac and unlocking it again usually clears it.</p>
+    </section>
+
+    <section id="windows">
+      <h2>5. On Windows</h2>
+      <p>Windows doesn't need any permission for Cat Type. The cat stays hidden while you type in a password field, on purpose. If it never appears, check that <strong>Enabled</strong> is ticked in the Cat Type menu in the notification area.</p>
+    </section>
+
+    <section id="still-stuck">
+      <h2>6. Still stuck</h2>
+      <p>Open an issue on <a class="quiet-link" href="https://github.com/fungusta/cat-type/issues">GitHub</a> with your macOS or Windows version and your Cat Type version (shown under <strong>Updates</strong> in Settings), and say which of the steps above you tried.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <p class="fine-print"><a class="quiet-link" href="./#download">Download Cat Type</a> · <a class="quiet-link" href="privacy.html">Privacy policy</a></p>
+    </div>
+  </footer>
+</body>
+</html>
