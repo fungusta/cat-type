@@ -105,7 +105,9 @@ class SiteBuildTests(unittest.TestCase):
         self.assertEqual(text.count("releases/latest/download/"), 3)
 
     def test_help_page_has_the_sections_the_app_links_to(self):
-        from permission_guide import INPUT_MONITORING_HELP_URL
+        # help_links is stdlib-only; the site job does not install the app's
+        # GUI dependencies such as Pillow.
+        from help_links import INPUT_MONITORING_HELP_URL
 
         text = (Path(__file__).resolve().parents[1] / "site" / "help.html").read_text(encoding="utf-8")
         anchor = INPUT_MONITORING_HELP_URL.split("#", 1)[1]

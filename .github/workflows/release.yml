@@ -159,10 +159,21 @@ jobs:
 
       - name: Smoke test macOS self-update from the notarized disk image
         if: runner.os == 'macOS'
-        run: >-
-          python -m scripts.smoke_macos_update
-          --app "dist/Cat Type.app"
-          --dmg "${{ matrix.source }}"
+        shell: bash
+        # Gatekeeper may look up the notarization ticket online; retry so a
+        # slow Apple service doesn't block the release.
+        run: |
+          for attempt in 1 2 3; do
+            if python -m scripts.smoke_macos_update \
+              --app "dist/Cat Type.app" \
+              --dmg "${{ matrix.source }}"; then
+              exit 0
+            fi
+            [ "$attempt" = 3 ] && break
+            echo "Smoke attempt $attempt failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
 
       - name: Smoke test Linux package
         if: runner.os == 'Linux'

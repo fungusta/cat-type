@@ -185,20 +185,43 @@ class UpdateStateStore:
 
     def record_success(self, now: datetime) -> None:
         _require_aware(now)
-        payload = self._preserved_state("skipped_version")
+        payload = self._preserved_state("skipped_version", "install_attempt")
         payload["last_successful_check"] = now.astimezone(timezone.utc).isoformat()
         self._write_state(payload)
 
     def skip_version(self, version: str) -> None:
         if not isinstance(version, str) or not version:
             raise ValueError("skipped version must be a nonempty string")
-        payload = self._preserved_state("last_successful_check")
+        payload = self._preserved_state("last_successful_check", "install_attempt")
         payload["skipped_version"] = version
         self._write_state(payload)
 
-    def _preserved_state(self, key: str) -> dict[str, object]:
-        value = self._read_state().get(key)
-        return {key: value} if isinstance(value, str) and value else {}
+    def record_install_attempt(self, version: str) -> None:
+        """Remember the version being installed so the next launch can tell
+        whether the install actually happened."""
+        if not isinstance(version, str) or not version:
+            raise ValueError("install attempt must be a nonempty version string")
+        payload = self._preserved_state("last_successful_check", "skipped_version")
+        payload["install_attempt"] = version
+        self._write_state(payload)
+
+    def take_install_attempt(self) -> str | None:
+        """Return and forget the recorded install attempt, if any."""
+        value = self._read_state().get("install_attempt")
+        if not isinstance(value, str) or not value:
+            return None
+        self._write_state(
+            self._preserved_state("last_successful_check", "skipped_version")
+        )
+        return value
+
+    def _preserved_state(self, *keys: str) -> dict[str, object]:
+        state = self._read_state()
+        return {
+            key: state[key]
+            for key in keys
+            if isinstance(state.get(key), str) and state[key]
+        }
 
     def _write_state(self, payload: dict[str, object]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

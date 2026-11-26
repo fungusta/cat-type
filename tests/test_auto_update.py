@@ -980,6 +980,23 @@ class SkippedVersionStateTests(unittest.TestCase):
         self.assertEqual(self.store.skipped_version(), "1.1.0")
         self.assertFalse(self.store.is_due(self.NOW))
 
+    def test_install_attempt_is_taken_once_and_keeps_other_state(self) -> None:
+        self.store.record_success(self.NOW)
+        self.store.skip_version("1.1.0")
+        self.store.record_install_attempt("1.2.0")
+
+        self.assertEqual(self.store.take_install_attempt(), "1.2.0")
+        self.assertIsNone(self.store.take_install_attempt())
+        self.assertEqual(self.store.skipped_version(), "1.1.0")
+        self.assertFalse(self.store.is_due(self.NOW))
+
+    def test_other_writes_keep_a_pending_install_attempt(self) -> None:
+        self.store.record_install_attempt("1.2.0")
+        self.store.record_success(self.NOW)
+        self.store.skip_version("1.1.0")
+
+        self.assertEqual(self.store.take_install_attempt(), "1.2.0")
+
     def test_record_success_then_skip_keeps_last_check(self) -> None:
         self.store.record_success(self.NOW)
         self.store.skip_version("1.1.0")
