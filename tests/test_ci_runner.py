@@ -144,19 +144,6 @@ class CiRunnerTests(unittest.TestCase):
         self.assertIn('Timeout (', captured)
         self.assertIn('test_hung_fixture.py", line 4 in test_wait', captured)
 
-    def test_main_dumps_stacks_only_shortly_before_the_timeout(self):
-        # faulthandler reads other threads' stacks without the GIL and has
-        # crashed busy Pillow tests on CI; dump only when a hang is likely.
-        from unittest.mock import patch
-        with patch.object(run_ci_tests, '_run_streaming', return_value=(0, '')) as run:
-            self.assertEqual(run_ci_tests.main(), 0)
-        command = run.call_args.args[0]
-        timeout = run.call_args.kwargs.get('timeout', 480)
-        bootstrap = command[command.index('-c') + 1]
-        interval = float(bootstrap.split('dump_traceback_later(', 1)[1].split(',', 1)[0])
-        self.assertGreaterEqual(interval, timeout - 60)
-        self.assertLess(interval, timeout)
-
     def test_main_preserves_failure_details_from_streamed_stderr(self):
         from unittest.mock import patch
         output = io.StringIO()

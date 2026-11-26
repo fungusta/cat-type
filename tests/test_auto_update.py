@@ -492,12 +492,7 @@ class UpdateStateStoreTests(unittest.TestCase):
         ):
             first_thread = threading.Thread(target=write_first)
             first_thread.start()
-            if not first_ready.wait(timeout=10):
-                first_thread.join(timeout=1)
-                self.fail(
-                    "first state write never reached replace: "
-                    f"errors={errors!r} alive={first_thread.is_alive()}"
-                )
+            self.assertTrue(first_ready.wait(timeout=2))
             try:
                 self.store.record_success(
                     datetime(2026, 8, 13, tzinfo=timezone.utc)
