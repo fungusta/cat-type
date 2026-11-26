@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import io
 import json
@@ -80,6 +81,14 @@ class FakeOpener:
         if not self.responses:
             raise AssertionError("unexpected HTTP request")
         return self.responses.pop(0)
+
+
+def setUpModule() -> None:
+    # Earlier UI tests leave Tk roots in reference cycles. If the cycle
+    # collector first runs on one of this module's worker threads, Tcl
+    # deletes the interpreter from the wrong thread ("Tcl_AsyncDelete") and
+    # can stall the thread under test. Collect them on the main thread first.
+    gc.collect()
 
 
 def release_payload(**overrides: Any) -> dict[str, Any]:
